@@ -208,25 +208,6 @@ int i;
 
 }
 //-----------------------------------------------------------------------------------
-/*
-int xfnprint( file_descriptor_t fd, const char *pvBuffer, const uint16_t xBytes )
-{
-	// Imprime en fd sin formatear
-
-int bytes2wr = 0;
-
-	// SI la terminal esta desconectada salgo.
-	if ( IO_read_TERMCTL_PIN() == 0 )
-		return(bytes2wr);
-
-	frtos_ioctl (fdTERM,ioctl_OBTAIN_BUS_SEMPH, NULL );
-	bytes2wr = frtos_write( fdTERM, pvBuffer, xBytes );
-	frtos_ioctl (fdTERM,ioctl_RELEASE_BUS_SEMPH, NULL);
-	return(bytes2wr);
-
-}
-*/
-//-----------------------------------------------------------------------------------
 void xprintf_init(void)
 {
 	sem_STDOUT = xSemaphoreCreateMutexStatic( &STDOUT_xMutexBuffer );
@@ -314,4 +295,22 @@ int bytes2wr = 0;
 
 }
 //-----------------------------------------------------------------------------------
+int sxprintf_D( file_descriptor_t fd, bool dflag, const char *pvBuffer, const uint16_t xBytes )
+{
+	/*
+		Envia el buffer pvBuffer al descriptor fd.
+		Si dflag es true tambien lo manda por TERM.
+
+	 */
+
+int i;
+
+	if (dflag)
+		frtos_write(fdTERM, pvBuffer, xBytes );
+
+	i = frtos_write(fd, pvBuffer, xBytes );
+	return(i);
+
+}
+//------------------------------------------------------------------------------------
 

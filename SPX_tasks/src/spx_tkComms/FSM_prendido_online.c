@@ -19,6 +19,9 @@ static int8_t state_online_auth(void);
 static int8_t state_online_global(void);
 static int8_t state_online_base(void);
 static int8_t state_online_exit(void);
+
+static void read_IPADDRES(void);
+
 //------------------------------------------------------------------------------------
 int8_t tkXComms_PRENDIDO_ONLINE(void)
 {
@@ -105,6 +108,9 @@ int8_t exit_code = -1;
 static int8_t state_online_auth(void)
 {
 
+	// Intento enviar y procesar un frame de AUTH.
+	// Si lo logro paso a procesar el siguiente tipo de frame.
+
 int8_t exit_code = -1;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:AUTH in\r\n\0"));
@@ -122,6 +128,8 @@ int8_t exit_code = -1;
 static int8_t state_online_entry(void)
 {
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ENTRY in\r\n\0"));
+
+	// Inicializo todo lo necesario al modo prendido ONLINE
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ENTRY out\r\n\0"));
 
@@ -174,6 +182,7 @@ bool ret_code;
 
 		switch (state) {
 		case SF_ENTRY:
+			xprintf_PD( DF_COMMS, PSTR("COMMS: sendFrame ENTRY\r\n"));
 			// Controlo no quedar en un loop infinito
 			tryes++;
 			if ( tryes == 8 ) {
@@ -185,6 +194,7 @@ bool ret_code;
 			break;
 
 		case SF_SOCKET:
+			xprintf_PD( DF_COMMS, PSTR("COMMS: sendFrame SOCKET\r\n"));
 			// Chequeo si tengo un socket abierto
 			sock_status = socket_status();
 			if ( sock_status == sock_OPEN ) {
@@ -195,18 +205,22 @@ bool ret_code;
 			break;
 
 		case SF_NET:
+			xprintf_PD( DF_COMMS, PSTR("COMMS: sendFrame NET\r\n"));
 			// Chequeo si el servicio de sockets esta activo
 			net_status = netservice_status();
 			if ( net_status == net_OPEN ) {
+				read_IPADDRES();
 				socket_open();
 				state = SF_ENTRY;
 			} else {
+				memset( xCOMMS_stateVars.ip_assigned, '\0', sizeof(xCOMMS_stateVars.ip_assigned) );
 				netservice_open();
 				state = SF_ENTRY;
 			}
 			break;
 
 		case SF_SEND:
+			xprintf_PD( DF_COMMS, PSTR("COMMS: sendFrame SEND\r\n"));
 			// Envio el frame
 			if ( xmit_data_frame(tipo_frame) ) {
 				state = SF_RSP;
@@ -218,6 +232,7 @@ bool ret_code;
 			break;
 
 		case SF_RSP:
+			xprintf_PD( DF_COMMS, PSTR("COMMS: sendFrame RSP\r\n"));
 			// Espero la respuesta
 			// Await
 			vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
@@ -232,6 +247,7 @@ bool ret_code;
 			break;
 
 		case SF_EXIT:
+			xprintf_PD( DF_COMMS, PSTR("COMMS: sendFrame EXIT\r\n"));
 			return(ret_code);
 			break;
 		}
@@ -258,15 +274,15 @@ int8_t cmd_rsp;
 
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
 
-			if ( gprs_check_response(0, "CIPOPEN: 0,\"TCP\"") >= 0 ) {
+			if ( gprs_check_response( 0, "CIPOPEN: 0,\"TCP\"")  ) {
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out: OK (%d)\r\n\0"), tryes );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (open) OK (%d)\r\n\0"), tryes );
 				return ( sock_OPEN );
 			}
 
-			if ( gprs_check_response(0, "CIPOPEN: 0") >= 0 ) {
+			if ( gprs_check_response( 0, "CIPOPEN: 0") ) {
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out: OK (%d)\r\n\0"), tryes );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (close) OK (%d)\r\n\0"), tryes );
 				return ( sock_CLOSE );
 			}
 
@@ -275,9 +291,9 @@ int8_t cmd_rsp;
 			//
 			// ERROR
 
-			if ( gprs_check_response(0, "+IP ERROR:") >= 0 ) {
+			if ( gprs_check_response( 0, "+IP ERROR:") ) {
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out: OK (%d)\r\n\0"), tryes );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (unknown) OK (%d)\r\n\0"), tryes );
 				return ( sock_UNKNOWN );
 			}
 		}
@@ -294,7 +310,7 @@ int8_t cmd_rsp;
 	}
 
 	// No puedo en 3 veces responder.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out: ERROR.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (uknown) ERROR\r\n"));
 
 	return( sock_UNKNOWN );
 
@@ -314,7 +330,7 @@ int8_t cmd_rsp;
 	xprintf_PD( DF_COMMS, PSTR("COMMS: socketOPEN in\r\n"));
 
 	memset(strapn,'\0', sizeof(strapn));
-	snprintf_P( strapn, sizeof(strapn), PSTR("AT+CIPOPEN=0,\"TCP\",\"%s\",%s\r"), sVarsComms.server_ip_address, sVarsComms.server_tcp_port);
+	snprintf_P( strapn, sizeof(strapn), PSTR("AT+CIPOPEN=0,\"TCP\",\"%s\",%s\r"), comms_conf.server_ip_address, comms_conf.server_tcp_port);
 
 	// Envio el comando hasta 3 veces.
 	// Si no responde mando un AT.
@@ -323,7 +339,7 @@ int8_t cmd_rsp;
 		cmd_rsp = FSM_sendATcmd( 10, strapn, "OK" );
 
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: socketOPEN out: OK (%d)\r\n\0"), tryes );
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: socketOPEN out (open) OK (%d)\r\n\0"), tryes );
 			return ( sock_OPEN );
 		}
 
@@ -339,7 +355,7 @@ int8_t cmd_rsp;
 	}
 
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: socketOPEN out: ERROR.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: socketOPEN out (unknown) ERROR\r\n"));
 
 	return( sock_UNKNOWN );
 
@@ -364,7 +380,7 @@ int8_t cmd_rsp;
 
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
 			xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
-			xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out: OK (%d)\r\n\0"), tryes );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out (close) OK (%d)\r\n\0"), tryes );
 			return ( sock_CLOSE );
 		}
 
@@ -381,7 +397,7 @@ int8_t cmd_rsp;
 
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
 	xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
-	xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out: ERROR.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out (unknown) ERROR\r\n"));
 
 	return( sock_UNKNOWN );
 
@@ -405,13 +421,13 @@ int8_t cmd_rsp;
 
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
 
-			if ( gprs_check_response(0, "+NETOPEN: 1") >= 0 ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: netSTATUS out(open): OK (%d)\r\n\0"), tryes );
+			if ( gprs_check_response( 0, "+NETOPEN: 1") ) {
+				xprintf_PD( DF_COMMS, PSTR("COMMS: netSTATUS out (open) OK (%d)\r\n\0"), tryes );
 				return ( net_OPEN );
 			}
 
-			if ( gprs_check_response(0, "+NETOPEN: 0") >= 0 ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: netSTATUS out(close): OK (%d)\r\n\0"), tryes );
+			if ( gprs_check_response( 0, "+NETOPEN: 0") ) {
+				xprintf_PD( DF_COMMS, PSTR("COMMS: netSTATUS out (close) OK (%d)\r\n\0"), tryes );
 				return ( net_CLOSE );
 			}
 		}
@@ -427,7 +443,7 @@ int8_t cmd_rsp;
 		}
 	}
 	// No puedo en 3 veces responder.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: netSTATUS out: ERROR.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: netSTATUS out (unknown) ERROR\r\n"));
 	return( net_UNKNOWN );
 
 }
@@ -441,10 +457,15 @@ int8_t netservice_open(void)
 	// Puede demorar unos segundos por lo que espero para chequear el resultado
 	// y reintento varias veces.
 	// OK si el comando responde ( no importa la respuesta )
+	//
+	//AT+NETOPEN
+	//OK
+	//
+	//+NETOPEN: 0
 
 int8_t tryes;
 int8_t cmd_rsp;
-
+int8_t timeout;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: netOPEN in\r\n"));
 
@@ -454,12 +475,27 @@ int8_t cmd_rsp;
 
 		cmd_rsp = FSM_sendATcmd( 10, "AT+NETOPEN\r", "OK" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: netOPEN out: OK (%d)\r\n\0"), tryes );
-			return ( net_OPEN );
+		switch(cmd_rsp) {
+
+		case ATRSP_NONE:
+			// No se da nunca
+			return( net_UNKNOWN );
+
+		case ATRSP_EXPECTED:
+			// EL comando respondio OK. Hay que esperar el +NETOPEN: 0
+			goto await_net_connect;
+			break;
+
+		case ATRSP_NOTEXPECTED:
+		case ATRSP_ERR:
+		case ATRSP_TIMEOUT:
+		case ATRSP_UNKNOWN:
+			// Salgo y reintento el comando
+			break;
+
 		}
 
-		// Reintento
+		// Reintento dando antes un AT.
 		vTaskDelay( ( TickType_t)( 2000 / portTICK_RATE_MS ) );
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: netOPEN retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
@@ -471,8 +507,24 @@ int8_t cmd_rsp;
 	}
 
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: netOPEN out: ERROR.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: netOPEN out (unknown) ERROR.\r\n"));
+	gprs_print_RX_buffer();
+	return( net_UNKNOWN );
 
+await_net_connect:
+
+	// Espero que se abra la conexion
+	for ( timeout = 0; timeout < 45; timeout++) {
+		vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
+		if ( gprs_check_response( 0, "+NETOPEN: 0" ) ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: netOPEN out (open) OK\r\n\0") );
+			gprs_print_RX_buffer();
+			return ( net_OPEN );
+		}
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: netOPEN out (unkown) ERROR\r\n"));
+	gprs_print_RX_buffer();
 	return( net_UNKNOWN );
 
 }
@@ -492,10 +544,10 @@ int8_t cmd_rsp;
 	// Si no responde mando un AT.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 10, "AT+NETCLOSE=0\r", "OK" );
+		cmd_rsp = FSM_sendATcmd( 10, "AT+NETCLOSE\r", "OK" );
 
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS, PSTR("COMMS: netCLOSE out: OK (%d)\r\n\0"), tryes );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: netCLOSE out (close) OK (%d)\r\n\0"), tryes );
 			return ( net_CLOSE );
 		}
 
@@ -511,19 +563,88 @@ int8_t cmd_rsp;
 	}
 
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: netCLOSE out: ERROR.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: netCLOSE out (unknown) ERROR\r\n"));
 
 	return( net_UNKNOWN );
 
 }
 //------------------------------------------------------------------------------------
+static void read_IPADDRES(void)
+{
+
+int8_t cmd_rsp;
+char *ts = NULL;
+char c = '\0';
+char *ptr = NULL;
+
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE: IPADDRESS\r\n"));
+
+	memset( xCOMMS_stateVars.ip_assigned, '\0', sizeof(xCOMMS_stateVars.ip_assigned) );
+	cmd_rsp = FSM_sendATcmd( 5, "AT+IPADDR\r", "OK" );
+	if (cmd_rsp	== ATRSP_EXPECTED ) {
+		// Extraigo la IP
+		if ( gprs_check_response( 0, "+IPADDR:") ) {
+			ptr = xCOMMS_stateVars.ip_assigned;
+			ts = strstr( gprs_rxbuffer.buffer, "+IPADDR:");
+			ts += 9;
+			while ( (c = *ts) != '\r') {
+				*ptr++ = c;
+				ts++;
+			}
+			*ptr = '\0';
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: IPADDR [%s]\r\n\0"), xCOMMS_stateVars.ip_assigned );
+		}
+	}
+}
+//------------------------------------------------------------------------------------
 bool xmit_data_frame(int8_t tipo_frame)
 {
+uint16_t i;
+uint16_t size;
+int8_t cmd_rsp;
+char strapn[24];
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: xmit_data_frame\r\n"));
+
+	// Preparo el frame
+	gprs_txbuffer_reset();
+	i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=TEST&VER=%s" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
+	i +=  sprintf_P( &gprs_txbuffer.buffer[i], PSTR(" HTTP/1.1\r\nHost: www.spymovil.com\r\n\r\n\r\n") );
+	size = strlen(gprs_txbuffer.buffer);
+
+	// Solicito el prompt para transmitir
+	memset(strapn,'\0', sizeof(strapn));
+	snprintf_P( strapn, sizeof(strapn), PSTR("AT+CIPSEND=0,%d\r"),size);
+	cmd_rsp = FSM_sendATcmd( 5, strapn, '\0' );
+	// Espero el prompt 1000 ms.
+	if ( ! gprs_check_response( 10, ">") ) {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: xmit_data_frame SEND ERROR No prompt.\r\n"));
+		gprs_print_RX_buffer();
+		return(false);
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: xmit_data_frame SENDING\r\n"));
+	// Envio el frame. El buffer es mayor que lo que maneja xprintf por lo que lo envio directo !!!
+	gprs_flush_RX_buffer();
+	sxprintf_D( fdGPRS, DF_COMMS , gprs_txbuffer.buffer, size );
+
+
+	// Espero la confirmacion del modem hasta 2000 msecs
+	if ( gprs_check_response( 20, "+CIPSEND: 0,") ) {
+		gprs_print_RX_buffer();
+		return(true);
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: xmit_data_frame SEND ERROR No response.\r\n"));
+	gprs_print_RX_buffer();
 	return(false);
+
 }
 //------------------------------------------------------------------------------------
 bool rcvd_right_response(int8_t tipo_frame)
 {
-	return(false);
+	xprintf_PD( DF_COMMS, PSTR("COMMS: rcvd_right_response\r\n"));
+	return(true);
 }
 //------------------------------------------------------------------------------------

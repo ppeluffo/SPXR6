@@ -22,8 +22,6 @@
 #ifndef SRC_SPX_ULIBS_UL_PILOTOS_H_
 #define SRC_SPX_ULIBS_UL_PILOTOS_H_
 
-//#include "spx.h"
-
 // LAS PRESIONES SE MIDEN EN GRS. !!!
 
 #define MAX_PILOTO_PSLOTS	5

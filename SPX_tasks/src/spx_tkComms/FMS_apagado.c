@@ -11,9 +11,16 @@
  *  En estos casos puedo llegar a apagar el modem pero ya no espero el tiempo timerDial sino que espero por ej. 30s, 60s, 120s
  *  y recien si no pude, vuelvo a esperar el timerDial.
  *
+ *  PROBLEMAS:
+ *  En 13 hs de analisis, 51 bloques no hubieron errores de PBDONE ni de CPAS.
+ *  El tema es que luego del PBDONE, en 18 veces el AT no respondio por lo que se reintento con on/off.
+ *  Luego que el AT responde, el CPAS siempre respondio.
+ *  Luego que el PBDONE responde, esperamos 10s mas. Lo aumento a 15s.
+ *  Los resultados globales fueron que en los 51 bloques, siempre paso el CPAS.
+ *
  */
 
-#include <tkComms.h>
+#include "tkComms.h"
 
 typedef enum { APAGADO_ENTRY, PRENDERHW, PRENDERSW, PBDONE, CPAS, APAGADO_EXIT } t_states_apagado;
 
@@ -94,7 +101,7 @@ static int8_t state_cpas(void)
 	// Este comando nos indica si el modem esta listo a recibir comandos ( READY )
 	// La respuesta puede llegar a demorar hasta 10s.
 
-int8_t timeout = 0;
+uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
@@ -119,12 +126,10 @@ int8_t cmd_rsp;
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS out: OK (%d)\r\n"), tryes );
 			return ( APAGADO_EXIT );
-			break;
 
 		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
 			// Dio timeout: reintento.
 			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS: TIMEOUT.\r\n") );
-			break;
 
 		} else if ( cmd_rsp == ATRSP_ERR ) {
 			// ERROR: apago sw y reintento.
@@ -159,55 +164,35 @@ static int8_t state_pbdone(void)
 	// Espera hasta 15 s una respuesta de inicializacion del modem.
 	// Si responde PBDONE, espero y doy un AT.
 
-int8_t timeout = 0;
-int8_t tryes;
-int8_t cmd_rsp;
+uint16_t timeout = 0;
+int8_t exit_code = -1;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE in:\r\n"));
-
+	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE in\r\n"));
 	// PBDONE.
-	// Intento 3 veces por el PBDONE
-	for ( tryes = 0; tryes <= 3; tryes++ ) {
+	timeout = 150 * ( 1 + prender_sw_tryes ) ;	// En intervalos de 100 ms.
+	if ( gprs_check_response ( timeout, "PB DONE" ) ) {
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: OK\r\n"));
+		gprs_print_RX_buffer();
+		// Espero 10s que termine de inicializarze
+		vTaskDelay( ( TickType_t)( 15000 / portTICK_RATE_MS ) );
 
-		timeout = ( 15 * prender_sw_tryes );
-		cmd_rsp = FSM_sendATcmd( timeout, '\0', "PB DONE" );
+		// No quiero ECHO en los comandos
+		FSM_sendATcmd( 3, "ATE0\r", "OK" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: OK (%d)\r\n"), tryes );
-			// Espero 10s que termine de inicializarze
-			vTaskDelay( ( TickType_t)( 10000 / portTICK_RATE_MS ) );
-			return( CPAS );
+		// Leemos el voltaje de alimentacion
+		FSM_sendATcmd( 3, "AT+CBC\r", "OK" );
+		exit_code = CPAS;
 
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: apago sw y reintento.
-			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: TIMEOUT.\r\n"));
-			// Hago un switch para apagarlo ??
-			gprs_sw_pwr();
-			return(PRENDERSW);
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: apago sw y reintento.
-			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: ERR.\r\n"));
-			// Hago un switch para apagarlo ??
-			gprs_sw_pwr();
-
-		} else {
-			// UNKNOWN: apago sw y reintento.
-			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: ERROR UNKN.\r\n"));
-			// Hago un switch para apagarlo ??
-			gprs_sw_pwr();
-			return(PRENDERSW);
-		}
-
+	} else {
+		// Dio timeout: apago sw y reintento.
+		xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: TIMEOUT.\r\n"));
+		// Hago un switch para apagarlo ??
+		gprs_sw_pwr();
+		exit_code = PRENDERSW;
 	}
 
-	// Luego de 3 intentos no obtuve respuesta. Apago
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: ERROR.\r\n"));
-	// Hago un switch para apagarlo ??
-	gprs_sw_pwr();
-	return( PRENDERSW);
-
-	return(-1);
+	gprs_print_RX_buffer();
+	return(exit_code);
 
 }
 //------------------------------------------------------------------------------------
@@ -218,7 +203,7 @@ static int8_t state_prenderSW(void)
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PRENDERSW in.\r\n\0"));
 
 	prender_sw_tryes++;
-	if ( ++prender_sw_tryes > MAXSWTRYESPRENDER ) {
+	if ( prender_sw_tryes > MAXSWTRYESPRENDER ) {
 		// Apago el modem
 		gprs_apagar();
 		xCOMMS_stateVars.gprs_prendido = false;
@@ -242,7 +227,6 @@ static int8_t state_prenderHW(void)
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PRENDERHW in.\r\n\0"));
 
 	prender_hw_tryes++;
-
 	if ( prender_hw_tryes > MAXHWTRYESPRENDER ) {
 		// Maximo nro. de reintentos de prender sin resultado
 		// Apago el modem
@@ -285,10 +269,10 @@ static bool starting_flag = true;
 	xCOMMS_stateVars.gprs_inicializado = false;
 
 	// Calculo cuanto tiempo voy a esperar apagado (Al menos siempre espero 10s )
-	if ( sVarsComms.timerDial < 10 ) {
+	if ( comms_conf.timerDial < 10 ) {
 		awaittime_for_dial = 10;
 	} else {
-		awaittime_for_dial = sVarsComms.timerDial;
+		awaittime_for_dial = comms_conf.timerDial;
 	}
 
 	if ( starting_flag ) {

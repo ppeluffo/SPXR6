@@ -5,7 +5,7 @@
  *      Author: pablo
  */
 
-//#include "spx.h"
+#include "spx.h"
 #include "tkComms.h"
 #include "ul_utils.h"
 
@@ -253,8 +253,8 @@ void u_load_defaults( char *opt )
 	counters_config_defaults();
 	dinputs_config_defaults();
 	ainputs_config_defaults();
-
 	piloto_config_defaults();
+	comms_config_defaults();
 
 }
 //------------------------------------------------------------------------------------
@@ -282,7 +282,7 @@ void u_save_params_in_NVMEE(void)
 {
 	/*
 	 *  Tengo 3 estructuras de variables que debo guardar:
-	 *  systemVars, sVarsApp, sVarsComms
+	 *  systemVars, sVarsApp, comms_conf
 	 *  Las guardo en este orden y luego de grabarlas, grabo un byte con el checksum de c/u
 	 *
 	 *  sVarsComms.checksum
@@ -310,6 +310,9 @@ uint16_t ee_wr_addr;
 	// Copio la configuracion de canales contadores al systemVars.
 	memcpy( &systemVars.counters_conf,  &counters_conf, sizeof(counters_conf));
 
+	// Copio la configuracion de gprs al systemVars.
+	memcpy( &systemVars.comms_conf,  &comms_conf, sizeof(comms_conf));
+
 	// SystemVars.
 	// Guardo systemVars en la EE
 	ee_wr_addr = 0x00;
@@ -318,15 +321,6 @@ uint16_t ee_wr_addr;
 	ee_wr_addr += sizeof(systemVars);
 	checksum = u_checksum( (uint8_t *)&systemVars, sizeof(systemVars) );
 	nvm_eeprom_erase_and_write_buffer(ee_wr_addr, &checksum, sizeof(checksum));
-
-	// sVarsComms
-	ee_wr_addr += 1;
-	nvm_eeprom_erase_and_write_buffer(ee_wr_addr, &sVarsComms, sizeof(sVarsComms));
-
-	ee_wr_addr += sizeof(sVarsComms);
-	checksum = u_checksum( (uint8_t *)&sVarsComms, sizeof(sVarsComms) );
-	nvm_eeprom_erase_and_write_buffer(ee_wr_addr, &checksum, sizeof(checksum));
-
 
 }
 //------------------------------------------------------------------------------------
@@ -362,19 +356,11 @@ uint16_t ee_rd_addr;
 	// Copio la configuracion de contadores
 	memcpy( &counters_conf,  &systemVars.counters_conf, sizeof(counters_conf));
 
+	// Copio la configuracion de comms
+	memcpy( &comms_conf,  &systemVars.comms_conf, sizeof(comms_conf));
+
 	if ( calculated_checksum != stored_checksum ) {
 		xprintf_P( PSTR("ERROR: Checksum systemVars failed: calc[0x%0x], sto[0x%0x]\r\n"), calculated_checksum, stored_checksum );
-		return(false);
-	}
-
-	// sVarsComms
-	ee_rd_addr += 1;
-	nvm_eeprom_read_buffer(ee_rd_addr, (char *)&sVarsComms, sizeof(sVarsComms));
-	calculated_checksum = u_checksum( (uint8_t *)&sVarsComms, sizeof(sVarsComms) );
-	ee_rd_addr += sizeof(sVarsComms);
-	nvm_eeprom_read_buffer(ee_rd_addr, (char *)&stored_checksum, sizeof(stored_checksum));
-	if ( calculated_checksum != stored_checksum ) {
-		xprintf_P( PSTR("ERROR: Checksum sVarsComms failed: calc[0x%0x], sto[0x%0x]\r\n"), calculated_checksum, stored_checksum );
 		return(false);
 	}
 
@@ -479,7 +465,7 @@ int16_t free_size = sizeof(hash_buffer);
 
 	// Timerdial
 	//xprintf_P( PSTR("DEBUG1: base_free_size[%d]\r\n\0"), free_size );
-	i = snprintf_P( &hash_buffer[i], free_size, PSTR("%d,"), sVarsComms.timerDial );
+	i = snprintf_P( &hash_buffer[i], free_size, PSTR("%d,"), comms_conf.timerDial );
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
 
@@ -662,10 +648,10 @@ void u_config_timerdial ( char *s_timerdial )
 	while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
 		taskYIELD();
 
-	sVarsComms.timerDial = atoi(s_timerdial);
+	comms_conf.timerDial = atoi(s_timerdial);
 
 	// Controlo que este en los rangos permitidos
-	if ( (sVarsComms.timerDial > 0) && (sVarsComms.timerDial < TDIAL_MIN_DISCRETO ) ) {
+	if ( (comms_conf.timerDial > 0) && (comms_conf.timerDial < TDIAL_MIN_DISCRETO ) ) {
 		//systemVars.gprs_conf.timerDial = 0;
 		//xprintf_P( PSTR("TDIAL warn !! Default to 0. ( continuo TDIAL=0, discreto TDIAL > 900)\r\n\0"));
 		xprintf_P( PSTR("TDIAL warn: continuo TDIAL < 900, discreto TDIAL >= 900)\r\n\0"));

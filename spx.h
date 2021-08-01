@@ -62,7 +62,6 @@
 #include "l_steppers.h"
 
 #include "ul_pilotos.h"
-#include "ul_utils.h"
 #include "ul_dinputs.h"
 #include "ul_counters.h"
 #include "ul_ainputs.h"
@@ -71,10 +70,10 @@
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "1.0.0a"
-#define SPX_FW_DATE "@ 20210729"
+#define SPX_FW_DATE "@ 20210731"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
-#define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS Master Mbus."
+#define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
 
 //#define F_CPU (32000000UL)
 //#define SYSMAINCLK 2
@@ -183,6 +182,16 @@ typedef struct {
 } st_dataRecord_t;		// 63
 
 typedef struct {
+	char dlgId[DLGID_LENGTH];
+	char apn[APN_LENGTH];
+	char server_tcp_port[PORT_LENGTH];
+	char server_ip_address[IP_LENGTH];
+	char serverScript[SCRIPT_LENGTH];
+	char simpwd[SIM_PASSWD_LENGTH];
+	uint32_t timerDial;
+} xComms_conf_t;
+
+typedef struct {
 	// Variables de trabajo.
 	t_debug debug;
 	uint16_t timerPoll;
@@ -190,6 +199,8 @@ typedef struct {
 	dinputs_conf_t dinputs_conf;	// Estructura con la configuracion de las entradas digitales
 	ainputs_conf_t ainputs_conf;	// Estructura con la configuracion de las entradas analogicas
 	piloto_conf_t piloto_conf;
+	xComms_conf_t comms_conf;
+
 	uint8_t checksum;
 } systemVarsType;
 

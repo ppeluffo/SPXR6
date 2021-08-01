@@ -20,6 +20,7 @@ int8_t state = APAGADO;
 	while ( !startTask )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
+
 	gprs_init();
 	xCOMMS_stateVars.gprs_prendido = false;
 	xCOMMS_stateVars.gprs_inicializado = false;
@@ -45,6 +46,8 @@ int8_t state = APAGADO;
 			xprintf_P( PSTR("COMMS: state ERROR !!.\r\n\0"));
 		}
 	}
+
+
 }
 //------------------------------------------------------------------------------------
 void tkCommsRX(void * pvParameters)
@@ -64,6 +67,7 @@ uint32_t ulNotifiedValue;
 
 	xprintf_P( PSTR("starting tkCommsRX..\r\n\0"));
 
+
 	for( ;; )	{
 
 		if ( xCOMMS_stateVars.gprs_prendido == true ) {
@@ -79,5 +83,20 @@ uint32_t ulNotifiedValue;
 
 		}
 	}
+
+
+}
+//------------------------------------------------------------------------------------
+void comms_config_defaults(void)
+{
+
+	strncpy_P( comms_conf.apn, PSTR("SPYMOVIL.VPNANTEL\0"), APN_LENGTH );
+	strncpy_P( comms_conf.server_ip_address, PSTR("192.168.0.9\0"),16);
+	strncpy_P( comms_conf.dlgId, PSTR("DEFAULT\0"),  DLGID_LENGTH );
+	strncpy_P( comms_conf.serverScript, PSTR("/cgi-bin/SPY/spy.py\0"), SCRIPT_LENGTH);
+	strncpy_P( comms_conf.server_tcp_port, PSTR("80\0"), PORT_LENGTH	);
+
+	comms_conf.timerDial = 900;
+
 }
 //------------------------------------------------------------------------------------

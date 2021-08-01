@@ -19,6 +19,14 @@ static void pv_cmd_rwGPRS(uint8_t cmd_mode );
 static void pv_cmd_I2Cscan(bool busscan);
 static bool pv_cmd_configGPRS(void);
 static void pv_RTC_drift_test(void);
+static bool pv_cmd_gprs_set_SAT(uint8_t modo);
+static void pv_cmd_gprs_set_MODO( uint8_t modo);
+static void pv_cmd_gprs_set_PREF(uint8_t modo);
+static void pv_cmd_gprs_set_BANDS( char *s_bands);
+static void pv_cmd_gprs_read_MODO(void);
+static void pv_cmd_gprs_read_PREF(void);
+static void pv_cmd_gprs_read_BANDS(void);
+static void pv_cmd_gprs_config_status(void);
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
@@ -33,7 +41,6 @@ static void cmdConfigFunction(void);
 static void cmdKillFunction(void);
 
 static void status_canales_estandard(void);
-
 
 #define WR_CMD 0
 #define RD_CMD 1
@@ -113,69 +120,63 @@ st_dataRecord_t dr;
 
 	memset( &l_fat, '\0', sizeof(FAT_t));
 
-	xprintf_P( PSTR("\r\nSpymovilA %s %s %s %s \r\n\0"), SPX_HW_MODELO, SPX_FTROS_VERSION, SPX_FW_REV, SPX_FW_DATE);
-	xprintf_P( PSTR("Clock %d Mhz, Tick %d Hz\r\n\0"),SYSMAINCLK, configTICK_RATE_HZ );
+	xprintf_P( PSTR("\r\nSpymovilA %s %s %s %s \r\n"), SPX_HW_MODELO, SPX_FTROS_VERSION, SPX_FW_REV, SPX_FW_DATE);
+	xprintf_P( PSTR("Clock %d Mhz, Tick %d Hz\r\n"),SYSMAINCLK, configTICK_RATE_HZ );
 
 	// SIGNATURE ID
-	xprintf_P( PSTR("uID=%s\r\n\0"), NVMEE_readID() );
+	xprintf_P( PSTR("uID=%s\r\n"), NVMEE_readID() );
 
 	// Last reset cause
-	xprintf_P( PSTR("WRST=0x%02X\r\n\0") ,wdg_resetCause );
+	xprintf_P( PSTR("WRST=0x%02X\r\n") ,wdg_resetCause );
 
 	RTC_read_time();
 
 	// DlgId
-	xprintf_P( PSTR("dlgid: %s\r\n\0"), sVarsComms.dlgId );
+	xprintf_P( PSTR("dlgid: %s\r\n"), comms_conf.dlgId );
 
 	// Memoria
 	FAT_read(&l_fat);
-	xprintf_P( PSTR("memory: rcdSize=%d, wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d \r\n\0"), sizeof(st_dataRecord_t), l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
-
-#ifdef GPRS_RX_LINEAL_BUFFER
-	xprintf_P(PSTR("xComms Lineal buffers\r\n"));
-#else
-	xprintf_P(PSTR("xComms Circular buffers\r\n"));
-#endif
+	xprintf_P( PSTR("memory: rcdSize=%d, wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d\r\n"), sizeof(st_dataRecord_t), l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
 
 	// COMMS Status
-	gprs_modem_status();
+	pv_cmd_gprs_config_status();
 
 	// CONFIG
-	xprintf_P( PSTR(">Config:\r\n\0"));
+	xprintf_P( PSTR(">Config:\r\n"));
 
 	// debug
 	switch(systemVars.debug) {
 	case DEBUG_NONE:
-		xprintf_P( PSTR("  debug: none\r\n\0") );
+		xprintf_P( PSTR("  debug: none\r\n") );
 		break;
 	case DEBUG_COUNTER:
-		xprintf_P( PSTR("  debug: counter\r\n\0") );
+		xprintf_P( PSTR("  debug: counter\r\n") );
 		break;
 	case DEBUG_DATA:
-		xprintf_P( PSTR("  debug: data\r\n\0") );
+		xprintf_P( PSTR("  debug: data\r\n") );
 		break;
 	case DEBUG_COMMS:
-		xprintf_P( PSTR("  debug: comms\r\n\0") );
+		xprintf_P( PSTR("  debug: comms\r\n") );
 		break;
 	default:
-		xprintf_P( PSTR("  debug: ???\r\n\0") );
+		xprintf_P( PSTR("  debug: ???\r\n") );
 		break;
 	}
 
 	// Timerpoll
-	xprintf_P( PSTR("  timerPoll: [%d s]/ %d\r\n\0"), systemVars.timerPoll, ctl_readTimeToNextPoll() );
+	xprintf_P( PSTR("  timerPoll: [%d s]/ %d\r\n"), systemVars.timerPoll, ctl_readTimeToNextPoll() );
 
 	// Timerdial
-	xprintf_P( PSTR("  timerDial: [%ld s]/\0"), sVarsComms.timerDial );
+	xprintf_P( PSTR("  timerDial: [%lu s]/ %lu\r\n"), comms_conf.timerDial, pubcomms_awaittime_for_dial() );
 	//xprintf_P( PSTR(" %d \r\n\0"), xcomms_time_to_next_dial() );
 
 	// Sensor Pwr Time
-	xprintf_P( PSTR("  timerPwrSensor: [%d s]\r\n\0"), ainputs_get_timePwrSensor() );
+	xprintf_P( PSTR("  timerPwrSensor: [%d s]\r\n"), ainputs_get_timePwrSensor() );
 
 	// contadores( Solo hay 2 )
 	switch ( counters_get_hwType() ) {
 	case COUNTERS_HW_SIMPLE:
-		xprintf_P( PSTR("  counters hw: simple\r\n\0"));
+		xprintf_P( PSTR("  counters hw: simple\r\n"));
 		break;
 	case COUNTERS_HW_OPTO:
 		xprintf_P( PSTR("  counters hw: opto\r\n\0"));
@@ -574,9 +575,9 @@ bool retS = false;
 		if ( argv[2] == NULL ) {
 			retS = false;
 		} else {
-			memset(sVarsComms.apn, '\0', sizeof(sVarsComms.apn));
-			memcpy(sVarsComms.apn, argv[2], sizeof(sVarsComms.apn));
-			sVarsComms.apn[APN_LENGTH - 1] = '\0';
+			memset(comms_conf.apn, '\0', sizeof(comms_conf.apn));
+			memcpy(comms_conf.apn, argv[2], sizeof(comms_conf.apn));
+			comms_conf.apn[APN_LENGTH - 1] = '\0';
 			retS = true;
 		}
 		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
@@ -588,9 +589,9 @@ bool retS = false;
 		if ( argv[2] == NULL ) {
 			retS = false;
 		} else {
-			memset(sVarsComms.server_tcp_port, '\0', sizeof(sVarsComms.server_tcp_port));
-			memcpy(sVarsComms.server_tcp_port, argv[2], sizeof(sVarsComms.server_tcp_port));
-			sVarsComms.server_tcp_port[PORT_LENGTH - 1] = '\0';
+			memset(comms_conf.server_tcp_port, '\0', sizeof(comms_conf.server_tcp_port));
+			memcpy(comms_conf.server_tcp_port, argv[2], sizeof(comms_conf.server_tcp_port));
+			comms_conf.server_tcp_port[PORT_LENGTH - 1] = '\0';
 			retS = true;
 		}
 		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
@@ -602,9 +603,9 @@ bool retS = false;
 		if ( argv[2] == NULL ) {
 			retS = false;
 		} else {
-			memset(sVarsComms.server_ip_address, '\0', sizeof(sVarsComms.server_ip_address));
-			memcpy(sVarsComms.server_ip_address, argv[2], sizeof(sVarsComms.server_ip_address));
-			sVarsComms.server_ip_address[IP_LENGTH - 1] = '\0';
+			memset(comms_conf.server_ip_address, '\0', sizeof(comms_conf.server_ip_address));
+			memcpy(comms_conf.server_ip_address, argv[2], sizeof(comms_conf.server_ip_address));
+			comms_conf.server_ip_address[IP_LENGTH - 1] = '\0';
 			retS = true;
 		}
 		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
@@ -616,9 +617,9 @@ bool retS = false;
 		if ( argv[2] == NULL ) {
 			retS = false;
 		} else {
-			memset(sVarsComms.serverScript, '\0', sizeof(sVarsComms.serverScript));
-			memcpy(sVarsComms.serverScript, argv[2], sizeof(sVarsComms.serverScript));
-			sVarsComms.serverScript[SCRIPT_LENGTH - 1] = '\0';
+			memset(comms_conf.serverScript, '\0', sizeof(comms_conf.serverScript));
+			memcpy(comms_conf.serverScript, argv[2], sizeof(comms_conf.serverScript));
+			comms_conf.serverScript[SCRIPT_LENGTH - 1] = '\0';
 			retS = true;
 		}
 		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
@@ -680,9 +681,9 @@ bool retS = false;
 		if ( argv[2] == NULL ) {
 			retS = false;
 			} else {
-				memset(sVarsComms.dlgId,'\0', sizeof(sVarsComms.dlgId) );
-				memcpy(sVarsComms.dlgId, argv[2], sizeof(sVarsComms.dlgId));
-				sVarsComms.dlgId[DLGID_LENGTH - 1] = '\0';
+				memset(comms_conf.dlgId,'\0', sizeof(comms_conf.dlgId) );
+				memcpy(comms_conf.dlgId, argv[2], sizeof(comms_conf.dlgId));
+				comms_conf.dlgId[DLGID_LENGTH - 1] = '\0';
 				retS = true;
 			}
 		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
@@ -712,22 +713,23 @@ static void cmdHelpFunction(void)
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n\0"));
 		xprintf_P( PSTR("       cmd {atcmd}, redial, monsqe\r\n\0"));
-		xprintf_P( PSTR("       sms,qsms,fsms {nbr,msg}\r\n\0"));
+		//xprintf_P( PSTR("       sms,qsms,fsms {nbr,msg}\r\n\0"));
 
 		return;
 	}
 
 	// HELP READ
-	else if (!strcmp_P( strupr(argv[1]), PSTR("READ\0"))) {
-		xprintf_P( PSTR("-read\r\n\0"));
-		xprintf_P( PSTR("  rtc, frame, fuses\r\n\0"));
-		xprintf_P( PSTR("  id\r\n\0"));
-		xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght}\r\n\0"));
-		xprintf_P( PSTR("  ina (id) {conf|chXshv|chXbusv|mfid|dieid}\r\n\0"));
-		xprintf_P( PSTR("  i2cscan {busaddr}, i2cscanbus\r\n\0"));
-		xprintf_P( PSTR("  ach {n}, din, battery\r\n\0"));
-		xprintf_P( PSTR("  memory {full}\r\n\0"));
-		xprintf_P( PSTR("  gprs (rsp,cts,dcd,ri,sms)\r\n\0"));
+	else if (!strcmp_P( strupr(argv[1]), PSTR("READ"))) {
+		xprintf_P( PSTR("-read\r\n"));
+		xprintf_P( PSTR("  rtc,frame,fuses\r\n"));
+		xprintf_P( PSTR("  id\r\n"));
+		xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght}\r\n"));
+		xprintf_P( PSTR("  ina (id) {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
+		xprintf_P( PSTR("  i2cscan {busaddr}, i2cscanbus\r\n"));
+		xprintf_P( PSTR("  ach {n}, din, battery\r\n"));
+		xprintf_P( PSTR("  memory {full}\r\n"));
+		xprintf_P( PSTR("  gprs {rsp,cts,dcd,ri,sms}\r\n"));
+		xprintf_P( PSTR("       {modo,pref,bands}\r\n"));
 		return;
 
 	}
@@ -745,6 +747,9 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("-config\r\n\0"));
 		xprintf_P( PSTR("  dlgid, apn, port, ip, script\r\n\0"));
 		xprintf_P( PSTR("  gprs SAT {check|enable|disable}\r\n\0"));
+		xprintf_P( PSTR("       modo {AUTO,2G,3G}\r\n\0"));
+		xprintf_P( PSTR("       pref {AUTO,2G3G,3G2G}\r\n\0"));
+		xprintf_P( PSTR("       bands {bandslist}\r\n\0"));
 		xprintf_P( PSTR("  timerpoll {val}, timerdial {val}, timepwrsensor {val}\r\n\0"));
 
 		xprintf_P( PSTR("  debug {none,counter,data,comms}\r\n\0"));
@@ -1024,9 +1029,9 @@ uint8_t pin = 0;
 
 			gprs_flush_RX_buffer();
 			if (strcmp_P( argv[3], PSTR("+++")) == 0 ) {
-				xfprintf_P( fdGPRS,PSTR("%s"),argv[3] );
+				xfprintf_P( fdGPRS, PSTR("%s"),argv[3] );
 			} else {
-				xfprintf_P( fdGPRS,PSTR("%s\r\0"),argv[3] );
+				xfprintf_P( fdGPRS, PSTR("%s\r\0"),argv[3] );
 			}
 
 			xprintf_P( PSTR("sent->%s\r\n\0"),argv[3] );
@@ -1038,7 +1043,29 @@ uint8_t pin = 0;
 
 
 	if ( cmd_mode == RD_CMD ) {
-		// read gprs (rsp,cts,dcd,ri)
+		// read gprs rsp,cts,dcd,ri
+		// read gprs modo,pref,bands
+
+		// MODO
+		// read gprs modo
+		if ( strcmp_P(strupr(argv[2]), PSTR("MODO\0")) == 0 ) {
+			pv_cmd_gprs_read_MODO();
+			return;
+		}
+
+		// PREFERENCES
+		// read gprs pref
+		if ( strcmp_P(strupr(argv[2]), PSTR("PREF\0")) == 0 ) {
+			pv_cmd_gprs_read_PREF();
+			return;
+		}
+
+		// BANDS
+		// read gprs bands
+		if ( strcmp_P(strupr(argv[2]), PSTR("BANDS\0")) == 0 ) {
+			pv_cmd_gprs_read_BANDS();
+			return;
+		}
 
 		// SMS
 		// read gprs sms
@@ -1142,15 +1169,15 @@ static bool pv_cmd_configGPRS(void)
 	if ( strcmp_P( strupr(argv[2]), PSTR("SAT\0")) == 0 ) {
 
 		if ( strcmp_P( strupr(argv[3]), PSTR("DISABLE\0")) == 0 ) {
-			return( gprs_SAT_set(0));
+			return( pv_cmd_gprs_set_SAT(0));
 		}
 
 		if ( strcmp_P( strupr(argv[3]), PSTR("ENABLE\0")) == 0 ) {
-			return( gprs_SAT_set(1));
+			return( pv_cmd_gprs_set_SAT(1));
 		}
 
 		if ( strcmp_P( strupr(argv[3]), PSTR("CHECK\0")) == 0 ) {
-			return( gprs_SAT_set(2));
+			return( pv_cmd_gprs_set_SAT(2));
 		}
 	}
 
@@ -1172,3 +1199,351 @@ RtcTimeType_t rtc_new;
 
 }
 //------------------------------------------------------------------------------------
+static void pv_cmd_gprs_set_MODO( uint8_t modo)
+{
+	// Setea con el comando CNMP los modos 2G,3G en que trabaja
+char str_modo[16];
+
+	switch(modo) {
+	case 2:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo AUTO\r\n"));
+		break;
+	case 13:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo 2G(GSM) only\r\n"));
+		break;
+	case 14:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo 3G(WCDMA) only\r\n"));
+		break;
+	default:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo ERROR !!.\r\n"));
+		return;
+	}
+
+	memset(str_modo,'\0', sizeof(str_modo));
+	snprintf_P( str_modo, sizeof(str_modo), PSTR("AT+CNMP=%d\r"),modo);
+	FSM_sendATcmd( 5, str_modo, "OK" );
+	vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_gprs_set_PREF(uint8_t modo)
+{
+	// Setea el orden de preferencia para acceder a la red 2G o 3G
+
+char str_pref[16];
+
+	switch(modo) {
+	case 0:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preference AUTO\r\n"));
+		break;
+	case 1:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preferece 2G,3G\r\n"));
+		break;
+	case 2:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preference 3G,2G\r\n"));
+		break;
+	default:
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preference ERROR !!.\r\n"));
+		return;
+	}
+
+	memset(str_pref,'\0', sizeof(str_pref));
+	snprintf_P( str_pref, sizeof(str_pref), PSTR("AT+CNAOP=%d\r"),modo);
+	FSM_sendATcmd( 5, str_pref, "OK" );
+	vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_gprs_set_BANDS( char *s_bands)
+{
+	// Configura las bandas en que puede trabajar el modem.
+	// Si el argumento es nulo, configura la banda por defecto.
+	// ANTEL opera GSM(2G) en 900/1800 y 3G(UTMS/WCDMA) en 850/2100
+	// 7	GSM_DCS_1800
+	// 8	GSM_EGSM_900
+	// 9	GSM_PGSM_900
+	// 19	GSM_850
+	// 26	WCDMA_850
+
+char str_bands[20];
+
+	// SOLO HABILITO LAS BANDAS DE ANTEL !!!!
+	memset(str_bands,'\0', sizeof(str_bands));
+	snprintf_P( str_bands, sizeof(str_bands), PSTR("AT+CNBP=0x0000000004080380\r"));
+	FSM_sendATcmd( 5, str_bands, "OK" );
+	vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
+
+}
+//------------------------------------------------------------------------------------
+static bool pv_cmd_gprs_set_SAT(uint8_t modo)
+{
+/*
+ * Seguimos viendo que luego de algún CPIN se cuelga el modem y ya aunque lo apague, luego al encenderlo
+ * no responde al PIN.
+ * En https://www.libelium.com/forum/viewtopic.php?t=21623 reportan algo parecido.
+ * https://en.wikipedia.org/wiki/SIM_Application_Toolkit
+ * Parece que el problema es que al enviar algun comando al SIM, este interactua con el STK (algun menu ) y lo bloquea.
+ * Hasta no conocer bien como se hace lo dejamos sin usar.
+ * " la tarjeta SIM es un ordenador diminuto con sistema operativo y programa propios.
+ *   STK responde a comandos externos, por ejemplo, al presionar un botón del menú del operador,
+ *   y hace que el teléfono ejecute ciertas acciones
+ * "
+ * https://www.techopedia.com/definition/30501/sim-toolkit-stk
+ *
+ * El mensaje +STIN: 25 es un mensaje no solicitado que emite el PIN STK.
+ *
+ * Esta rutina lo que hace es interrogar al SIM para ver si tiene la funcion SAT habilitada
+ * y dar el comando de deshabilitarla
+ *
+ */
+
+	switch(modo) {
+	case 0:
+		// Disable
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs SAT.(modo 0). Disable\r\n\0"));
+		FSM_sendATcmd( 5, "AT+STK=0\r", "OK" );
+		break;
+	case 1:
+		// Enable
+		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs SAT.(modo 1). Enable\r\n\0"));
+		FSM_sendATcmd( 5, "AT+STK=1\r", "OK" );
+		break;
+	case 2:
+		// Check. Query STK status ?
+		xprintf_P(PSTR("GPRS: query STK status ?\r\n\0"));
+		FSM_sendATcmd( 5, "AT+STK?\r", "OK" );
+		break;
+	default:
+		return(false);
+	}
+
+	return (true);
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_gprs_config_status(void)
+{
+
+uint8_t dbm;
+
+	xprintf_P( PSTR(">Device Gprs:\r\n"));
+	xprintf_P( PSTR("  apn: %s\r\n\0"), comms_conf.apn );
+	xprintf_P( PSTR("  server ip:port: %s:%s\r\n"), comms_conf.server_ip_address, comms_conf.server_tcp_port );
+	xprintf_P( PSTR("  server script: %s\r\n"), comms_conf.serverScript );
+	//xprintf_P( PSTR("  simpwd: %s\r\n\0"), comms_conf.simpwd );
+	xprintf_P( PSTR("  imei: %s\r\n"), xCOMMS_stateVars.gprs_imei ) ;
+	xprintf_P( PSTR("  ccid: %s\r\n"), xCOMMS_stateVars.gprs_ccid ) ;
+
+	dbm = 113 - 2 * xCOMMS_stateVars.csq;
+	xprintf_P( PSTR("  signalQ: csq=%d, dBm=%d\r\n"), xCOMMS_stateVars.csq, dbm );
+	xprintf_P( PSTR("  ip address: %s\r\n"), xCOMMS_stateVars.ip_assigned) ;
+
+
+	// MODO:
+	switch(xCOMMS_stateVars.gprs_mode) {
+	case 2:
+		xprintf_P( PSTR("  modo: AUTO\r\n"));
+		break;
+	case 13:
+		xprintf_P( PSTR("  modo: 2G(GSM) only\r\n"));
+		break;
+	case 14:
+		xprintf_P(  PSTR("  modo: 3G(WCDMA) only\r\n"));
+		break;
+	default:
+		xprintf_P( PSTR("  modo: ??\r\n") );
+	}
+
+	// PREFERENCE
+	switch(xCOMMS_stateVars.gprs_pref) {
+	case 0:
+		xprintf_P( PSTR("  pref: AUTO\r\n"));
+		break;
+	case 1:
+		xprintf_P(  PSTR("  pref: 2G,3G\r\n"));
+		break;
+	case 2:
+		xprintf_P( PSTR("  pref: 3G,2G\r\n"));
+		break;
+	default:
+		xprintf_P( PSTR("  pref: ??\r\n") );
+		return;
+	}
+
+	// BANDS:
+	xprintf_P( PSTR("  bands:[%s]\r\n\0"), xCOMMS_stateVars.gprs_bands );
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_gprs_read_MODO(void)
+{
+
+
+int8_t cmd_rsp;
+
+	xCOMMS_stateVars.gprs_mode = 0;
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CNMP?\r", "OK" );
+
+	if (cmd_rsp	== ATRSP_EXPECTED ) {
+
+		if ( gprs_check_response( 0, "CNMP: 2") ) {
+			xCOMMS_stateVars.gprs_mode = 2;
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs modo AUTO\r\n"));
+			return;
+		}
+
+		if ( gprs_check_response( 0, "CNMP: 13") ) {
+			xCOMMS_stateVars.gprs_mode = 13;
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs modo 2G(GSM) only\r\n"));
+			return;
+		}
+
+		if ( gprs_check_response( 0, "CNMP: 14") ) {
+			xCOMMS_stateVars.gprs_mode = 14;
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs modo 3G(WCDMA) only\r\n"));
+			return;
+		}
+	}
+
+	xprintf_PD( DF_COMMS,  PSTR("CMD CNMP Error.\r\n"));
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_gprs_read_PREF(void)
+{
+
+int8_t cmd_rsp;
+
+	xCOMMS_stateVars.gprs_pref = 0;
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CNAOP?\r", "OK" );
+
+	if (cmd_rsp	== ATRSP_EXPECTED ) {
+
+		if ( gprs_check_response( 0, "CNAOP: 0") ) {
+			xCOMMS_stateVars.gprs_pref = 2;
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs pref. AUTO\r\n"));
+			return;
+		}
+		if ( gprs_check_response( 0, "CNAOP: 1") ) {
+			xCOMMS_stateVars.gprs_pref = 1;
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs pref. 2G,3G\r\n"));
+			return;
+		}
+		if ( gprs_check_response( 0, "CNAOP: 2") ) {
+			xCOMMS_stateVars.gprs_pref = 2;
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs pref. 3G,2G\r\n"));
+			return;
+		}
+	}
+
+	xprintf_PD( DF_COMMS,  PSTR("CMD CNAOP Error.\r\n"));
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_gprs_read_BANDS(void)
+{
+	// ANTEL opera GSM(2G) en 900/1800 y 3G(UTMS/WCDMA) en 850/2100
+	// Al leer las bandas tenemos un string con 16 bytes y 64 bits.
+	// C/bit en 1 indica una banda predida.
+	// Las bandas que me interesan estan los los primeros 4 bytes por lo tanto uso
+	// 32 bits. !!!
+
+int8_t cmd_rsp;
+char *ts = NULL;
+char c = '\0';
+char *ptr = NULL;
+uint8_t i;
+
+//
+union {
+	uint8_t u8[4];
+	uint32_t u32;
+} bands;
+
+	xCOMMS_stateVars.gprs_mode = 0;
+	memset( xCOMMS_stateVars.gprs_bands, '\0', sizeof(xCOMMS_stateVars.gprs_bands) );
+
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CNBP?\r", "OK" );
+	if (cmd_rsp	== ATRSP_EXPECTED ) {
+
+		if ( gprs_check_response( 0, "+CNBP: ") ) {
+			ptr = xCOMMS_stateVars.gprs_bands;
+			ts = strstr( gprs_rxbuffer.buffer, "+CNBP: ");
+			ts++;
+			while ( (c = *ts) != '\r') {
+				*ptr++ = c;
+				ts++;
+			}
+			*ptr = '\0';
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs bands=[%s]\r\n\0"), xCOMMS_stateVars.gprs_bands );
+
+			// DECODIFICACION:
+			bands.u32 = strtoul( &xCOMMS_stateVars.gprs_bands[12], &ptr, 16);
+			i = 0;
+
+			// 7 GSM_DCS_1800
+			if ( bands.u8[0] & 0x80 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_DCS_1800.\r\n\0"),i++);
+			}
+
+			// 8 GSM_EGSM_900
+			// 9 GSM_PGSM_900
+			if ( bands.u8[1] & 0x01 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_EGSM_900.\r\n\0"),i++);
+			}
+			if ( bands.u8[1] & 0x02 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_PGSM_900.\r\n\0"),i++);
+			}
+
+			// 16 GSM_450
+			// 17 GSM_480
+			// 18 GSM_750
+			// 19 GSM_850
+			// 20 GSM_RGSM_900
+			// 21 GSM_PCS_1900
+			// 22 WCDMA_IMT_2000
+			// 23 WCDMA_PCS_1900
+			if ( bands.u8[2] & 0x01 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_450.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x02 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_480.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x04 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_750.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x08 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_850.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x10 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_RGSM_900.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x20 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d GSM_PCS_1900.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x40 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d WCDMA_IMT_2000.\r\n\0"),i++);
+			}
+			if ( bands.u8[2] & 0x80 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d WCDMA_PCS_1900.\r\n\0"),i++);
+			}
+
+			// 24 WCDMA_III_1700
+			// 25 WCDMA_IV_1700
+			// 26 WCDMA_850
+			// 27 WCDMA_800
+			if ( bands.u8[3] & 0x01 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d WCDMA_III_1700.\r\n\0"),i++);
+			}
+			if ( bands.u8[3] & 0x02 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d WCDMA_IV_1700.\r\n\0"),i++);
+			}
+			if ( bands.u8[3] & 0x04 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d WCDMA_850.\r\n\0"),i++);
+			}
+			if ( bands.u8[3] & 0x08 ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: band_%d WCDMA_800.\r\n\0"),i++);
+			}
+		}
+	}
+}
+//------------------------------------------------------------------------------------
+

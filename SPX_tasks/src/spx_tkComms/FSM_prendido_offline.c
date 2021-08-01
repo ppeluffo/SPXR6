@@ -7,6 +7,7 @@
 
 #include <tkComms.h>
 
+static bool state_configurar_ATI(void);
 static bool state_configurar_CIPMODE(void);
 static bool state_configurar_CSUART(void);
 static bool state_configurar_CPIN(void);
@@ -23,20 +24,21 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
 
-	return ( APAGADO );
+	// Leo el IMEI. Si da error no importa.
+	state_configurar_ATI();
 
-	if ( ! state_configurar_CIPMODE() )	// Pongo el modo TCP normal
-		return ( APAGADO );
+	// Pongo el modo TCP normal. Es el que tiene por defecto por lo que
+	// si no contesta, no importa tanto.
+	state_configurar_CIPMODE();
 
-	if ( ! state_configurar_CSUART() )	// Pongo la uart en control 7 hilos.
-		return ( APAGADO );
-
+	// Pongo la uart en control 7 hilos. Si no puedo no es grave.
+	state_configurar_CSUART();
 
 	if ( !state_configurar_CPIN() )		// Veo si tengo instalado un SIM
 		return (APAGADO);
 
-	if ( !state_configurar_CCID() )		// Leo el SIMID
-		return (APAGADO);
+	// Leo el SIMID. Si da error no importa.
+	state_configurar_CCID();
 
 	if ( !state_configurar_CREG() )		// Confirmo esta registrado en la red
 		return (APAGADO);
@@ -50,6 +52,84 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 	state_configurar_MONSQE();		// Monitoreo la SQE
 
 	return(PRENDIDO_ONLINE);
+
+}
+//------------------------------------------------------------------------------------
+static bool state_configurar_ATI(void)
+{
+	/*
+	 * Leo el imei del modem para poder trasmitirlo al server
+	 * ATI
+	 * Manufacturer: SIMCOM INCORPORATED
+	 * Revision: SIM5320J_V1.5
+	 * IMEI: 860585007136848
+	 * +GCAP: +CGSM,+DS,+ES
+	 *
+	 * OK
+	 */
+
+int8_t cmd_rsp;
+int8_t tryes;
+char *ts = NULL;
+char c = '\0';
+char *ptr = NULL;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI in\r\n"));
+
+	memset( xCOMMS_stateVars.gprs_imei, '\0', sizeof(xCOMMS_stateVars.gprs_imei) );
+
+	// Veo si ya esta configurado. Pregunto hasta 3 veces.
+	for ( tryes = 0; tryes < 3; tryes++ ) {
+
+		cmd_rsp = FSM_sendATcmd( 5, "ATI\r", "OK" );
+
+		if (cmd_rsp	== ATRSP_EXPECTED ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI out: OK\r\n") );
+			// Extraigo el IMEI
+			if ( gprs_check_response(0, "IMEI: ") ) {
+				ptr = xCOMMS_stateVars.gprs_imei;
+				ts = strstr( gprs_rxbuffer.buffer, "IMEI: ");
+				ts += 6;
+				while ( (c = *ts) != '\r') {
+					*ptr++ = c;
+					ts++;
+				}
+				*ptr = '\0';
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs imei=[%s]\r\n\0"), xCOMMS_stateVars.gprs_imei );
+			}
+			return ( true );
+
+		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
+			// Respondio pero no es lo que esperaba.
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI NOTEXP.\r\n") );
+
+		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
+			// Dio timeout: reintentos
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI TIMEOUT\r\n") );
+
+		} else if ( cmd_rsp == ATRSP_ERR ) {
+			// ERROR: reintento
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI ERR\r\n") );
+
+		} else {
+			// UNKNOWN: reintento.
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID ERROR UNKN\r\n") );
+		}
+
+		// Reintento
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI retry (%d)\r\n\0"), tryes );
+		// Probamos con un AT
+		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
+		if ( cmd_rsp != ATRSP_EXPECTED ) {
+			// Si no responde no puedo seguir.
+			break;
+		}
+	}
+
+	// Errores luego de 3 reintentos: salgo.
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI out: ERROR.\r\n"));
+	return(false);
+
 }
 //------------------------------------------------------------------------------------
 static bool state_configurar_CIPMODE(void)
@@ -88,7 +168,7 @@ int8_t tryes;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPOMODE retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
 		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
 		// No importa si no responde.
@@ -111,7 +191,7 @@ set_cipmode:
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPOMODE set retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE set retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
 		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
 		// No importa si no responde.
@@ -255,19 +335,23 @@ int8_t tryes;
 //------------------------------------------------------------------------------------
 static bool state_configurar_CCID(void)
 {
-	// Leo el ccid del sim para poder trasmitirlo al server y asi
-	// llevar un control de donde esta c/sim
-	// AT+CCID
-	// +CCID: "8959801611637152574F"
-	//
-	// OK
+	/*
+	 * Leo el ccid del sim para poder trasmitirlo al server y asi llevar un control de donde esta c/sim
+	 * AT+CCID
+	 * +CCID: "8959801615239182186F"
+	 *
+	 * OK
+	 */
 
-
-//char *p;
 int8_t cmd_rsp;
 int8_t tryes;
+char *ts = NULL;
+char c = '\0';
+char *ptr = NULL;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CCID in\r\n"));
+
+	memset( xCOMMS_stateVars.gprs_ccid, '\0', sizeof(xCOMMS_stateVars.gprs_ccid) );
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -277,9 +361,15 @@ int8_t tryes;
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID out: OK\r\n") );
 			// Extraigo el CCID
-			//		p = strstr(gprs_rxbuffer.buffer,"CCID:");
-			//		retS = pv_get_token(p, gprs_status.buff_gprs_ccid, sizeof(gprs_status.buff_gprs_ccid) );
-			//		xprintf_PD( DF_COMMS,  PSTR("COMMS: CCID [%s]\r\n\0"), gprs_status.buff_gprs_ccid);
+			ptr = xCOMMS_stateVars.gprs_ccid;
+			ts = strstr( gprs_rxbuffer.buffer, "+CCID: ");
+			ts += 8;
+			while ( (c = *ts) != '"') {
+				*ptr++ = c;
+				ts++;
+			}
+			*ptr = '\0';
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs ccid=[%s]\r\n\0"), xCOMMS_stateVars.gprs_ccid );
 			return ( true );
 
 		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
@@ -340,7 +430,7 @@ static bool state_configurar_CREG(void)
 
 	*/
 
-int8_t timeout = 0;
+uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
@@ -393,7 +483,7 @@ static bool state_configurar_CPSI(void)
 {
 	// Chequeo que la red este operativa
 
-int8_t timeout = 0;
+uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
@@ -455,7 +545,7 @@ int8_t tryes;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 10, "AT+CGSOCKCONT?\r", sVarsComms.apn );
+		cmd_rsp = FSM_sendATcmd( 10, "AT+CGSOCKCONT?\r", comms_conf.apn );
 
 		if (cmd_rsp	== ATRSP_EXPECTED ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: OK\r\n") );
@@ -497,7 +587,7 @@ set_cgdsockcont:
 
 	// Aqui llego porque respondio pero no esta configurado como queremos.
 	memset(strapn,'\0', sizeof(strapn));
-	snprintf_P( strapn, sizeof(strapn), PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), sVarsComms.apn );
+	snprintf_P( strapn, sizeof(strapn), PSTR("AT+CGSOCKCONT=1,\"IP\",\"%s\"\r"), comms_conf.apn );
 
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
@@ -526,6 +616,8 @@ set_cgdsockcont:
 //------------------------------------------------------------------------------------
 static void state_configurar_MONSQE(void)
 {
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSQ in\r\n"));
+
 	if ( SPX_SIGNAL( SGN_MON_SQE ) ) {
 		// Me quedo monitoreando la CSQ
 		for(;;) {
@@ -551,7 +643,7 @@ int8_t cmd_rsp;
 	// Veo si ya esta configurado
 	cmd_rsp = FSM_sendATcmd( 5, "AT+CSQ\r", "OK" );
 	if (cmd_rsp	== ATRSP_EXPECTED ) {
-		gprs_rxbuffer_copy_to( csqBuffer,0, sizeof(csqBuffer) );
+		strncpy( csqBuffer, gprs_rxbuffer.buffer, sizeof(csqBuffer) );
 		if ( (ts = strchr(csqBuffer, ':')) ) {
 			ts++;
 			csq = atoi(ts);
