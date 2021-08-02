@@ -108,8 +108,8 @@ int8_t cmd_rsp;
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS in:\r\n\0"));
 
 	// Primero probamos con un AT
-	cmd_rsp = FSM_sendATcmd( 1, "AT\r", "OK" );
-	if ( cmd_rsp != ATRSP_EXPECTED ) {
+	cmd_rsp = FSM_sendATcmd( 2, "AT\r" );
+	if ( cmd_rsp != ATRSP_OK ) {
 		// Si no responde no puedo seguir.
 		gprs_sw_pwr();
 		return(PRENDERSW);
@@ -121,39 +121,28 @@ int8_t cmd_rsp;
 
 		// Espera progresiva de a 15s.
 		timeout = 15 * ( 1 + tryes );
-		cmd_rsp = FSM_sendATcmd( timeout , "AT+CPAS\r", "CPAS: 0" );
+		cmd_rsp = FSM_sendATcmd( timeout , "AT+CPAS\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS out: OK (%d)\r\n"), tryes );
-			return ( APAGADO_EXIT );
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintento.
-			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS: TIMEOUT.\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: apago sw y reintento.
-			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS out: ERR.\r\n"));
-			// Hago un switch para apagarlo ??
-			gprs_sw_pwr();
-			return(PRENDERSW);
-
-		} else if ( cmd_rsp == ATRSP_UNKNOWN ) {
-			// UNKNOWN: apago sw y reintento.
-			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS out: ERROR UNKN.\r\n"));
-			// Hago un switch para apagarlo ??
-			gprs_sw_pwr();
-			return(PRENDERSW);
+		if (cmd_rsp	== ATRSP_OK ) {
+			// RSP OK: Veo si es lo que espero
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CPAS: 0" ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS out: OK (%d)\r\n"), tryes );
+				return ( APAGADO_EXIT );
+			} else {
+				gprs_sw_pwr();
+				return(PRENDERSW);
+			}
 		}
 
+		FSM_sendATcmd( 2, "AT\r" );
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS retry (%d)\r\n\0"), tryes );
 	}
 
 	// No puedo en 3 veces responder la secuencia CPAS: Salgo a apagar y prender.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS ERROR.\r\n"));
 	// Hago un switch para apagarlo ??
 	gprs_sw_pwr();
+	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS ERROR.\r\n"));
 	return( PRENDERSW);
 
 }
@@ -167,31 +156,44 @@ static int8_t state_pbdone(void)
 uint16_t timeout = 0;
 int8_t exit_code = -1;
 
+	XPRINT_TICKS();
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE in\r\n"));
+
 	// PBDONE.
-	timeout = 150 * ( 1 + prender_sw_tryes ) ;	// En intervalos de 100 ms.
-	if ( gprs_check_response ( timeout, "PB DONE" ) ) {
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: OK\r\n"));
+	timeout = 15 * ( 1 + prender_sw_tryes ) ;	// secs
+	if ( gprs_check_response ( timeout * SEC_CHECK_RSP, "PB DONE" ) ) {
+		// Respondio bien lo esperado
+		XPRINT_TICKS();
 		gprs_print_RX_buffer();
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: OK\r\n"));
 		// Espero 10s que termine de inicializarze
 		vTaskDelay( ( TickType_t)( 15000 / portTICK_RATE_MS ) );
 
 		// No quiero ECHO en los comandos
-		FSM_sendATcmd( 3, "ATE0\r", "OK" );
+		XPRINT_TICKS();
+		FSM_sendATcmd( 2, "AT\r" );
+
+		if ( FSM_sendATcmd( 3, "ATE0\r" ) != ATRSP_OK ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATE0 ERROR\r\n"));
+		}
 
 		// Leemos el voltaje de alimentacion
-		FSM_sendATcmd( 3, "AT+CBC\r", "OK" );
+		if ( FSM_sendATcmd( 5, "AT+CBC\r" ) != ATRSP_OK ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATC ERROR\r\n"));
+		}
+
 		exit_code = CPAS;
 
 	} else {
 		// Dio timeout: apago sw y reintento.
+		XPRINT_TICKS();
+		gprs_print_RX_buffer();
 		xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: TIMEOUT.\r\n"));
 		// Hago un switch para apagarlo ??
 		gprs_sw_pwr();
 		exit_code = PRENDERSW;
 	}
 
-	gprs_print_RX_buffer();
 	return(exit_code);
 
 }
@@ -213,6 +215,7 @@ static int8_t state_prenderSW(void)
 	} else {
 		//
 		gprs_sw_pwr();
+		gprs_flush_RX_buffer();
 		return ( PBDONE );
 	}
 

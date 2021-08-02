@@ -18,6 +18,7 @@ static bool state_configurar_CGDSOCKCONT(void);
 static void state_configurar_MONSQE(void);
 static void pv_read_SQE(void) ;
 
+
 //------------------------------------------------------------------------------------
 int8_t tkXComms_PRENDIDO_OFFLINE(void)
 {
@@ -45,6 +46,7 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 
 	if ( !state_configurar_CPSI() )		// Confirmo estar online en GSM p WCDMA.
 		return (APAGADO);
+
 
 	if ( !state_configurar_CGDSOCKCONT() )	// Configuro el APN
 		return (APAGADO	);
@@ -81,12 +83,11 @@ char *ptr = NULL;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "ATI\r", "OK" );
+		cmd_rsp = FSM_sendATcmd( 5, "ATI\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI out: OK\r\n") );
-			// Extraigo el IMEI
-			if ( gprs_check_response(0, "IMEI: ") ) {
+		if (cmd_rsp	== ATRSP_OK ) {
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "IMEI:" ) ) {
+				// Extraigo el IMEI
 				ptr = xCOMMS_stateVars.gprs_imei;
 				ts = strstr( gprs_rxbuffer.buffer, "IMEI: ");
 				ts += 6;
@@ -97,33 +98,13 @@ char *ptr = NULL;
 				*ptr = '\0';
 				xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs imei=[%s]\r\n\0"), xCOMMS_stateVars.gprs_imei );
 			}
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI out: OK\r\n") );
 			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI NOTEXP.\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID ERROR UNKN\r\n") );
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI retry (%d)\r\n\0"), tryes );
-		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -144,33 +125,21 @@ int8_t tryes;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPMODE?\r", "CIPMODE: 0" );
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPMODE?\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE out: OK\r\n") );
-			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			goto set_cipmode;
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE ERROR UNKN\r\n") );
+		if (cmd_rsp	== ATRSP_OK ) {
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CIPMODE: 0" ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE out: OK\r\n") );
+				return ( true );
+			} else {
+				// Respondio pero no es lo que esperaba.
+				goto set_cipmode;
+			}
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE retry (%d)\r\n\0"), tryes );
-		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
+		FSM_sendATcmd( 2, "AT\r");
 		// No importa si no responde.
 
 	}
@@ -183,17 +152,16 @@ set_cipmode:
 	// Aqui llego porque respondio pero no esta configurado como queremos.
 	for ( tryes = 0; tryes <= 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPMODE=0\r", "OK" );
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPMODE=0\r" );
 
-		if ( cmd_rsp == ATRSP_EXPECTED ) {
+		if ( cmd_rsp == ATRSP_OK ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE set out: OK\r\n") );
 			return ( true );
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE set retry (%d)\r\n\0"), tryes );
-		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
+		FSM_sendATcmd( 2, "AT\r" );
 		// No importa si no responde.
 	}
 
@@ -216,37 +184,22 @@ int8_t tryes;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CSUART?\r", "CSUART: 1" );
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CSUART?\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART out: OK\r\n") );
-			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			goto set_csuart;
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART ERROR UNKN\r\n") );
+		if (cmd_rsp	== ATRSP_OK ) {
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CSUART: 1" ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART out: OK\r\n") );
+				return ( true );
+			} else {
+				// Respondio pero no es lo que esperaba.
+				goto set_csuart;
+			}
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
 
 	}
 
@@ -259,21 +212,17 @@ set_csuart:
 	// Aqui llego porque respondio pero no esta configurado como queremos.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CSUART=1\r", "OK" );
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CSUART=1\r" );
 
-		if ( cmd_rsp == ATRSP_EXPECTED ) {
+		if ( cmd_rsp == ATRSP_OK ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART set out: OK\r\n") );
 			return ( true );
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART set retry (%d)\r\n\0"), tryes );
-		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
+		// No importa si no responde.
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -294,37 +243,19 @@ int8_t tryes;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CPIN?\r", "READY" );
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CPIN?\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN out: OK\r\n") );
-			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN NOTEXP.\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN ERROR UNKN\r\n") );
+		if (cmd_rsp	== ATRSP_OK ) {
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CPIN: READY" ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN out: OK\r\n") );
+				return ( true );
+			}
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN retry (%d)\r\n\0"), tryes );
-		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
+
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -356,47 +287,30 @@ char *ptr = NULL;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CCID\r", "OK" );
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CCID\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID out: OK\r\n") );
-			// Extraigo el CCID
-			ptr = xCOMMS_stateVars.gprs_ccid;
-			ts = strstr( gprs_rxbuffer.buffer, "+CCID: ");
-			ts += 8;
-			while ( (c = *ts) != '"') {
-				*ptr++ = c;
-				ts++;
+		if (cmd_rsp	== ATRSP_OK ) {
+
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CCID: " ) ) {
+				// Extraigo el CCID
+				ptr = xCOMMS_stateVars.gprs_ccid;
+				ts = strstr( gprs_rxbuffer.buffer, "+CCID: ");
+				ts += 8;
+				while ( (c = *ts) != '"') {
+					*ptr++ = c;
+					ts++;
+				}
+				*ptr = '\0';
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs ccid=[%s]\r\n\0"), xCOMMS_stateVars.gprs_ccid );
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID out: OK\r\n") );
+				return ( true );
 			}
-			*ptr = '\0';
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs ccid=[%s]\r\n\0"), xCOMMS_stateVars.gprs_ccid );
-			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID NOTEXP.\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID ERROR UNKN\r\n") );
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -440,37 +354,19 @@ int8_t cmd_rsp;
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
 		timeout = 30 * ( 1 + tryes ); // Puede demorar mucho !!
-		cmd_rsp = FSM_sendATcmd( timeout, "AT+CREG?\r", "CREG: 0,1" );
+		cmd_rsp = FSM_sendATcmd( timeout, "AT+CREG?\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG out: OK\r\n") );
-			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG NOTEXP.\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG ERROR UNKN\r\n") );
+		if (cmd_rsp	== ATRSP_OK ) {
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "CREG: 0,1" ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG out: OK\r\n") );
+				return ( true );
+			}
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -493,37 +389,20 @@ int8_t cmd_rsp;
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
 		timeout = 5 * ( 1 + tryes ); // Puede demorar mucho !!
-		cmd_rsp = FSM_sendATcmd( timeout, "AT+CPSI?\r", "Online" );
+		cmd_rsp = FSM_sendATcmd( timeout, "AT+CPSI?\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI out: OK\r\n") );
-			return ( true );
-
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI NOTEXP.\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI ERROR UNKN\r\n") );
+		if (cmd_rsp	== ATRSP_OK ) {
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "Online" ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI out: OK\r\n") );
+				return ( true );
+			}
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
+
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -545,38 +424,23 @@ int8_t tryes;
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 10, "AT+CGSOCKCONT?\r", comms_conf.apn );
+		cmd_rsp = FSM_sendATcmd( 10, "AT+CGSOCKCONT?\r" );
 
-		if (cmd_rsp	== ATRSP_EXPECTED ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: OK\r\n") );
-			return ( true );
+		if (cmd_rsp	== ATRSP_OK ) {
 
-		} else if ( cmd_rsp == ATRSP_NOTEXPECTED ) {
-			// Respondio pero no es lo que esperaba.
-			goto set_cgdsockcont;
-
-		} else if ( cmd_rsp == ATRSP_TIMEOUT ) {
-			// Dio timeout: reintentos
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT TIMEOUT\r\n") );
-
-		} else if ( cmd_rsp == ATRSP_ERR ) {
-			// ERROR: reintento
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT ERR\r\n") );
-
-		} else {
-			// UNKNOWN: reintento.
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT ERROR UNKN\r\n") );
+			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, comms_conf.apn ) ) {
+				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: OK\r\n") );
+				return ( true );
+			} else {
+				// Respondio pero no es lo que esperaba.
+				goto set_cgdsockcont;
+			}
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT retry (%d)\r\n\0"), tryes );
 		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
-
+		FSM_sendATcmd( 2, "AT\r" );
 	}
 
 	// Errores luego de 3 reintentos: salgo.
@@ -591,26 +455,23 @@ set_cgdsockcont:
 
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 5, strapn, "OK" );
+		cmd_rsp = FSM_sendATcmd( 5, strapn );
 
-		if ( cmd_rsp == ATRSP_EXPECTED ) {
+		if ( cmd_rsp == ATRSP_OK ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set out: OK\r\n") );
 			return ( true );
 		}
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set retry (%d)\r\n\0"), tryes );
-		// Probamos con un AT
-		cmd_rsp = FSM_sendATcmd( 2, "AT\r", "OK" );
-		if ( cmd_rsp != ATRSP_EXPECTED ) {
-			// Si no responde no puedo seguir.
-			break;
-		}
+		FSM_sendATcmd( 2, "AT\r" );
+		// No importa si no responde.
 	}
 
 	// Errores luego de 3 reintentos: salgo.
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set out: ERROR.\r\n"));
 	return(false);
+
 
 }
 //------------------------------------------------------------------------------------
@@ -641,8 +502,9 @@ int8_t cmd_rsp;
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE in\r\n"));
 
 	// Veo si ya esta configurado
-	cmd_rsp = FSM_sendATcmd( 5, "AT+CSQ\r", "OK" );
-	if (cmd_rsp	== ATRSP_EXPECTED ) {
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CSQ\r" );
+
+	if (cmd_rsp	== ATRSP_OK ) {
 		strncpy( csqBuffer, gprs_rxbuffer.buffer, sizeof(csqBuffer) );
 		if ( (ts = strchr(csqBuffer, ':')) ) {
 			ts++;
@@ -654,4 +516,7 @@ int8_t cmd_rsp;
 	}
 }
 //------------------------------------------------------------------------------------
+
+
+
 

@@ -70,7 +70,7 @@
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "1.0.0a"
-#define SPX_FW_DATE "@ 20210731"
+#define SPX_FW_DATE "@ 20210802"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -91,6 +91,8 @@
 #define tkPlt_STACK_SIZE		384
 #define tkComms_STACK_SIZE		640
 #define tkCommsRX_STACK_SIZE	384
+
+#define XPRINT_TICKS() xprintf_PD( DF_COMMS,  PSTR("ticks: %lu\r\n"), sysTicks );
 
 StaticTask_t xTask_Ctl_Buffer_Ptr;
 StackType_t xTask_Ctl_Buffer [tkCtl_STACK_SIZE];

@@ -7,8 +7,6 @@
 
 #include <tkComms.h>
 
-#define WDG_GPRSRX_TIMEOUT WDG_TO60
-
 //------------------------------------------------------------------------------------
 void tkComms(void * pvParameters)
 {

@@ -240,7 +240,7 @@ void gprs_apagar(void)
 	xprintf_PD( DF_COMMS, PSTR("COMMS: gprs_apagar\r\n\0") );
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: gprs CPOF\r\n"));
-	FSM_sendATcmd(1, "AT+CPOF\r", '\0');
+	FSM_sendATcmd(1, "AT+CPOF\r");
 	vTaskDelay( (portTickType)( 5000 / portTICK_RATE_MS ) );
 	xprintf_PD( DF_COMMS, PSTR("COMMS: gprs CPOF OK.\r\n\0"));
 
@@ -268,95 +268,76 @@ void gprs_sw_pwr(void)
 
 }
 //------------------------------------------------------------------------------------
-int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd, char *rsp )
+int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd )
 {
-	// Envia un comando y espera una respuesta.
-	// El comando puede ser nulo y entonces solo esperamos respuesta.(PBDONE)
+	// Envia un comando:
+	// Sale por: OK/ERROR/BufferFull/TIMEOUT
+
 	// Las respuestas pueden ser nula ( no espero ) u otra.
 	// El comando lo doy una sola vez !!!.
 	// Si me da error u respuesta no esperada, no tiene sentido repetir el comando.
 	// El timeout es en segundos pero chequeo c/100 ms.
 
-int8_t exit_code = ATRSP_UNKNOWN;
+int8_t exit_code = -1;
 int16_t local_timer = (10 * timeout);
 
 	//xprintf_P(PSTR("DEBUG: timeout=%d\r\n"), timeout);
 	//xprintf_P(PSTR("DEBUG: cmd=%s\r\n"), cmd );
-	//xprintf_P(PSTR("DEBUG: rsp=%s\r\n"), rsp );
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: timeout=%d\r\n"), timeout );
 	gprs_flush_RX_buffer();
 
 	// Doy el comando.
-	if ( cmd != '\0' ) {
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmdA: (%d) %s\r\n"), local_timer, cmd );
-		gprs_flush_TX_buffer();
+	xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: (%d) %s\r\n"), local_timer, cmd );
+	gprs_flush_TX_buffer();
+	// Espera antes de c/comando. ( ver recomendaciones de TELIT )
+	vTaskDelay( (portTickType)( 50 / portTICK_RATE_MS ) );
+	xfprintf_P( fdGPRS , PSTR("%s"), cmd);
 
-		// Espera antes de c/comando. ( ver recomendaciones de TELIT )
-		vTaskDelay( (portTickType)( 50 / portTICK_RATE_MS ) );
-		xfprintf_P( fdGPRS , PSTR("%s"), cmd);
+	if ( timeout == 0 ) {
+		// Salida inmediata:
+		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: OUT INMEDIATE.\r\n"));
+		return(99);
 	}
 
-	for( ;; ) {
+	// Espero respuesta
+	while ( exit_code == -1 ) {
 
 		// Espero de a 100 ms.
 		vTaskDelay( (portTickType)( 100 / portTICK_RATE_MS ) );
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: local_timer=%d\r\n"), local_timer );
-
-		// No espero respuesta: salgo
-		if ( rsp == '\0') {
-			xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: RSPnone\r\n"));
-			return(ATRSP_NONE);
-		}
 
 		// Chequeo respuestas:
 		while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
 			taskYIELD();
 
-			if  ( strstr(gprs_rxbuffer.buffer, rsp) != NULL ) {
+			if  ( strstr(gprs_rxbuffer.buffer, "OK") != NULL ) {
 				// Respuesta esperada: salgo
-				exit_code = ATRSP_EXPECTED;
+				exit_code = ATRSP_OK;
 
 			} else if ( strstr(gprs_rxbuffer.buffer, "ERROR") != NULL ) {
 				// Respuesta ERR: El comando respondio con error: salgo.
-				exit_code = ATRSP_ERR;
-
-			} else if  ( strstr(gprs_rxbuffer.buffer, "OK") != NULL ) {
-				// Respuesta OK: El comando termino pero respondio con otra cosa que lo esperado: salgo.
-				exit_code = ATRSP_NOTEXPECTED;
+				exit_code = ATRSP_ERROR;
 
 			} else if ( gprs_rxbuffer_full() ) {
 				// Si el gprs buffer esta full es que recibio algo pero quedo trunco. ( CGDCONT )
-				// Asumo que recibio una respuesta que no es correcta !!!
-				exit_code = ATRSP_NOTEXPECTED;
+				// Asumo que recibio una respuesta OK. !!!
+				exit_code = ATRSP_OK;
 			}
 
 		xSemaphoreGive( sem_RXBUFF );
 
-		if ( exit_code != -1) {
-			goto exit;
-		}
-
+		// TIMEOUT
 		local_timer -= 10;
 		if (  local_timer <= 0 ) {
-			// Timeout
 			exit_code = ATRSP_TIMEOUT;
-			goto exit;
 		}
 	}
 
-exit:
-
 	// Print debug causes
 	switch( exit_code) {
-	case ATRSP_EXPECTED:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: EXPECTED\r\n"));
+	case ATRSP_OK:
+		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ATRSP_OK\r\n"));
 		break;
-	case ATRSP_ERR:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ERR\r\n"));
-		break;
-	case ATRSP_NOTEXPECTED:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: NOEXPECTED\r\n"));
+	case ATRSP_ERROR:
+		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ERROR\r\n"));
 		break;
 	case ATRSP_TIMEOUT:
 		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: TIMEOUT\r\n"));

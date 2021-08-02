@@ -1221,7 +1221,7 @@ char str_modo[16];
 
 	memset(str_modo,'\0', sizeof(str_modo));
 	snprintf_P( str_modo, sizeof(str_modo), PSTR("AT+CNMP=%d\r"),modo);
-	FSM_sendATcmd( 5, str_modo, "OK" );
+	FSM_sendATcmd( 5, str_modo );
 	vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
 
 }
@@ -1249,7 +1249,7 @@ char str_pref[16];
 
 	memset(str_pref,'\0', sizeof(str_pref));
 	snprintf_P( str_pref, sizeof(str_pref), PSTR("AT+CNAOP=%d\r"),modo);
-	FSM_sendATcmd( 5, str_pref, "OK" );
+	FSM_sendATcmd( 5, str_pref );
 	vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
 
 }
@@ -1270,7 +1270,7 @@ char str_bands[20];
 	// SOLO HABILITO LAS BANDAS DE ANTEL !!!!
 	memset(str_bands,'\0', sizeof(str_bands));
 	snprintf_P( str_bands, sizeof(str_bands), PSTR("AT+CNBP=0x0000000004080380\r"));
-	FSM_sendATcmd( 5, str_bands, "OK" );
+	FSM_sendATcmd( 5, str_bands );
 	vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
 
 }
@@ -1301,17 +1301,17 @@ static bool pv_cmd_gprs_set_SAT(uint8_t modo)
 	case 0:
 		// Disable
 		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs SAT.(modo 0). Disable\r\n\0"));
-		FSM_sendATcmd( 5, "AT+STK=0\r", "OK" );
+		FSM_sendATcmd( 5, "AT+STK=0\r" );
 		break;
 	case 1:
 		// Enable
 		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs SAT.(modo 1). Enable\r\n\0"));
-		FSM_sendATcmd( 5, "AT+STK=1\r", "OK" );
+		FSM_sendATcmd( 5, "AT+STK=1\r" );
 		break;
 	case 2:
 		// Check. Query STK status ?
 		xprintf_P(PSTR("GPRS: query STK status ?\r\n\0"));
-		FSM_sendATcmd( 5, "AT+STK?\r", "OK" );
+		FSM_sendATcmd( 5, "AT+STK?\r" );
 		break;
 	default:
 		return(false);
@@ -1382,9 +1382,9 @@ static void pv_cmd_gprs_read_MODO(void)
 int8_t cmd_rsp;
 
 	xCOMMS_stateVars.gprs_mode = 0;
-	cmd_rsp = FSM_sendATcmd( 5, "AT+CNMP?\r", "OK" );
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CNMP?\r" );
 
-	if (cmd_rsp	== ATRSP_EXPECTED ) {
+	if (cmd_rsp	== ATRSP_OK ) {
 
 		if ( gprs_check_response( 0, "CNMP: 2") ) {
 			xCOMMS_stateVars.gprs_mode = 2;
@@ -1414,9 +1414,9 @@ static void pv_cmd_gprs_read_PREF(void)
 int8_t cmd_rsp;
 
 	xCOMMS_stateVars.gprs_pref = 0;
-	cmd_rsp = FSM_sendATcmd( 5, "AT+CNAOP?\r", "OK" );
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CNAOP?\r" );
 
-	if (cmd_rsp	== ATRSP_EXPECTED ) {
+	if (cmd_rsp	== ATRSP_OK ) {
 
 		if ( gprs_check_response( 0, "CNAOP: 0") ) {
 			xCOMMS_stateVars.gprs_pref = 2;
@@ -1461,8 +1461,8 @@ union {
 	xCOMMS_stateVars.gprs_mode = 0;
 	memset( xCOMMS_stateVars.gprs_bands, '\0', sizeof(xCOMMS_stateVars.gprs_bands) );
 
-	cmd_rsp = FSM_sendATcmd( 5, "AT+CNBP?\r", "OK" );
-	if (cmd_rsp	== ATRSP_EXPECTED ) {
+	cmd_rsp = FSM_sendATcmd( 5, "AT+CNBP?\r" );
+	if (cmd_rsp	== ATRSP_OK ) {
 
 		if ( gprs_check_response( 0, "+CNBP: ") ) {
 			ptr = xCOMMS_stateVars.gprs_bands;

@@ -64,7 +64,7 @@ struct {
 //------------------------------------------------------------------------------------
 
 typedef enum { APAGADO, PRENDIDO_OFFLINE, PRENDIDO_ONLINE } t_xcomms_states;
-typedef enum { ATRSP_NONE, ATRSP_EXPECTED, ATRSP_NOTEXPECTED, ATRSP_ERR, ATRSP_TIMEOUT, ATRSP_UNKNOWN } t_at_commands_responses;
+typedef enum { ATRSP_NONE, ATRSP_OK, ATRSP_ERROR, ATRSP_TIMEOUT, ATRSP_UNKNOWN } t_at_commands_responses;
 
 #define TIMETOCHECKSMS 			60
 #define MAXTIMEOFFLINEAWAITON	600
@@ -79,7 +79,9 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void);
 int8_t tkXComms_PRENDIDO_ONLINE(void);
 
 int32_t pubcomms_awaittime_for_dial(void);
-int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd, char *rsp );
+int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd );
+
+#define SEC_CHECK_RSP	10
 
 //------------------------------------------------------------------------------------
 
