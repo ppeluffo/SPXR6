@@ -82,6 +82,29 @@ uint8_t channel = 0;
 
 }
 //------------------------------------------------------------------------------------
+char *dinputs_sprintf( char *sbuffer, uint8_t src[] )
+{
+	// Imprime los canales configurados ( no X ) en un fd ( tty_gprs,tty_xbee,tty_term) en
+	// forma formateada.
+	// Los lee de una estructura array pasada como src
+
+uint8_t channel = 0;
+int16_t i = 0;
+int16_t pos = 0;
+char *p;
+
+	p = sbuffer;
+	for ( channel = 0; channel < DINPUTS_CHANNELS; channel++) {
+		if ( ! strcmp ( dinputs_conf.name[channel], "X" ) )
+			continue;
+
+		pos = sprintf_P( p, PSTR("%s:%d;"), dinputs_conf.name[channel], src[channel] );
+		p += pos;
+	}
+
+	return(p);
+}
+//------------------------------------------------------------------------------------
 uint8_t dinputs_hash(void)
 {
 

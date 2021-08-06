@@ -70,7 +70,7 @@ int main( void )
 	xHandle_tkCtl = xTaskCreateStatic(tkCtl, "CTL", tkCtl_STACK_SIZE, (void *)1, tkCtl_TASK_PRIORITY, xTask_Ctl_Buffer, &xTask_Ctl_Buffer_Ptr );
 	xHandle_tkCmd = xTaskCreateStatic(tkCmd, "CMD", tkCmd_STACK_SIZE, (void *)1, tkCmd_TASK_PRIORITY, xTask_Cmd_Buffer, &xTask_Cmd_Buffer_Ptr );
 	xHandle_tkData = xTaskCreateStatic(tkData, "IN", tkData_STACK_SIZE, (void *)1, tkData_TASK_PRIORITY, xTask_Data_Buffer, &xTask_Data_Buffer_Ptr );
-	xHandle_tkPlt = xTaskCreateStatic(tkPlt, "PLT", tkPlt_STACK_SIZE, (void *)1, tkPlt_TASK_PRIORITY, xTask_Plt_Buffer, &xTask_Plt_Buffer_Ptr );
+//	xHandle_tkPlt = xTaskCreateStatic(tkPlt, "PLT", tkPlt_STACK_SIZE, (void *)1, tkPlt_TASK_PRIORITY, xTask_Plt_Buffer, &xTask_Plt_Buffer_Ptr );
 	xHandle_tkComms = xTaskCreateStatic(tkComms, "COMMS", tkComms_STACK_SIZE, (void *)1, tkComms_TASK_PRIORITY, xTask_Comms_Buffer, &xTask_Comms_Buffer_Ptr );
 	xHandle_tkCommsRX = xTaskCreateStatic(tkCommsRX, "RX", tkCommsRX_STACK_SIZE, (void *)1, tkCommsRX_TASK_PRIORITY, xTask_CommsRX_Buffer, &xTask_CommsRX_Buffer_Ptr );
 

@@ -49,7 +49,11 @@ void ainputs_config_defaults(void);
 void ainputs_config_timepwrsensor ( char *s_timepwrsensor );
 bool ainputs_read( float ain[], float *battery );
 void ainputs_print(file_descriptor_t fd, float src[] );
+char *ainputs_sprintf( char *sbuffer, float src[] );
+
 void ainputs_battery_print( file_descriptor_t fd, float battery );
+char *ainputs_battery_sprintf( char *sbuffer, float battery );
+
 uint8_t ainputs_hash(void);
 void ainputs_test_channel( uint8_t io_channel);
 void ainputs_set_debug(void);

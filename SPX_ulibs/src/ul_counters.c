@@ -259,6 +259,29 @@ void counters_print(file_descriptor_t fd, float cnt[] )
 
 }
 //------------------------------------------------------------------------------------
+char *counters_sprintf( char *sbuffer, float cnt[] )
+{
+	// Imprime los canales configurados ( no X ) en un fd ( tty_gprs,tty_xbee,tty_term) en
+	// forma formateada.
+	// Los lee de una estructura array pasada como src
+
+int16_t pos = 0;
+char *p;
+
+	p = sbuffer;
+	if ( strcmp ( counters_conf.name[0], "X" ) ) {
+		pos = sprintf_P( p, PSTR("%s:%.03f;"), counters_conf.name[0], cnt[0] );
+		p += pos;
+	}
+
+	if ( strcmp ( counters_conf.name[1], "X" ) ) {
+		pos = sprintf_P( p, PSTR("%s:%.03f;"), counters_conf.name[1], cnt[1] );
+		p += pos;
+	}
+
+	return(p);
+}
+//------------------------------------------------------------------------------------
 void counters_config_defaults(void)
 {
 

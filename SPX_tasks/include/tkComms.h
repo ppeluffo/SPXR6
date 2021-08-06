@@ -61,6 +61,8 @@ struct {
 	uint16_t ptr;
 } gprs_rxbuffer;
 
+#define MAX_DATA_WINDOW_SIZE	 10
+
 //------------------------------------------------------------------------------------
 
 typedef enum { APAGADO, PRENDIDO_OFFLINE, PRENDIDO_ONLINE } t_xcomms_states;

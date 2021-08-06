@@ -734,5 +734,21 @@ void u_wdg_kick(uint16_t *taskWdg, uint16_t timeout_in_secs )
 	xSemaphoreGive( sem_WDGS );
 }
 //------------------------------------------------------------------------------------
+void XPRINT_ELAPSED( uint32_t ticks )
+{
 
+float time = 1.0 * ( sysTicks - ticks ) / 1000;
+
+	//xprintf_PD( DF_COMMS,  PSTR("elapsed ticks: %lu\r\n"), ( sysTicks - ticks ) );
+	xprintf_PD( DF_COMMS,  PSTR("elapsed time: %0.3f\r\n"), time );
+}
+//------------------------------------------------------------------------------------
+float ELAPSED_TIME_SECS( uint32_t ticks )
+{
+
+float time = 1.0 * ( sysTicks - ticks ) / 1000;
+
+	return ( time );
+}
+//------------------------------------------------------------------------------------
 

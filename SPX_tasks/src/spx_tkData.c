@@ -26,8 +26,6 @@ uint16_t data_wdg;
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
 static void pv_data_guardar_en_BD(void);
-static void pv_data_read_inputs_normal(st_dataRecord_t *dst, bool f_copy );
-static void pv_data_print_inputs_normal(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl);
 //------------------------------------------------------------------------------------
 void tkData(void * pvParameters)
 {
@@ -90,13 +88,6 @@ uint32_t waiting_ticks = 0;
 //------------------------------------------------------------------------------------
 void data_read_inputs(st_dataRecord_t *dst, bool f_copy )
 {
-	pv_data_read_inputs_normal( dst, f_copy );
-}
-//------------------------------------------------------------------------------------
-static void pv_data_read_inputs_normal(st_dataRecord_t *dst, bool f_copy )
-{
-	// Leo las entradas digitales sobre la estructura local din.
-	// En los IO5 el sensor de temperatura y presion actuan juntos !!!!.
 
 int8_t xBytes = 0;
 
@@ -117,16 +108,9 @@ int8_t xBytes = 0;
 	if ( xBytes == -1 )
 		xprintf_P(PSTR("ERROR: I2C:RTC:data_read_inputs\r\n\0"));
 
-
 }
 //------------------------------------------------------------------------------------
-void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl )
-{
-	pv_data_print_inputs_normal( fd, dr, ctl );
-
-}
-//------------------------------------------------------------------------------------
-static void pv_data_print_inputs_normal(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl )
+void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl)
 {
 
 	// timeStamp.
@@ -147,6 +131,33 @@ static void pv_data_print_inputs_normal(file_descriptor_t fd, st_dataRecord_t *d
 	if ( fd == fdTERM ) {
 		xfprintf_P(fd, PSTR("\r\n\0") );
 	}
+}
+//------------------------------------------------------------------------------------
+int16_t data_sprintf_inputs( char *sbuffer ,st_dataRecord_t *dr, uint16_t ctl )
+{
+
+int16_t i = 0;
+char *p;
+
+	// timeStamp.
+	p = sbuffer;
+	i = sprintf_P( p, PSTR("CTL:%d;DATE:%02d"),ctl, dr->rtc.year );
+	p += i;
+	i = sprintf_P( p, PSTR("%02d%02d;"),dr->rtc.month, dr->rtc.day );
+	p += i;
+
+	i = sprintf_P( p, PSTR("TIME:%02d"), dr->rtc.hour );
+	p += i;
+	i = sprintf_P( p, PSTR("%02d%02d;"), dr->rtc.min, dr->rtc.sec );
+	p += i;
+
+	p = ainputs_sprintf( p, dr->df.io.ainputs );
+	p = dinputs_sprintf( p, dr->df.io.dinputs );
+	p = counters_sprintf( p, dr->df.io.counters );
+
+	p = ainputs_battery_sprintf(p, dr->df.io.battery );
+
+	return(i);
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES PRIVADAS

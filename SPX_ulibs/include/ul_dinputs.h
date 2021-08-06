@@ -23,6 +23,7 @@ bool dinputs_config_channel( uint8_t channel, char *s_aname );
 void dinputs_clear(void);
 bool dinputs_read(uint8_t dst[]);
 void dinputs_print(file_descriptor_t fd, uint8_t src[] );
+char *dinputs_sprintf( char *sbuffer, uint8_t src[] );
 uint8_t dinputs_hash(void);
 void dinputs_test_read(void);
 void dinputs_print_status(void);

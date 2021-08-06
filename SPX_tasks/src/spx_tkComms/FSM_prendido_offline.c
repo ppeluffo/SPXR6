@@ -14,6 +14,7 @@ static bool state_configurar_CPIN(void);
 static bool state_configurar_CCID(void);
 static bool state_configurar_CREG(void);
 static bool state_configurar_CPSI(void);
+static bool state_configurar_CIPHEAD(void);
 static bool state_configurar_CGDSOCKCONT(void);
 static void state_configurar_MONSQE(void);
 static void pv_read_SQE(void) ;
@@ -47,6 +48,7 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 	if ( !state_configurar_CPSI() )		// Confirmo estar online en GSM p WCDMA.
 		return (APAGADO);
 
+	state_configurar_CIPHEAD();			// No muestro los IP head ( consumen mucho buffer al pedo )
 
 	if ( !state_configurar_CGDSOCKCONT() )	// Configuro el APN
 		return (APAGADO	);
@@ -54,6 +56,38 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 	state_configurar_MONSQE();		// Monitoreo la SQE
 
 	return(PRENDIDO_ONLINE);
+
+}
+//------------------------------------------------------------------------------------
+static bool state_configurar_CIPHEAD(void)
+{
+	// El comando CIPHEAD es para que no mande el header IP en la respuesta
+	// Ocupa rxbuffer al pedo.
+
+int8_t cmd_rsp;
+int8_t tryes;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPHEAD in\r\n"));
+
+	// Veo si ya esta configurado. Pregunto hasta 3 veces.
+	for ( tryes = 0; tryes < 3; tryes++ ) {
+
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPHEAD=0\r" );
+
+		if (cmd_rsp	== ATRSP_OK ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: OK\r\n") );
+			return ( true );
+		}
+
+		// Reintento
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD retry (%d)\r\n\0"), tryes );
+		FSM_sendATcmd( 2, "AT\r" );
+
+	}
+
+	// Errores luego de 3 reintentos: salgo.
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: ERROR.\r\n"));
+	return(false);
 
 }
 //------------------------------------------------------------------------------------
@@ -497,22 +531,20 @@ char csqBuffer[32] = { 0 };
 char *ts = NULL;
 uint8_t csq = 0;
 uint8_t dbm = 0;
-int8_t cmd_rsp;
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE in\r\n"));
+int8_t cmd_rsp = -1;
 
 	// Veo si ya esta configurado
 	cmd_rsp = FSM_sendATcmd( 5, "AT+CSQ\r" );
 
 	if (cmd_rsp	== ATRSP_OK ) {
+
 		strncpy( csqBuffer, gprs_rxbuffer.buffer, sizeof(csqBuffer) );
 		if ( (ts = strchr(csqBuffer, ':')) ) {
 			ts++;
 			csq = atoi(ts);
 			dbm = 113 - 2 * csq;
-
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: monitorCSQ: csq=%d, DBM=%d\r\n\0"), csq, dbm );
 		}
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: monitorCSQ: csq=%d, DBM=%d\r\n\0"), csq, dbm );
 	}
 }
 //------------------------------------------------------------------------------------

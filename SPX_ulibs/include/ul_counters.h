@@ -45,6 +45,7 @@ void counters_clear(void);
 void counters_run(void);
 void counters_read(float cnt[]);
 void counters_print(file_descriptor_t fd, float cnt[] );
+char *counters_sprintf( char *sbuffer, float cnt[] );
 uint8_t counters_hash(void);
 void counters_set_debug(void);
 void counters_clr_debug(void);

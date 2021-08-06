@@ -69,8 +69,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "1.0.0a"
-#define SPX_FW_DATE "@ 20210802"
+#define SPX_FW_REV "4.0.0a"
+#define SPX_FW_DATE "@ 20210806"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -92,7 +92,8 @@
 #define tkComms_STACK_SIZE		640
 #define tkCommsRX_STACK_SIZE	384
 
-#define XPRINT_TICKS() xprintf_PD( DF_COMMS,  PSTR("ticks: %lu\r\n"), sysTicks );
+#define XPRINT_TICKS() xprintf_PD( DF_COMMS,  PSTR("ticks: %lu "), sysTicks );
+#define XPRINT_TICKSrn() xprintf_PD( DF_COMMS,  PSTR("ticks: %lu\r\n"), sysTicks );
 
 StaticTask_t xTask_Ctl_Buffer_Ptr;
 StackType_t xTask_Ctl_Buffer [tkCtl_STACK_SIZE];
@@ -130,7 +131,9 @@ struct {
 	bool sgn_poll_now;
 } system_signals;
 
-typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS } t_debug;
+typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_FULL } t_debug;
+
+#define DF_FULL ( systemVars.debug == DEBUG_FULL )
 
 TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkPlt, xHandle_tkComms, xHandle_tkCommsRX ;
 
@@ -215,6 +218,8 @@ void xCOMMS_status(void);
 bool u_check_more_Rcds4Del ( FAT_t *fat );
 bool u_check_more_Rcds4Tx(void);
 void u_config_timerdial ( char *s_timerdial );
+void XPRINT_ELAPSED( uint32_t ticks );
+float ELAPSED_TIME_SECS( uint32_t ticks );
 
 // TKCTL
 void ctl_watchdog_kick(uint8_t taskWdg, uint16_t timeout_in_secs );
@@ -227,6 +232,7 @@ void ctl_set_timeToNextDial( uint32_t new_time );
 // TKDATA
 void data_read_inputs(st_dataRecord_t *dst, bool f_copy );
 void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl);
+int16_t data_sprintf_inputs( char *sbuffer ,st_dataRecord_t *dr, uint16_t ctl );
 
 
 int32_t xcomms_time_to_next_dial(void);

@@ -193,10 +193,46 @@ uint8_t i = 0;
 
 }
 //------------------------------------------------------------------------------------
+char * ainputs_sprintf( char *sbuffer, float src[] )
+{
+	// Imprime los canales configurados ( no X ) en un fd ( tty_gprs,tty_xbee,tty_term) en
+	// forma formateada.
+	// Los lee de una estructura array pasada como src
+
+uint8_t i = 0;
+int16_t pos = 0;
+char *p;
+
+	p = sbuffer;
+	for ( i = 0; i < ANALOG_CHANNELS; i++) {
+		if ( strcmp ( ainputs_conf.name[i], "X" ) != 0 ) {
+			pos = sprintf_P( p, PSTR("%s:%.02f;"), ainputs_conf.name[i], src[i] );
+			p += pos;
+		}
+	}
+
+	return(p);
+
+}
+//------------------------------------------------------------------------------------
 void ainputs_battery_print( file_descriptor_t fd, float battery )
 {
 	// bateria
 	xfprintf_P(fd, PSTR("bt:%.02f;"), battery );
+}
+//------------------------------------------------------------------------------------
+char *ainputs_battery_sprintf( char *sbuffer, float battery )
+{
+
+int16_t pos = 0;
+char *p;
+
+	// bateria
+	p = sbuffer;
+	pos = sprintf_P( p, PSTR("bt:%.02f;"), battery );
+	p += pos;
+	return(p);
+
 }
 //------------------------------------------------------------------------------------
 uint8_t ainputs_hash(void)

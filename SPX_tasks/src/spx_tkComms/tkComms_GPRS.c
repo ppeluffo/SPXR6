@@ -167,9 +167,7 @@ int16_t local_timer = timeout;
 
 	for(;;) {
 
-		// Espero
 		local_timer--;
-		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
 		// Busco
 		while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
@@ -188,6 +186,11 @@ int16_t local_timer = timeout;
 		if (local_timer <= 0 ) {
 			return(retS);
 		}
+
+		// Espero
+		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+
+
 	}
 
 	return(retS);
@@ -286,7 +289,7 @@ int16_t local_timer = (10 * timeout);
 	gprs_flush_RX_buffer();
 
 	// Doy el comando.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: (%d) %s\r\n"), local_timer, cmd );
+	//xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: (%d) %s\r\n"), local_timer, cmd );
 	gprs_flush_TX_buffer();
 	// Espera antes de c/comando. ( ver recomendaciones de TELIT )
 	vTaskDelay( (portTickType)( 50 / portTICK_RATE_MS ) );
