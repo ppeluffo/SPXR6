@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include "l_printf.h"
 
+static int8_t sequence;
+
 void stepper_drive( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_t ptime );
 
 //------------------------------------------------------------------------------------
@@ -40,6 +42,11 @@ t_stepper_dir dir;
 	stepper_drive(dir, npulses, dtime, ptime);
 }
 //------------------------------------------------------------------------------------
+void stepper_start(void)
+{
+	sequence = 2;
+}
+//------------------------------------------------------------------------------------
 void stepper_drive( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_t ptime )
 {
 	/*
@@ -50,7 +57,6 @@ void stepper_drive( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_
 	 */
 
 uint16_t steps;
-int8_t sequence;
 
 	// Activo el driver
 	xprintf_P(PSTR("STEPPER driver pwr on\r\n"));
@@ -63,10 +69,10 @@ int8_t sequence;
 	xprintf_P(PSTR("STEPPER steps...\r\n"));
 	// Pongo la secuencia incial en 2 para que puede moverme para adelante o atras
 	// sin problemas de incializacion
-	sequence = 2;
+	stepper_start();
 	for (steps=0; steps < npulses; steps++) {
 
-		sequence = stepper_sequence(sequence, dir);
+		stepper_sequence(dir);
 
 		xprintf_P(PSTR("STEPPER pulse %03d, sec=%d\r\n"), steps, sequence);
 
@@ -140,29 +146,30 @@ void pulse_Bmenos_Bmas(uint16_t dtime )
 	IO_clr_ENB();	// Deshabilito el pulso
 }
 //------------------------------------------------------------------------------------
-int8_t stepper_sequence( int8_t sequence, t_stepper_dir dir)
+void stepper_sequence( t_stepper_dir dir)
 {
-int8_t lseq = sequence;
+	// Genera la secuencia que debe aplicar el stepper para moverse en la direccion dir.
 
 	if ( dir == STEPPER_FWD ) {
-		lseq++;
-		if ( lseq == 4) {
-			lseq = 0;
+		sequence++;
+		if ( sequence == 4) {
+			sequence = 0;
 		}
 	}
 
 	if ( dir == STEPPER_REV ) {
-		lseq--;
-		if ( lseq == -1 ) {
-			lseq = 3;
+		sequence--;
+		if ( sequence == -1 ) {
+			sequence = 3;
 		}
 	}
 
-	return(lseq);
 }
 //------------------------------------------------------------------------------------
-void stepper_pulse(uint8_t sequence, uint16_t dtime)
+void stepper_pulse(t_stepper_dir dir, uint16_t dtime)
 {
+	// Aplica el pulso al motor y genera la siguiente secuencia
+
 	//xprintf_P(PSTR("STEPPER pulse: sec=%d\r\n"), sequence);
 	switch (sequence) {
 	case 0:
@@ -182,9 +189,11 @@ void stepper_pulse(uint8_t sequence, uint16_t dtime)
 		pulse_Bmenos_Bmas(dtime);
 		break;
 	}
+
+	stepper_sequence(dir);
 }
 //------------------------------------------------------------------------------------
-void stepper_pulse1(uint8_t sequence, uint16_t dtime)
+void stepper_pulse1(t_stepper_dir dir, uint16_t dtime)
 {
 
 	switch (sequence) {
@@ -233,6 +242,8 @@ void stepper_pulse1(uint8_t sequence, uint16_t dtime)
 		IO_clr_ENB();
 		break;
 	}
+
+	stepper_sequence(dir);
 }
 //------------------------------------------------------------------------------------
 

@@ -342,7 +342,7 @@ void ainputs_print_channel_status(void)
 uint8_t channel = 0;
 
 	// Sensor Pwr Time
-	xprintf_P( PSTR("  timerPwrSensor: [%d s]\r\n\0"), ainputs_conf.pwr_settle_time );
+	//xprintf_P( PSTR("  timerPwrSensor: [%d s]\r\n\0"), ainputs_conf.pwr_settle_time );
 
 	for ( channel = 0; channel < ANALOG_CHANNELS; channel++) {
 		xprintf_P( PSTR("  a%d: [%d-%d mA/ %.02f,%.02f | %.03f | %s]\r\n"),

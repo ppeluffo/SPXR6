@@ -47,7 +47,7 @@ t_xCOMMS_stateVars xCOMMS_stateVars;
 
 #define MAX_ERRORES_COMMS 5
 
-xComms_conf_t comms_conf;
+comms_conf_t comms_conf;
 
 #define GPRS_TXBUFFER_LEN	256
 struct {
@@ -110,6 +110,7 @@ void gprs_apagar(void);
 int gprs_findstr_lineal( uint16_t start, const char *rsp );
 
 void comms_config_defaults(void);
+void comms_config_status(void);
 
 
 //--------------------------------------------------------------------------------------------

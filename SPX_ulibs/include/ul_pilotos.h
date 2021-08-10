@@ -27,14 +27,12 @@
 #define MAX_PILOTO_PSLOTS	5
 
 typedef struct {		// Elemento de piloto: presion, hora.
-	uint8_t hour;
-	uint8_t min;
+	st_time_t pTime;
 	float presion;
 } st_piloto_slot_t;
 
 // PILOTO
 typedef struct {
-	bool piloto_enabled;
 	st_piloto_slot_t pltSlots[ MAX_PILOTO_PSLOTS ];
 } piloto_conf_t;
 
@@ -75,14 +73,15 @@ struct {
 
 uint16_t piloto_wdg;
 
-void piloto_setup(void );
+void piloto_setup_outofrtos(void );
 void piloto_run_presion_test(char *s_pRef );
 void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth );
+bool piloto_config( char *s_slot, char *s_hhmm, char *s_presion );
+void piloto_config_status(void);
 void piloto_config_defaults(void);
-void piloto_print_status( void );
-bool piloto_config( char *param1, char *param2, char *param3, char *param4 );
-bool piloto_leer_slot_actual( uint8_t *slot_id );
-void piloto_ajustar_presion( void );
+bool piloto_init_service(void);
+void piloto_app_service(void);
+uint8_t piloto_hash(void);
 
 
 #endif /* SRC_SPX_ULIBS_UL_PILOTOS_H_ */

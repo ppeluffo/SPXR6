@@ -65,12 +65,15 @@
 #include "ul_dinputs.h"
 #include "ul_counters.h"
 #include "ul_ainputs.h"
+#include "ul_consignas.h"
+#include "ul_pilotos.h"
+#include "ul_modbus.h"
 
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "4.0.0a"
-#define SPX_FW_DATE "@ 20210806"
+#define SPX_FW_DATE "@ 20210810"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -88,7 +91,7 @@
 #define tkCtl_STACK_SIZE		384
 #define tkCmd_STACK_SIZE		384
 #define tkData_STACK_SIZE		512
-#define tkPlt_STACK_SIZE		384
+#define tkApp_STACK_SIZE		384
 #define tkComms_STACK_SIZE		640
 #define tkCommsRX_STACK_SIZE	384
 
@@ -104,8 +107,8 @@ StackType_t xTask_Cmd_Buffer [tkCmd_STACK_SIZE];
 StaticTask_t xTask_Data_Buffer_Ptr;
 StackType_t xTask_Data_Buffer [tkData_STACK_SIZE];
 
-StaticTask_t xTask_Plt_Buffer_Ptr;
-StackType_t xTask_Plt_Buffer [tkPlt_STACK_SIZE];
+StaticTask_t xTask_App_Buffer_Ptr;
+StackType_t xTask_App_Buffer [tkApp_STACK_SIZE];
 
 StaticTask_t xTask_Comms_Buffer_Ptr;
 StackType_t xTask_Comms_Buffer [tkComms_STACK_SIZE];
@@ -117,7 +120,7 @@ StackType_t xTask_CommsRX_Buffer [tkCommsRX_STACK_SIZE];
 #define tkCtl_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
 #define tkCmd_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
 #define tkData_TASK_PRIORITY	 	( tskIDLE_PRIORITY + 1 )
-#define tkPlt_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
+#define tkApp_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
 #define tkComms_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
 #define tkCommsRX_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
 
@@ -131,11 +134,9 @@ struct {
 	bool sgn_poll_now;
 } system_signals;
 
-typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_FULL } t_debug;
+typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP } t_debug;
 
-#define DF_FULL ( systemVars.debug == DEBUG_FULL )
-
-TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkPlt, xHandle_tkComms, xHandle_tkCommsRX ;
+TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkApp, xHandle_tkComms, xHandle_tkCommsRX ;
 
 bool startTask;
 uint32_t sysTicks;
@@ -155,7 +156,7 @@ StaticSemaphore_t RXBUFF_xMutexBuffer;
 void tkCtl(void * pvParameters);
 void tkCmd(void * pvParameters);
 void tkData(void * pvParameters);
-void tkPlt(void * pvParameters);
+void tkApp(void * pvParameters);
 void tkComms(void * pvParameters);
 void tkCommsRX(void * pvParameters);
 
@@ -194,7 +195,13 @@ typedef struct {
 	char serverScript[SCRIPT_LENGTH];
 	char simpwd[SIM_PASSWD_LENGTH];
 	uint32_t timerDial;
-} xComms_conf_t;
+} comms_conf_t;
+
+typedef struct {
+	int8_t aplicacion;
+	consigna_conf_t consigna_conf;
+	piloto_conf_t piloto_conf;
+} aplicacion_conf_t;
 
 typedef struct {
 	// Variables de trabajo.
@@ -203,9 +210,9 @@ typedef struct {
 	counters_conf_t counters_conf;	// Estructura con la configuracion de los contadores
 	dinputs_conf_t dinputs_conf;	// Estructura con la configuracion de las entradas digitales
 	ainputs_conf_t ainputs_conf;	// Estructura con la configuracion de las entradas analogicas
-	piloto_conf_t piloto_conf;
-	xComms_conf_t comms_conf;
-
+	comms_conf_t comms_conf;
+	aplicacion_conf_t aplicacion_conf;
+	modbus_conf_t modbus_conf;
 	uint8_t checksum;
 } systemVarsType;
 
@@ -245,7 +252,7 @@ uint8_t wdg_resetCause;
 #define WDG_CTL			0
 #define WDG_CMD			1
 #define WDG_DATA		2
-#define WDG_PLT			3
+#define WDG_APP			3
 #define WDG_COMMS		4
 #define WDG_COMMSRX		5
 

@@ -90,7 +90,7 @@ int8_t tkXComms_APAGADO(void)
 //------------------------------------------------------------------------------------
 static int8_t state_exit(void)
 {
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:EXIT\r\n\0"));
+	xprintf_P( PSTR("COMMS: apagado:EXIT\r\n\0"));
 	return(-1);
 }
 //------------------------------------------------------------------------------------
@@ -217,6 +217,7 @@ static int8_t state_prenderSW(void)
 
 	} else {
 		//
+		vTaskDelay( ( TickType_t)( 2000 / portTICK_RATE_MS ) );
 		gprs_sw_pwr();
 		gprs_flush_RX_buffer();
 		return ( PBDONE );
@@ -260,7 +261,7 @@ static int8_t state_apagado(void)
 
 static bool starting_flag = true;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado: in.\r\n\0"));
+	xprintf_P( PSTR("COMMS: apagado: in.\r\n\0"));
 
 	// Si llegue al maximo de errores de comunicaciones reseteo al micro
 	if ( xCOMMS_stateVars.errores_comms >= MAX_ERRORES_COMMS ) {

@@ -7,6 +7,7 @@
 
 #include "spx.h"
 #include "tkComms.h"
+#include "tkApp.h"
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE USO PRIVADO
@@ -26,7 +27,6 @@ static void pv_cmd_gprs_set_BANDS( char *s_bands);
 static void pv_cmd_gprs_read_MODO(void);
 static void pv_cmd_gprs_read_PREF(void);
 static void pv_cmd_gprs_read_BANDS(void);
-static void pv_cmd_gprs_config_status(void);
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
@@ -39,8 +39,6 @@ static void cmdReadFunction(void);
 static void cmdStatusFunction(void);
 static void cmdConfigFunction(void);
 static void cmdKillFunction(void);
-
-static void status_canales_estandard(void);
 
 #define WR_CMD 0
 #define RD_CMD 1
@@ -139,7 +137,10 @@ st_dataRecord_t dr;
 	xprintf_P( PSTR("memory: rcdSize=%d, wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d\r\n"), sizeof(st_dataRecord_t), l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
 
 	// COMMS Status
-	pv_cmd_gprs_config_status();
+	comms_config_status();
+
+	// APP Status
+	aplicacion_config_status();
 
 	// CONFIG
 	xprintf_P( PSTR(">Config:\r\n"));
@@ -183,29 +184,19 @@ st_dataRecord_t dr;
 		break;
 	}
 
-	// Piloto task
-	if ( piloto_conf.piloto_enabled ) {
-		xprintf_P( PSTR("  Piloto: ON\r\n"));
-		piloto_print_status();
-	} else {
-		xprintf_P( PSTR("  Piloto: OFF\r\n"));
-	}
+	xprintf_P( PSTR(">Channels:\r\n\0"));
+	ainputs_print_channel_status();
+	dinputs_print_status();
+	counters_print_status();
 
-	status_canales_estandard();
+	// Modbus
+	modbus_config_status();
 
 	// Muestro los datos
 	// CONFIG
 	xprintf_P( PSTR(">Frame:\r\n\0"));
 	data_read_inputs(&dr, true );
 	data_print_inputs(fdTERM, &dr, 0);
-}
-//-----------------------------------------------------------------------------------
-static void status_canales_estandard(void)
-{
-	xprintf_P( PSTR(">Channels:\r\n\0"));
-	ainputs_print_channel_status();
-	dinputs_print_status();
-	counters_print_status();
 }
 //-----------------------------------------------------------------------------------
 static void cmdResetFunction(void)
@@ -250,6 +241,23 @@ static void cmdWriteFunction(void)
 {
 
 	FRTOS_CMD_makeArgv();
+
+	// CONSIGNA
+	// write consigna (diurna|nocturna)
+	if ( strcmp_P( strupr(argv[1]), PSTR("CONSIGNA")) == 0 ) {
+		if ( strcmp_P( strupr(argv[2]), PSTR("DIURNA")) == 0 ) {
+			consigna_set_diurna();
+			pv_snprintfP_OK();
+			return;
+		}
+		if ( strcmp_P( strupr(argv[2]), PSTR("NOCTURNA")) == 0 ) {
+			consigna_set_nocturna();
+			pv_snprintfP_OK();
+			return;
+		}
+		pv_snprintfP_ERR();
+		return;
+	}
 
 	// PILOTO
 	// write pilototest pRef(kg/cm2)
@@ -383,6 +391,8 @@ uint8_t cks;
 		xprintf_P( PSTR("Digital hash = [0x%02x]\r\n\0"), cks );
 		cks = counters_hash();
 		xprintf_P( PSTR("Counters hash = [0x%02x]\r\n\0"), cks );
+		cks = piloto_hash();
+		xprintf_P( PSTR("Piloto hash = [0x%02x]\r\n\0"), cks );
 		return;
 	}
 
@@ -505,10 +515,26 @@ bool retS = false;
 
 	FRTOS_CMD_makeArgv();
 
+	// CONSIGNAS
+	// config consigna {diurna,nocturna} hhmm
+	if (!strcmp_P( strupr(argv[1]), PSTR("CONSIGNA\0")) ) {
+		retS = consigna_config( argv[2], argv[3]);
+		retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+
+	// APLICACION
+	// config aplicacion { off,consigna,piloto }
+	if (!strcmp_P( strupr(argv[1]), PSTR("APLICACION\0")) ) {
+		retS = aplicacion_config( argv[2] );
+		retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+
 	// PILOTO
 	// config piloto slot {idx} {hhmm} {pout}
-	if (!strcmp_P( strupr(argv[1]), PSTR("PILOTO\0")) ) {
-		retS = piloto_config( argv[2], argv[3], argv[4], argv[5] );
+	if (!strcmp_P( strupr(argv[1]), PSTR("PSLOT\0")) ) {
+		retS = piloto_config( argv[2], argv[3], argv[4] );
 		retS ? pv_snprintfP_OK() : 	pv_snprintfP_ERR();
 		return;
 	}
@@ -708,7 +734,8 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  analog (wakeup | sleep )\r\n\0"));
 
 		xprintf_P( PSTR("  drv8814 {pA|pB} {00,01,10,11}, sleep, awake\r\n"));
-		xprintf_P( PSTR("  steppertest {dir} {pulses} {pwidth_ms}\r\n"));
+		xprintf_P( PSTR("  consigna (diurna|nocturna)\r\n\0"));
+		xprintf_P( PSTR("  steppertest {fw|rev} {pulses} {pwidth_ms}\r\n"));
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n\0"));
@@ -761,8 +788,9 @@ static void cmdHelpFunction(void)
 
 		xprintf_P( PSTR("  analog {0..%d} aname imin imax mmin mmax offset\r\n\0"),( ANALOG_CHANNELS - 1 ) );
 
-		xprintf_P( PSTR("  piloto slot {idx} {hhmm} {pout}\r\n\0"));
-		xprintf_P( PSTR("         {on,off}\r\n\0"));
+		xprintf_P( PSTR("  aplicacion {off,consigna,piloto}\r\n\0"));
+		xprintf_P( PSTR("  consigna {diurna,nocturna} hhmm\r\n\0"));
+		xprintf_P( PSTR("  pslot {idx} {hhmm} {pout}\r\n\0"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
@@ -807,10 +835,10 @@ static void cmdKillFunction(void)
 		return;
 	}
 
-	// KILL PILOTO
-	if (!strcmp_P( strupr(argv[1]), PSTR("PILOTO\0"))) {
-		vTaskSuspend( xHandle_tkPlt );
-		ctl_watchdog_kick(WDG_PLT, 0x8000 );
+	// KILL APP
+	if (!strcmp_P( strupr(argv[1]), PSTR("APP\0"))) {
+		vTaskSuspend( xHandle_tkApp );
+		ctl_watchdog_kick(WDG_APP, 0x8000 );
 		pv_snprintfP_OK();
 		return;
 	}
@@ -1318,60 +1346,6 @@ static bool pv_cmd_gprs_set_SAT(uint8_t modo)
 	}
 
 	return (true);
-
-}
-//------------------------------------------------------------------------------------
-static void pv_cmd_gprs_config_status(void)
-{
-
-uint8_t dbm;
-
-	xprintf_P( PSTR(">Device Gprs:\r\n"));
-	xprintf_P( PSTR("  apn: %s\r\n\0"), comms_conf.apn );
-	xprintf_P( PSTR("  server ip:port: %s:%s\r\n"), comms_conf.server_ip_address, comms_conf.server_tcp_port );
-	xprintf_P( PSTR("  server script: %s\r\n"), comms_conf.serverScript );
-	//xprintf_P( PSTR("  simpwd: %s\r\n\0"), comms_conf.simpwd );
-	xprintf_P( PSTR("  imei: %s\r\n"), xCOMMS_stateVars.gprs_imei ) ;
-	xprintf_P( PSTR("  ccid: %s\r\n"), xCOMMS_stateVars.gprs_ccid ) ;
-
-	dbm = 113 - 2 * xCOMMS_stateVars.csq;
-	xprintf_P( PSTR("  signalQ: csq=%d, dBm=%d\r\n"), xCOMMS_stateVars.csq, dbm );
-	xprintf_P( PSTR("  ip address: %s\r\n"), xCOMMS_stateVars.ip_assigned) ;
-
-
-	// MODO:
-	switch(xCOMMS_stateVars.gprs_mode) {
-	case 2:
-		xprintf_P( PSTR("  modo: AUTO\r\n"));
-		break;
-	case 13:
-		xprintf_P( PSTR("  modo: 2G(GSM) only\r\n"));
-		break;
-	case 14:
-		xprintf_P(  PSTR("  modo: 3G(WCDMA) only\r\n"));
-		break;
-	default:
-		xprintf_P( PSTR("  modo: ??\r\n") );
-	}
-
-	// PREFERENCE
-	switch(xCOMMS_stateVars.gprs_pref) {
-	case 0:
-		xprintf_P( PSTR("  pref: AUTO\r\n"));
-		break;
-	case 1:
-		xprintf_P(  PSTR("  pref: 2G,3G\r\n"));
-		break;
-	case 2:
-		xprintf_P( PSTR("  pref: 3G,2G\r\n"));
-		break;
-	default:
-		xprintf_P( PSTR("  pref: ??\r\n") );
-		return;
-	}
-
-	// BANDS:
-	xprintf_P( PSTR("  bands:[%s]\r\n\0"), xCOMMS_stateVars.gprs_bands );
 
 }
 //------------------------------------------------------------------------------------

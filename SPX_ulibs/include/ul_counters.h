@@ -36,7 +36,7 @@ counters_conf_t counters_conf;
 
 bool debug_counters;
 
-void counters_setup(void);
+void counters_setup_outofrtos(void);
 void counters_init(void);
 void counters_config_defaults(void);
 bool counters_config_channel( uint8_t channel,char *s_name, char *s_magpp, char *s_pw, char *s_period, char *s_sensing );

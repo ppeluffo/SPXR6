@@ -27,7 +27,8 @@ void pulse_Amenos_Amas(uint16_t dtime );
 void pulse_Bmas_Bmenos(uint16_t dtime );
 void pulse_Bmenos_Bmas(uint16_t dtime );
 
-int8_t stepper_sequence( int8_t sequence, t_stepper_dir dir);
+void stepper_start(void);
+void stepper_sequence( t_stepper_dir dir);
 void stepper_pulse(uint8_t sequence, uint16_t dtime);
 void stepper_pulse1(uint8_t sequence, uint16_t dtime);
 

@@ -7,6 +7,7 @@
 
 #include "spx.h"
 #include "tkComms.h"
+#include "tkApp.h"
 #include "ul_utils.h"
 
 #define RTC32_ToscBusy()        !( VBAT.STATUS & VBAT_XOSCRDY_bm )
@@ -253,8 +254,11 @@ void u_load_defaults( char *opt )
 	counters_config_defaults();
 	dinputs_config_defaults();
 	ainputs_config_defaults();
-	piloto_config_defaults();
 	comms_config_defaults();
+
+	consigna_config_defaults();
+	piloto_config_defaults();
+	modbus_config_defaults();
 
 }
 //------------------------------------------------------------------------------------
@@ -298,9 +302,6 @@ void u_save_params_in_NVMEE(void)
 uint8_t checksum = 0;
 uint16_t ee_wr_addr;
 
-	// Copio la configuracion del piloto al systemVars.
-	memcpy( &systemVars.piloto_conf,  &piloto_conf, sizeof(piloto_conf));
-
 	// Copio la configuracion de canales digitales al systemVars.
 	memcpy( &systemVars.dinputs_conf,  &dinputs_conf, sizeof(dinputs_conf));
 
@@ -312,6 +313,16 @@ uint16_t ee_wr_addr;
 
 	// Copio la configuracion de gprs al systemVars.
 	memcpy( &systemVars.comms_conf,  &comms_conf, sizeof(comms_conf));
+
+	// Copio la configuracion de aplicacion:consignas al systemVars.
+	memcpy( &systemVars.aplicacion_conf.consigna_conf,  &consigna_conf, sizeof(consigna_conf));
+
+	// Copio la configuracion de aplicacion:pilotos al systemVars.
+	memcpy( &systemVars.aplicacion_conf.piloto_conf,  &piloto_conf, sizeof(piloto_conf));
+
+	// Copio la configuracion de modbus al systemVars.
+	memcpy( &systemVars.modbus_conf,  &modbus_conf, sizeof(modbus_conf));
+
 
 	// SystemVars.
 	// Guardo systemVars en la EE
@@ -344,9 +355,6 @@ uint16_t ee_rd_addr;
 	ee_rd_addr += sizeof(systemVars);
 	nvm_eeprom_read_buffer(ee_rd_addr, (char *)&stored_checksum, sizeof(stored_checksum));
 
-	// Copio la configuracion del piloto
-	memcpy( &piloto_conf,  &systemVars.piloto_conf, sizeof(piloto_conf));
-
 	// Copio la configuracion de dinputs
 	memcpy( &dinputs_conf,  &systemVars.dinputs_conf, sizeof(dinputs_conf));
 
@@ -358,6 +366,16 @@ uint16_t ee_rd_addr;
 
 	// Copio la configuracion de comms
 	memcpy( &comms_conf,  &systemVars.comms_conf, sizeof(comms_conf));
+
+	// Copio la configuracion de aplicacion:consignas
+	memcpy( &consigna_conf, &systemVars.aplicacion_conf.consigna_conf,  sizeof(consigna_conf));
+
+	// Copio la configuracion de aplicacion:pilotos
+	memcpy( &piloto_conf,  &systemVars.aplicacion_conf.piloto_conf, sizeof(piloto_conf));
+
+	// Copio la configuracion de modbus
+	memcpy( &modbus_conf,  &systemVars.modbus_conf, sizeof(modbus_conf));
+
 
 	if ( calculated_checksum != stored_checksum ) {
 		xprintf_P( PSTR("ERROR: Checksum systemVars failed: calc[0x%0x], sto[0x%0x]\r\n"), calculated_checksum, stored_checksum );

@@ -38,7 +38,7 @@ static void pv_counters_TimerCallback1B( TimerHandle_t xTimer );
 #define DF_COUNTERS ( systemVars.debug == DEBUG_COUNTER )
 
 //------------------------------------------------------------------------------------
-void counters_setup(void)
+void counters_setup_outofrtos(void)
 {
 	// Configura los timers que generan el delay de medida del ancho de pulso
 	// y el periodo.

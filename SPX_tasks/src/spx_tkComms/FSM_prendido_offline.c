@@ -17,6 +17,7 @@ static bool state_configurar_CPSI(void);
 static bool state_configurar_CIPHEAD(void);
 static bool state_configurar_CGDSOCKCONT(void);
 static void state_configurar_MONSQE(void);
+static bool state_configurar_C1(void);
 static void pv_read_SQE(void) ;
 
 
@@ -24,7 +25,7 @@ static void pv_read_SQE(void) ;
 int8_t tkXComms_PRENDIDO_OFFLINE(void)
 {
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
+	xprintf_P( PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
 
 	// Leo el IMEI. Si da error no importa.
 	state_configurar_ATI();
@@ -35,6 +36,8 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 
 	// Pongo la uart en control 7 hilos. Si no puedo no es grave.
 	state_configurar_CSUART();
+
+	//state_configurar_C1();
 
 	if ( !state_configurar_CPIN() )		// Veo si tengo instalado un SIM
 		return (APAGADO);
@@ -67,7 +70,7 @@ static bool state_configurar_CIPHEAD(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPHEAD in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -86,7 +89,7 @@ int8_t tryes;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -110,7 +113,7 @@ char *ts = NULL;
 char c = '\0';
 char *ptr = NULL;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI in\r\n"));
+	xprintf_P ( PSTR("COMMS: prendidoOFFLINE:ATI in\r\n"));
 
 	memset( xCOMMS_stateVars.gprs_imei, '\0', sizeof(xCOMMS_stateVars.gprs_imei) );
 
@@ -130,9 +133,9 @@ char *ptr = NULL;
 					ts++;
 				}
 				*ptr = '\0';
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs imei=[%s]\r\n\0"), xCOMMS_stateVars.gprs_imei );
+				xprintf_P( PSTR("COMMS: gprs imei=[%s]\r\n\0"), xCOMMS_stateVars.gprs_imei );
 			}
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI out: OK\r\n") );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI out: OK\r\n") );
 			return ( true );
 		}
 
@@ -142,7 +145,7 @@ char *ptr = NULL;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:ATI out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -154,7 +157,7 @@ static bool state_configurar_CIPMODE(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE in\r\n"));
+	xprintf_P(  PSTR("COMMS: prendidoOFFLINE:CIPMODE in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -163,7 +166,7 @@ int8_t tryes;
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CIPMODE: 0" ) ) {
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE out: OK\r\n") );
 				return ( true );
 			} else {
 				// Respondio pero no es lo que esperaba.
@@ -189,7 +192,7 @@ set_cipmode:
 		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPMODE=0\r" );
 
 		if ( cmd_rsp == ATRSP_OK ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE set out: OK\r\n") );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE set out: OK\r\n") );
 			return ( true );
 		}
 
@@ -200,7 +203,7 @@ set_cipmode:
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE set out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPMODE set out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -213,7 +216,7 @@ static bool state_configurar_CSUART(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSUART in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CSUART in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -222,7 +225,7 @@ int8_t tryes;
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CSUART: 1" ) ) {
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSUART out: OK\r\n") );
 				return ( true );
 			} else {
 				// Respondio pero no es lo que esperaba.
@@ -249,7 +252,7 @@ set_csuart:
 		cmd_rsp = FSM_sendATcmd( 5, "AT+CSUART=1\r" );
 
 		if ( cmd_rsp == ATRSP_OK ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART set out: OK\r\n") );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSUART set out: OK\r\n") );
 			return ( true );
 		}
 
@@ -260,7 +263,7 @@ set_csuart:
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSUART set out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CSUART set out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -272,7 +275,7 @@ static bool state_configurar_CPIN(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPIN in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CPIN in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -281,7 +284,7 @@ int8_t tryes;
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CPIN: READY" ) ) {
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPIN out: OK\r\n") );
 				return ( true );
 			}
 		}
@@ -293,7 +296,28 @@ int8_t tryes;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPIN out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CPIN out: ERROR.\r\n"));
+	return(false);
+
+}
+//------------------------------------------------------------------------------------
+static bool state_configurar_C1(void)
+{
+	// Pone el registro C1 de modo que el DCD responda al Carrier del modem.
+
+int8_t cmd_rsp;
+
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:C1 in\r\n"));
+
+	// Veo si ya esta configurado. Pregunto hasta 3 veces.
+	cmd_rsp = FSM_sendATcmd( 2, "AT&C1\r" );
+
+	if (cmd_rsp	== ATRSP_OK ) {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:C1 out: OK\r\n") );
+		return ( true );
+	}
+
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:C1 out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -314,7 +338,7 @@ char *ts = NULL;
 char c = '\0';
 char *ptr = NULL;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CCID in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CCID in\r\n"));
 
 	memset( xCOMMS_stateVars.gprs_ccid, '\0', sizeof(xCOMMS_stateVars.gprs_ccid) );
 
@@ -336,7 +360,7 @@ char *ptr = NULL;
 				}
 				*ptr = '\0';
 				xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs ccid=[%s]\r\n\0"), xCOMMS_stateVars.gprs_ccid );
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CCID out: OK\r\n") );
 				return ( true );
 			}
 		}
@@ -348,7 +372,7 @@ char *ptr = NULL;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CCID out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CCID out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -382,7 +406,7 @@ uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CREG in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CREG in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -392,7 +416,7 @@ int8_t cmd_rsp;
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "CREG: 0,1" ) ) {
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CREG out: OK\r\n") );
 				return ( true );
 			}
 		}
@@ -404,7 +428,7 @@ int8_t cmd_rsp;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CREG out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CREG out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -417,7 +441,7 @@ uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPSI in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CPSI in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -427,7 +451,7 @@ int8_t cmd_rsp;
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "Online" ) ) {
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPSI out: OK\r\n") );
 				return ( true );
 			}
 		}
@@ -440,7 +464,7 @@ int8_t cmd_rsp;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPSI out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CPSI out: ERROR.\r\n"));
 	return(false);
 
 }
@@ -453,7 +477,7 @@ char strapn[48];
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -463,7 +487,7 @@ int8_t tryes;
 		if (cmd_rsp	== ATRSP_OK ) {
 
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, comms_conf.apn ) ) {
-				xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: OK\r\n") );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: OK\r\n") );
 				return ( true );
 			} else {
 				// Respondio pero no es lo que esperaba.
@@ -478,7 +502,7 @@ int8_t tryes;
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT out: ERROR.\r\n"));
 	return(false);
 
 set_cgdsockcont:
@@ -492,7 +516,7 @@ set_cgdsockcont:
 		cmd_rsp = FSM_sendATcmd( 5, strapn );
 
 		if ( cmd_rsp == ATRSP_OK ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set out: OK\r\n") );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set out: OK\r\n") );
 			return ( true );
 		}
 
@@ -503,7 +527,7 @@ set_cgdsockcont:
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set out: ERROR.\r\n"));
 	return(false);
 
 

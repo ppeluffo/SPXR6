@@ -7,10 +7,11 @@
 
 
 #include <tkComms.h>
+#include "tkApp.h"
 
-typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT } t_states_prendido_online;
+typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT } t_states_prendido_online;
 typedef enum { SF_ENTRY, SF_SOCK_STATUS, SF_SOCK_OPEN, SF_NET_STATUS, SF_SEND, SF_RSP, SF_EXIT } t_sendFrames_states;
-typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_DATA } t_frames;
+typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_APP, FRM_DATA } t_frames;
 
 typedef enum { sock_OPEN = 0, sock_CLOSE, sock_UNKNOWN, sock_TOUT } t_socket_status;
 typedef enum { net_OPEN = 0, net_CLOSE, net_UNKNOWN, net_TOUT } t_network_status;
@@ -22,6 +23,7 @@ static bool state_online_base(void);
 static bool state_online_analog(void);
 static bool state_online_digital(void);
 static bool state_online_counter(void);
+static bool state_online_app(void);
 static bool state_online_data(void);
 static bool state_online_espera(void);
 static bool state_online_exit(void);
@@ -50,6 +52,7 @@ static bool process_rsp_base(void);
 static bool process_rsp_analog(void);
 static bool process_rsp_digital(void);
 static bool process_rsp_counters(void);
+static bool process_rsp_app(void);
 static bool process_rsp_data(void);
 
 uint16_t datos_pendientes_transmitir(void);
@@ -59,6 +62,9 @@ bool f_send_init_frame_base;
 bool f_send_init_frame_analog;
 bool f_send_init_frame_digital;
 bool f_send_init_frame_counters;
+bool f_send_init_frame_app;
+
+bool reset_datalogger;
 
 //------------------------------------------------------------------------------------
 int8_t tkXComms_PRENDIDO_ONLINE(void)
@@ -66,7 +72,7 @@ int8_t tkXComms_PRENDIDO_ONLINE(void)
 
 int8_t state;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoONLINE.\r\n"));
+	xprintf_P( PSTR("COMMS: state prendidoONLINE.\r\n"));
 
 	state = ONLINE_ENTRY;
 
@@ -132,8 +138,18 @@ int8_t state;
 
 		case ONLINE_COUNTER:
 			if ( ! f_send_init_frame_counters ) {
-				state = ONLINE_DATA;
+				state = ONLINE_APP;
 			} else if ( state_online_counter() ) {
+				state = ONLINE_APP;
+			} else {
+				state = ONLINE_EXIT;
+			}
+			break;
+
+		case ONLINE_APP:
+			if ( ! f_send_init_frame_app ) {
+				state = ONLINE_DATA;
+			} else if ( state_online_app() ) {
 				state = ONLINE_DATA;
 			} else {
 				state = ONLINE_EXIT;
@@ -177,14 +193,20 @@ int8_t state;
 //------------------------------------------------------------------------------------
 static bool state_online_data(void)
 {
-bool exit_code = false;
+bool exit_code = true;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:DATA in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:DATA in\r\n"));
+
+	if ( reset_datalogger) {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Reset...\r\n"));
+		vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
+		CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
+	}
 
 	while ( datos_pendientes_transmitir() != 0 ) {
 
-		if (sendFrame( FRM_DATA )) {
+		if ( sendFrame( FRM_DATA )) {
 			process_rsp_data();
 			socket_close();
 			exit_code = true;
@@ -207,7 +229,7 @@ static bool state_online_espera(void)
 bool exit_code = false;
 int8_t timer = 60;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ESPERA in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:ESPERA in\r\n"));
 
 	// No debo esperar
 	if (  MODO_DISCRETO ) {
@@ -226,6 +248,14 @@ int8_t timer = 60;
 			goto quit;
 		}
 
+		// Si recibo una senal de datos ready: Salgo
+		if ( SPX_SIGNAL( SGN_FRAME_READY )) {
+			SPX_CLEAR_SIGNAL( SGN_FRAME_READY );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: SGN_FRAME_READY rcvd.\r\n\0"));
+			exit_code = true;
+			goto quit;
+		}
+
 	 }
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ESPERA out\r\n"));
@@ -235,12 +265,29 @@ quit:
 	return(exit_code);
 }
 //------------------------------------------------------------------------------------
+static bool state_online_app(void)
+{
+bool exit_code = false;
+uint32_t init_ticks = sysTicks;
+
+	xprintf_P( PSTR("COMMS: prendidoONLINE:APP in\r\n"));
+
+	if (sendFrame( FRM_APP )) {
+		process_rsp_app();
+		socket_close();
+		exit_code = true;
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:APP out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+	return(exit_code);
+}
+//------------------------------------------------------------------------------------
 static bool state_online_counter(void)
 {
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:COUNTER in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:COUNTER in\r\n"));
 
 	if (sendFrame( FRM_COUNTER )) {
 		process_rsp_counters();
@@ -257,7 +304,7 @@ static bool state_online_digital(void)
 bool exit_code = true;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:DIGITAL in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:DIGITAL in\r\n"));
 
 	if (sendFrame( FRM_DIGITAL )) {
 		process_rsp_digital();
@@ -274,7 +321,7 @@ static bool state_online_analog(void)
 bool exit_code = true;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ANALOG in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:ANALOG in\r\n"));
 
 	if (sendFrame( FRM_ANALOG )) {
 		process_rsp_analog();
@@ -291,7 +338,7 @@ static bool state_online_base(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:BASE in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:BASE in\r\n"));
 
 	if (sendFrame( FRM_BASE )) {
 		process_rsp_base();
@@ -308,7 +355,7 @@ static bool state_online_global(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:GLOBAL in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:GLOBAL in\r\n"));
 
 	if (sendFrame( FRM_GLOBAL )) {
 		process_rsp_global();
@@ -329,7 +376,7 @@ static bool state_online_auth(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:AUTH in\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoONLINE:AUTH in\r\n"));
 
 	if (sendFrame( FRM_AUTH )) {
 		process_rsp_auth();
@@ -353,6 +400,9 @@ uint32_t init_ticks = sysTicks;
 	f_send_init_frame_analog = false;
 	f_send_init_frame_digital = false;
 	f_send_init_frame_counters = false;
+	f_send_init_frame_app = false;
+
+	reset_datalogger = false;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ENTRY out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 	return(true);
@@ -360,6 +410,7 @@ uint32_t init_ticks = sysTicks;
 //------------------------------------------------------------------------------------
 static bool state_online_exit(void)
 {
+	xprintf_P( PSTR("COMMS: prendidoONLINE:EXIT\r\n"));
 	return(true);
 }
 /* ------------------------------------------------------------------------------------
@@ -492,13 +543,13 @@ int8_t cmd_rsp;
 		if (cmd_rsp	== ATRSP_OK ) {
 
 			if ( gprs_check_response( 0, "CIPOPEN: 0,\"TCP\"")  ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
+				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (open) OK (%d)\r\n\0"), tryes );
 				return ( sock_OPEN );
 			}
 
 			if ( gprs_check_response( 0, "CIPOPEN: 0") ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
+				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (close) OK (%d)\r\n\0"), tryes );
 				return ( sock_CLOSE );
 			}
@@ -509,7 +560,7 @@ int8_t cmd_rsp;
 			// ERROR
 
 			if ( gprs_check_response( 0, "+IP ERROR:") ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
+				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (unknown) OK (%d)\r\n\0"), tryes );
 				return ( sock_UNKNOWN );
 			}
@@ -607,14 +658,14 @@ int8_t cmd_rsp;
 		cmd_rsp = FSM_sendATcmd( 10, "AT+CIPCLOSE=0\r" );
 
 		if (cmd_rsp	== ATRSP_OK ) {
-			xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
+			//xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
 			xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out (close) OK (%d)\r\n\0"), tryes );
 			return ( sock_CLOSE );
 
 		} else 	if (cmd_rsp	== ATRSP_ERROR ) {
 			// Puede haber dado error porque el socket ya esta cerrado
 			if ( gprs_check_response( 0, "+CIPCLOSE:") ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
+				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out (close) OK (%d)\r\n\0"), tryes );
 				return ( sock_CLOSE );
 			}
@@ -629,7 +680,7 @@ int8_t cmd_rsp;
 	}
 
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
-	xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
+	//xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE dcd=%d\r\n"), IO_read_DCD() );
 	xprintf_PD( DF_COMMS, PSTR("COMMS: socketCLOSE out (unknown) ERROR\r\n"));
 
 	return( sock_UNKNOWN );
@@ -837,6 +888,7 @@ uint32_t init_ticks = sysTicks;
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("AN:0x%02X;" ), ainputs_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("DG:0x%02X;" ), dinputs_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CNT:0x%02X;" ), counters_hash() );
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("APP:0x%02X;" ), aplicacion_hash() );
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
@@ -861,6 +913,12 @@ uint32_t init_ticks = sysTicks;
 	case FRM_COUNTER:
 		i = prepare_header(FRM_COUNTER);
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_COUNTER;"));
+		i +=  prepare_tail(i);
+		ret_code = send_txbuffer();
+		break;
+	case FRM_APP:
+		i = prepare_header(FRM_COUNTER);
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_APP;"));
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
@@ -902,7 +960,8 @@ uint32_t init_ticks = sysTicks;
 	// Envio el frame. El buffer es mayor que lo que maneja xprintf por lo que lo envio directo !!!
 	xprintf_PD( DF_COMMS, PSTR("COMMS: send_txbuffer send\r\n"));
 	gprs_flush_RX_buffer();
-	sxprintf_D( fdGPRS, DF_COMMS , gprs_txbuffer.buffer, size );
+	//sxprintf_D( fdGPRS, DF_COMMS , gprs_txbuffer.buffer, size );
+	sxprintf_D( fdGPRS, true , gprs_txbuffer.buffer, size );
 
 	// Espero la confirmacion del modem hasta 2000 msecs. No borro el RX buffer !!!.
 	// Si el socket se cierra recibo +IPCLOSE: 0,1.
@@ -1038,7 +1097,7 @@ char *ptr = NULL;
 				ts++;
 			}
 			*ptr = '\0';
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: IPADDR [%s]\r\n\0"), xCOMMS_stateVars.ip_assigned );
+			xprintf_P( PSTR("COMMS: IPADDR [%s]\r\n\0"), xCOMMS_stateVars.ip_assigned );
 		}
 	}
 }
@@ -1136,6 +1195,7 @@ static bool process_rsp_global(void)
 	f_send_init_frame_analog = false;
 	f_send_init_frame_digital = false;
 	f_send_init_frame_counters = false;
+	f_send_init_frame_app = false;
 
 	if ( gprs_check_response( 0, "BASE") ) {
 		f_send_init_frame_base = true;
@@ -1153,6 +1213,10 @@ static bool process_rsp_global(void)
 		f_send_init_frame_counters = true;
 	}
 
+	if ( gprs_check_response( 0, "APLICACION") ) {
+		f_send_init_frame_app = true;
+	}
+
 	return(true);
 }
 //------------------------------------------------------------------------------------
@@ -1166,7 +1230,6 @@ char *stringp = NULL;
 char *token = NULL;
 char *delim = ",;:=><";
 bool save_flag = false;
-bool reset_datalogger = false;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_base in\r\n"));
 	gprs_print_RX_buffer();
@@ -1199,7 +1262,7 @@ bool reset_datalogger = false;
 	}
 
 	// PWST
-	if ( gprs_check_response( 0, "PWSR") ) {
+	if ( gprs_check_response( 0, "PWST") ) {
 		memset(localStr,'\0',sizeof(localStr));
 		ts = strstr( gprs_rxbuffer.buffer, "PWST");
 		strncpy(localStr, ts, sizeof(localStr));
@@ -1228,12 +1291,6 @@ bool reset_datalogger = false;
 
 	if ( save_flag ) {
 		u_save_params_in_NVMEE();
-	}
-
-	if ( reset_datalogger) {
-		xprintf_PD( DF_COMMS, PSTR("COMMS: Reset...\r\n"));
-		vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
-		CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
 	}
 
 	return(true);
@@ -1378,6 +1435,84 @@ char str_base[8];
 			xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig C%d\r\n\0"), ch);
 			save_flag = true;
 		}
+	}
+
+	if ( save_flag ) {
+		u_save_params_in_NVMEE();
+	}
+
+	return(true);
+
+}
+//------------------------------------------------------------------------------------
+static bool process_rsp_app(void)
+{
+	//	PLOAD=CLASS:APP;OFF;
+	//  PLOAD=CLASS:APP;CONSIGNA;HHMM1:530;HHMM2:2330;
+	//  PLOAD=CLASS:APP;PILOTO;SLOT0:0530,1.20;SLOT1:0630,2.30;SLOT2:0730,3.10;SLOT3:1230,2.50;SLOT4:2330,2.70
+
+char *ts = NULL;
+char localStr[32] = { 0 };
+uint8_t slot;
+char *stringp = NULL;
+char *token = NULL;
+char *tk_hhmm= NULL;
+char *tk_pres= NULL;
+char *delim = ",;:=><";
+bool save_flag = false;
+char id[2];
+char str_base[8];
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_app in\r\n\0"));
+	gprs_print_RX_buffer();
+
+	// APP: OFF
+	if ( gprs_check_response( 0, "APP;OFF") ) {
+		systemVars.aplicacion_conf.aplicacion = APP_OFF;
+		save_flag = true;
+
+	} else if ( gprs_check_response( 0, "CONSIGNA") ) {
+		systemVars.aplicacion_conf.aplicacion = APP_CONSIGNA;
+		save_flag = true;
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "HHMM1");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);		// HHMM1
+		token = strsep(&stringp,delim);		// 530
+		consigna_config("DIURNA", token);
+		ts = strstr( gprs_rxbuffer.buffer, "HHMM2");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);		// HHMM2
+		token = strsep(&stringp,delim);		// 2330
+		consigna_config("NOCTURNA", token);
+		save_flag = true;
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig CONSIGNAS\r\n"));
+
+	} else if ( gprs_check_response( 0, "PILOTO") ) {
+
+		systemVars.aplicacion_conf.aplicacion = APP_PILOTO;
+		save_flag = true;
+		// SLOTS?
+		for (slot=0; slot < MAX_PILOTO_PSLOTS; slot++ ) {
+			memset( &str_base, '\0', sizeof(str_base) );
+			snprintf_P( str_base, sizeof(str_base), PSTR("SLOT%d\0"), slot );
+			if ( gprs_check_response( 0, str_base ) ) {
+				memset(localStr,'\0',sizeof(localStr));
+				ts = strstr( gprs_rxbuffer.buffer, str_base);
+				strncpy(localStr, ts, sizeof(localStr));
+				stringp = localStr;
+				tk_hhmm = strsep(&stringp,delim);		//SLOTx
+				tk_hhmm = strsep(&stringp,delim);		//1230
+				tk_pres = strsep(&stringp,delim);		//1.34
+				id[0] = '0' + slot;
+				id[1] = '\0';
+				piloto_config( id, tk_hhmm, tk_pres );
+			}
+		}
+		reset_datalogger = true;
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig PILOTOS\r\n"));
 	}
 
 	if ( save_flag ) {
