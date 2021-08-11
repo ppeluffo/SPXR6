@@ -200,7 +200,7 @@ uint8_t consigna_a_aplicar = 99;
 
 }
 //------------------------------------------------------------------------------------
-void consigna_app_service(void)
+void consigna_app_service( uint8_t app_wdt )
 {
 	// Las salidas estan configuradas para modo consigna.
 	// c/25s reviso si debo aplicar una o la otra y aplico
@@ -215,6 +215,7 @@ RtcTimeType_t rtcDateTime;
 
 	for (;;) {
 
+		u_wdg_kick( app_wdt, 120);
 		vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
 
 		// Chequeo y aplico.

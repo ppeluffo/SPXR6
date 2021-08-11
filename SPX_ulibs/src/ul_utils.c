@@ -384,11 +384,8 @@ uint16_t ee_rd_addr;
 
 	// Actualizo DEBUG flag
 	counters_clr_debug();
-	ainputs_clr_debug();
 	if ( systemVars.debug == DEBUG_COUNTER ) {
 		counters_set_debug();
-	} else if ( systemVars.debug == DEBUG_DATA ) {
-		ainputs_set_debug();
 	}
 	return(true);
 }
@@ -734,12 +731,7 @@ void u_convert_int_to_time_t ( int int16time, uint8_t *hour, uint8_t *min )
 
 }
 //------------------------------------------------------------------------------------
-void u_wdg_register( uint8_t pos, uint16_t *wdgPtr)
-{
-	wdg_timers[pos] = wdgPtr;
-}
-//------------------------------------------------------------------------------------
-void u_wdg_kick(uint16_t *taskWdg, uint16_t timeout_in_secs )
+void u_wdg_kick (uint8_t wdg_id, uint16_t timeout_in_secs )
 {
 	// Reinicia el watchdog de la tarea taskwdg con el valor timeout.
 	// timeout es uint16_t por lo tanto su maximo valor en segundos es de 65536 ( 18hs )
@@ -747,7 +739,7 @@ void u_wdg_kick(uint16_t *taskWdg, uint16_t timeout_in_secs )
 	while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
 		taskYIELD();
 
-	*taskWdg = timeout_in_secs;
+	watchdog_timers[wdg_id] = timeout_in_secs;
 
 	xSemaphoreGive( sem_WDGS );
 }

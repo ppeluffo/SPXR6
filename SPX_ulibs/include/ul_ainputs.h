@@ -39,15 +39,13 @@ typedef struct {
 
 ainputs_conf_t ainputs_conf;
 
-bool debug_ainputs;
-
 void ainputs_init(void);
 void ainputs_awake(void);
 void ainputs_sleep(void);
 bool ainputs_config_channel( uint8_t channel,char *s_aname,char *s_imin,char *s_imax,char *s_mmin,char *s_mmax,char *s_offset );
 void ainputs_config_defaults(void);
 void ainputs_config_timepwrsensor ( char *s_timepwrsensor );
-bool ainputs_read( float ain[], float *battery );
+bool ainputs_read( float ain[], float *battery, bool debug );
 void ainputs_print(file_descriptor_t fd, float src[] );
 char *ainputs_sprintf( char *sbuffer, float src[] );
 
@@ -55,9 +53,7 @@ void ainputs_battery_print( file_descriptor_t fd, float battery );
 char *ainputs_battery_sprintf( char *sbuffer, float battery );
 
 uint8_t ainputs_hash(void);
-void ainputs_test_channel( uint8_t io_channel);
-void ainputs_set_debug(void);
-void ainputs_clr_debug(void);
+void ainputs_test_channel( uint8_t io_channel, bool debug);
 void ainputs_print_channel_status(void);
 uint8_t ainputs_get_timePwrSensor(void);
 

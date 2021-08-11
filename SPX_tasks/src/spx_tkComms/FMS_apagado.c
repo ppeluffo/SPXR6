@@ -22,20 +22,20 @@
 
 #include "tkComms.h"
 
-typedef enum { APAGADO_ENTRY, PRENDERHW, PRENDERSW, PBDONE, CPAS, APAGADO_EXIT } t_states_apagado;
+typedef enum { APAGADO_ENTRY, PBDONE, CPAS, APAGADO_EXIT } t_states_apagado;
 
 static int8_t state;
 static int32_t awaittime_for_dial;
-static int8_t prender_hw_tryes;
-static int8_t prender_sw_tryes;
 
-static int8_t state_apagado(void);
-static int8_t state_prenderHW(void);
-static int8_t state_prenderSW(void);
-static int8_t state_pbdone(void);
-static int8_t state_cpas(void);
-static int8_t state_exit(void);
+static void state_apagado(void);
+static bool state_pbdone(void);
+static bool state_cpas(void);
+static void state_exit(void);
 
+void pv_prender_modem(void);
+void pv_apagar_modem(void);
+
+#define DEEP_SLEEP ( ( xCOMMS_stateVars.modem_starts == -1) || ( xCOMMS_stateVars.modem_starts == MAX_MODEM_STARTS ) )
 //------------------------------------------------------------------------------------
 int8_t tkXComms_APAGADO(void)
 {
@@ -50,28 +50,29 @@ int8_t tkXComms_APAGADO(void)
 		vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
 		switch ( state ) {
 		case APAGADO_ENTRY:
-			state = state_apagado();
-			break;
-
-		case PRENDERHW:
-			state = state_prenderHW();
-			break;
-
-		case PRENDERSW:
-			state = state_prenderSW();
+			state_apagado();
+			state = PBDONE;
 			break;
 
 		case PBDONE:
 			// Espero prendido
-			state = state_pbdone();
+			if ( state_pbdone() ) {
+				state = CPAS;
+			} else {
+				state = APAGADO_ENTRY;
+			}
 			break;
 
 		case CPAS:
-			state = state_cpas();
+			if ( state_cpas() ) {
+				state = APAGADO_EXIT;
+			} else {
+				state = APAGADO_ENTRY;
+			}
 			break;
 
 		case APAGADO_EXIT:
-			state = state_exit();
+			state_exit();
 			// Cambio de estado.
 			// Del modo OFFLINE siempre salgo a STARTING.
 			return(PRENDIDO_OFFLINE);
@@ -88,13 +89,12 @@ int8_t tkXComms_APAGADO(void)
 
 }
 //------------------------------------------------------------------------------------
-static int8_t state_exit(void)
+static void state_exit(void)
 {
 	xprintf_P( PSTR("COMMS: apagado:EXIT\r\n\0"));
-	return(-1);
 }
 //------------------------------------------------------------------------------------
-static int8_t state_cpas(void)
+static bool state_cpas(void)
 {
 	// Aqui el modem ya se inicializo ( PBDONE ) y respondio un AT.
 	// Ademas yo esperamos 10s para asegurarnos que esta inicializado.
@@ -108,20 +108,12 @@ uint32_t init_ticks = sysTicks;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS in:\r\n\0"));
 
-	// Primero probamos con un AT
-	cmd_rsp = FSM_sendATcmd( 2, "AT\r" );
-	if ( cmd_rsp != ATRSP_OK ) {
-		// Si no responde no puedo seguir.
-		gprs_sw_pwr();
-		return(PRENDERSW);
-	}
-
 	// Envio el comando hasta 3 veces esperando 10,20,30 s c/vez.
 	// Si no responde mando un AT.
 	for ( tryes = 0; tryes <= 3; tryes++ ) {
 
 		// Espera progresiva de a 15s.
-		timeout = 15 * ( 1 + tryes );
+
 		init_ticks = sysTicks;
 		cmd_rsp = FSM_sendATcmd( timeout , "AT+CPAS\r" );
 
@@ -129,47 +121,54 @@ uint32_t init_ticks = sysTicks;
 			// RSP OK: Veo si es lo que espero
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "+CPAS: 0" ) ) {
 				xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS out: OK (%d) (%.3f)\r\n"), tryes, ELAPSED_TIME_SECS(init_ticks));
-				return ( APAGADO_EXIT );
+				return (true );
 			} else {
-				gprs_sw_pwr();
+				// Respondio al comando pero no es la respuesta esperada.
+				// Espero para reintentar el comando
 				xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS out: FAIL (%d) (%.3f)\r\n"), tryes, ELAPSED_TIME_SECS(init_ticks));
-				return(PRENDERSW);
 			}
+
+		} else if ( cmd_rsp == ATRSP_ERROR ) {
+			xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS ERROR. (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+			return( false );
 		}
 
+		// OK o TIMEOUT: Espero y repito el comando
 		FSM_sendATcmd( 2, "AT\r" );
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:CPAS retry (%d) (%.3f)\r\n"), tryes, ELAPSED_TIME_SECS(init_ticks));
+		timeout = 10 * ( 1 + tryes );	// secs
+		vTaskDelay( ( TickType_t)( (timeout * 1000) / portTICK_RATE_MS ) );
+
 	}
 
 	// No puedo en 3 veces responder la secuencia CPAS: Salgo a apagar y prender.
-	// Hago un switch para apagarlo ??
-	gprs_sw_pwr();
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:CPAS ERROR. (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-	return( PRENDERSW);
+	return( false );
 
 }
 //------------------------------------------------------------------------------------
-static int8_t state_pbdone(void)
+static bool state_pbdone(void)
 {
 	// Inicializa las comunicaciones.
-	// Espera hasta 15 s una respuesta de inicializacion del modem.
+	// Espera hasta 20 s una respuesta de inicializacion del modem.
 	// Si responde PBDONE, espero y doy un AT.
 
 uint16_t timeout = 0;
-int8_t exit_code = -1;
+int8_t retS = false;
 uint32_t init_ticks = sysTicks;
 
-	timeout = 15 * ( prender_sw_tryes ) ;	// secs
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE in (%d s.)\r\n"), timeout );
 
 	// PBDONE.
-	if ( gprs_check_response ( timeout * SEC_CHECK_RSP, "PB DONE" ) ) {
+	if ( gprs_check_response ( 20 * SEC_CHECK_RSP, "PB DONE" ) ) {
 		// Respondio bien lo esperado
 		gprs_print_RX_buffer();
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: OK (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 
 		// Espero 10s que termine de inicializarze
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:awaiting...\r\n"));
+		timeout = 5 * ( 1 + xCOMMS_stateVars.modem_starts ) ;	// secs
 		vTaskDelay( ( TickType_t)( (timeout * 1000) / portTICK_RATE_MS ) );
 
 		// No quiero ECHO en los comandos
@@ -185,107 +184,35 @@ uint32_t init_ticks = sysTicks;
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATC ERROR\r\n"));
 		}
 
-		exit_code = CPAS;
+		retS = true;
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: ATs (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 
 	} else {
-		// Dio timeout: apago sw y reintento.
+		// Dio timeout: No envio el PBDONE
 		gprs_print_RX_buffer();
 		xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PBDONE out: TIMEOUT. (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 		// Hago un switch para apagarlo ??
 		gprs_sw_pwr();
-		exit_code = PRENDERSW;
+		retS = false;
 	}
 
-	return(exit_code);
+	return(retS);
 
 }
 //------------------------------------------------------------------------------------
-static int8_t state_prenderSW(void)
-{
-	//  Genero un pulso en el pin on/off del modem para prenderlo.
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PRENDERSW in.\r\n\0"));
-
-	prender_sw_tryes++;
-	if ( prender_sw_tryes > MAXSWTRYESPRENDER ) {
-		// Apago el modem
-		gprs_apagar();
-		xCOMMS_stateVars.gprs_prendido = false;
-		xCOMMS_stateVars.gprs_inicializado = false;
-		return( PRENDERHW );
-
-	} else {
-		//
-		vTaskDelay( ( TickType_t)( 2000 / portTICK_RATE_MS ) );
-		gprs_sw_pwr();
-		gprs_flush_RX_buffer();
-		return ( PBDONE );
-	}
-
-	return(-1);
-}
-//------------------------------------------------------------------------------------
-static int8_t state_prenderHW(void)
-{
-
-	//  Activa la alimentacion del modem y genera una espera basada en las veces de intento.
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PRENDERHW in.\r\n\0"));
-
-	prender_hw_tryes++;
-	if ( prender_hw_tryes > MAXHWTRYESPRENDER ) {
-		// Maximo nro. de reintentos de prender sin resultado
-		// Apago el modem
-		gprs_apagar();
-		xCOMMS_stateVars.gprs_prendido = false;
-		xCOMMS_stateVars.gprs_inicializado = false;
-		return( APAGADO_ENTRY );
-
-	} else {
-
-		// Para salir del tickless
-		xCOMMS_stateVars.gprs_prendido = true;
-		// Prendo la fuente del modem (HW)
-		gprs_hw_pwr_on(prender_hw_tryes);
-		prender_sw_tryes = 0;
-		return ( PRENDERSW );
-	}
-
-	return(-1);
-}
-//------------------------------------------------------------------------------------
-static int8_t state_apagado(void)
+static void state_apagado(void)
 {
 	// Apago el modem y quedo esperando que pase el tiempo.
 
-static bool starting_flag = true;
-
 	xprintf_P( PSTR("COMMS: apagado: in.\r\n\0"));
 
-	// Si llegue al maximo de errores de comunicaciones reseteo al micro
-	if ( xCOMMS_stateVars.errores_comms >= MAX_ERRORES_COMMS ) {
-		xprintf_PD( DF_COMMS, PSTR("COMMS: RESET x MAX_ERRORES_COMMS\r\n\0"));
-		vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
-		CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
-	}
-
-	// Apago el modem
-	gprs_apagar();
-	xCOMMS_stateVars.gprs_prendido = false;
-	xCOMMS_stateVars.gprs_inicializado = false;
+	pv_apagar_modem();
 
 	// Calculo cuanto tiempo voy a esperar apagado (Al menos siempre espero 10s )
-	if ( comms_conf.timerDial < 10 ) {
-		awaittime_for_dial = 10;
-	} else {
+	if ( DEEP_SLEEP ) {
 		awaittime_for_dial = comms_conf.timerDial;
-	}
-
-	if ( starting_flag ) {
-		// Cuando arranco ( la primera vez) solo espero 10s y disco por primera vez
+	} else {
 		awaittime_for_dial = 10;
-		starting_flag = false;	// Ya no vuelvo a esperar 10s. por arranque.
 	}
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: state apagado: await %lu s\r\n\0"), awaittime_for_dial );
@@ -303,24 +230,52 @@ static bool starting_flag = true;
 			break;
 		}
 
-		// Proceso las señales:
-//		if ( xCOMMS_SGN_REDIAL()) {
-//			break;
-//		}
 	}
 
-	// Siempre salgo a prender el modem
-	prender_hw_tryes = 0;
-
-	// Aviso a la tarea de RX que se despierte ( para leer las respuestas del AT ) !!!
-	while ( xTaskNotify( xHandle_tkCommsRX, SGN_WAKEUP , eSetBits ) != pdPASS ) {
-		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+	// Incremento las veces que intento prender el modem.
+	if ( ++xCOMMS_stateVars.modem_starts > MAX_MODEM_STARTS ) {
+		// Estaba en DEEP_SLEEP + RESET
+		xprintf_PD( DF_COMMS, PSTR("COMMS: RESET x MAX_ERRORES_PRENDER_MODEM...\r\n"));
+		vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
+		CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
 	}
+
+	pv_prender_modem();
 
 	xprintf_P(PSTR("FECHA: "));
 	RTC_read_time();
 
-	return(PRENDERHW);
+}
+//------------------------------------------------------------------------------------
+void pv_prender_modem(void)
+{
+	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PRENDER_MODEM in.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: modem_starts = %d\r\n"), xCOMMS_stateVars.modem_starts );
+
+	// Arranco la task de RX.
+	xCOMMS_stateVars.gprs_prendido = true;
+	// Aviso a la tarea de RX que se despierte ( para leer las respuestas del AT ) !!!
+	while ( xTaskNotify( xHandle_tkCommsRX, SGN_WAKEUP , eSetBits ) != pdPASS ) {
+		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+	}
+	// Prendo la fuente del modem (HW)
+	gprs_hw_pwr_on(1);
+	//
+	vTaskDelay( ( TickType_t)( 2000 / portTICK_RATE_MS ) );
+	//
+	// SW switch para arrancar.
+	gprs_sw_pwr();
+	gprs_flush_RX_buffer();
+
+}
+//------------------------------------------------------------------------------------
+void pv_apagar_modem(void)
+{
+	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:APAGAR_MODEM in.\r\n\0"));
+
+	gprs_apagar();
+	xCOMMS_stateVars.gprs_prendido = false;
+	xCOMMS_stateVars.gprs_inicializado = false;
 
 }
 //------------------------------------------------------------------------------------

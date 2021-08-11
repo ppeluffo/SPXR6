@@ -26,7 +26,7 @@ static uint16_t pv_ainputs_read_battery_raw(void);
 static uint16_t pv_ainputs_read_channel_raw(uint8_t channel_id );
 static void pv_ainputs_apagar_12Vsensors(void);
 static void pv_ainputs_prender_12V_sensors(void);
-static void pv_ainputs_read_channel ( uint8_t io_channel, float *mag, uint16_t *raw );
+static void pv_ainputs_read_channel ( uint8_t io_channel, float *mag, uint16_t *raw, bool debug );
 static void pv_ainputs_read_battery(float *battery);
 static void pv_ainputs_prender_sensores(void);
 static void pv_ainputs_apagar_sensores(void);
@@ -150,7 +150,7 @@ uint8_t channel = 0;
 
 }
 //------------------------------------------------------------------------------------
-bool ainputs_read( float ain[], float *battery )
+bool ainputs_read( float ain[], float *battery, bool debug )
 {
 
 bool retS = false;
@@ -163,11 +163,11 @@ bool retS = false;
 	// Los canales de IO no son los mismos que los canales del INA !! ya que la bateria
 	// esta en el canal 1 del ina2
 	// Lectura general.
-	pv_ainputs_read_channel(0, &ain[0], NULL );
-	pv_ainputs_read_channel(1, &ain[1], NULL );
-	pv_ainputs_read_channel(2, &ain[2], NULL );
-	pv_ainputs_read_channel(3, &ain[3], NULL );
-	pv_ainputs_read_channel(4, &ain[4], NULL );
+	pv_ainputs_read_channel(0, &ain[0], NULL, debug );
+	pv_ainputs_read_channel(1, &ain[1], NULL, debug );
+	pv_ainputs_read_channel(2, &ain[2], NULL, debug );
+	pv_ainputs_read_channel(3, &ain[3], NULL, debug );
+	pv_ainputs_read_channel(4, &ain[4], NULL, debug );
 	pv_ainputs_read_battery(battery);
 
 	pv_ainputs_apagar_sensores();
@@ -298,7 +298,7 @@ exit_error:
 
 }
 //------------------------------------------------------------------------------------
-void ainputs_test_channel( uint8_t io_channel )
+void ainputs_test_channel( uint8_t io_channel, bool debug )
 {
 
 float mag;
@@ -308,9 +308,10 @@ uint16_t raw;
 		taskYIELD();
 
 	pv_ainputs_prender_sensores();
-	pv_ainputs_read_channel ( io_channel, &mag, &raw );
+	// Fake read
+	pv_ainputs_read_channel ( io_channel, &mag, &raw, debug  );
 	vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
-	pv_ainputs_read_channel ( io_channel, &mag, &raw );
+	pv_ainputs_read_channel ( io_channel, &mag, &raw, debug );
 	pv_ainputs_apagar_sensores();
 
 	xSemaphoreGive( sem_AINPUTS );
@@ -324,16 +325,6 @@ uint16_t raw;
 
 	}
 
-}
-//------------------------------------------------------------------------------------
-void ainputs_set_debug(void)
-{
-	debug_ainputs = true;
-}
-//------------------------------------------------------------------------------------
-void ainputs_clr_debug(void)
-{
-	debug_ainputs = false;
 }
 //------------------------------------------------------------------------------------
 void ainputs_print_channel_status(void)
@@ -467,7 +458,7 @@ int8_t xBytes = 0;
 	return( an_raw_val );
 }
 //------------------------------------------------------------------------------------
-static void pv_ainputs_read_channel ( uint8_t io_channel, float *mag, uint16_t *raw )
+static void pv_ainputs_read_channel ( uint8_t io_channel, float *mag, uint16_t *raw, bool debug )
 {
 	/*
 	Lee un canal analogico y devuelve el valor convertido a la magnitud configurada.
@@ -494,16 +485,16 @@ float I = 0.0;
 float M = 0.0;
 float P = 0.0;
 uint16_t D = 0;
-float Icorr = 0.0;	// Corriente corregida por span y offset
 
 	// Leo el valor del INA.(raw)
 	an_raw_val = pv_ainputs_read_channel_raw( io_channel );
 
 	// Convierto el raw_value a corriente
 	I = (float) an_raw_val / INA_FACTOR;
-	if ( debug_ainputs ) {
-		xprintf_P( PSTR("DEBUG ANALOG READ CHANNEL: A%d (RAW=%d), I=%.03f\r\n\0"), io_channel, an_raw_val, I );
-	}
+
+	xprintf_PD( debug, PSTR("DEBUG ANALOG READ CHANNEL: A%d (RAW=%d), I=%.03f\r\n\0"), io_channel, an_raw_val, I );
+	xprintf_PD( debug, PSTR("                         : Imin=%d, Imax=%d\r\n\0"), ainputs_conf.imin[io_channel], ainputs_conf.imax[io_channel] );
+	xprintf_PD( debug, PSTR("                         : mmin=%.03f, mmax=%.03f\r\n\0"), ainputs_conf.mmin[io_channel], ainputs_conf.mmax[io_channel] );
 
 	// Calculo la magnitud
 	P = 0;
@@ -513,7 +504,7 @@ float Icorr = 0.0;	// Corriente corregida por span y offset
 		// Pendiente
 		P = (float) ( ainputs_conf.mmax[io_channel]  -  ainputs_conf.mmin[io_channel] ) / D;
 		// Magnitud
-		M = (float) ( ainputs_conf.mmin[io_channel] + ( Icorr - ainputs_conf.imin[io_channel] ) * P);
+		M = (float) ( ainputs_conf.mmin[io_channel] + ( I - ainputs_conf.imin[io_channel] ) * P);
 
 		// Al calcular la magnitud, al final le sumo el offset.
 		an_mag_val = M + ainputs_conf.offset[io_channel];
@@ -525,6 +516,9 @@ float Icorr = 0.0;	// Corriente corregida por span y offset
 		// Error: denominador = 0.
 		an_mag_val = -999.0;
 	}
+
+	xprintf_PD( debug, PSTR("                         : D=%d, P=%.03f, M=%.03f\r\n\0"), D, P, M );
+	xprintf_PD( debug, PSTR("                         : an_raw_val=%d, an_mag_val=%.03f\r\n\0"), an_raw_val, an_mag_val );
 
 	*raw = an_raw_val;
 	*mag = an_mag_val;

@@ -40,12 +40,17 @@ typedef struct {
 	char gprs_bands[17];
 	char gprs_ccid[CCIDBUFFSIZE];
 	char gprs_imei[IMEIBUFFSIZE];
+	int8_t modem_starts;
 
 } t_xCOMMS_stateVars;
 
 t_xCOMMS_stateVars xCOMMS_stateVars;
 
-#define MAX_ERRORES_COMMS 5
+#define MAX_MODEM_STARTS	5
+
+#define MAX_ERRORES_COMMS 	5
+
+#define RESET_DEEP_SLEEP() (  xCOMMS_stateVars.modem_starts = -1 )
 
 comms_conf_t comms_conf;
 

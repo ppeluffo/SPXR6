@@ -21,7 +21,6 @@
 
 st_dataRecord_t dataRecd;
 float battery;
-uint16_t data_wdg;
 
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
@@ -42,8 +41,6 @@ uint32_t waiting_ticks = 0;
 	dinputs_init();
 	counters_init();
 
-	u_wdg_register( WDG_DATA, &data_wdg );
-
 	xprintf_P( PSTR("starting tkData..\r\n\0"));
 
 	// Initialise the xLastWakeTime variable with the current time.
@@ -55,7 +52,7 @@ uint32_t waiting_ticks = 0;
   	// loop
   	for( ;; ) {
 
-  		u_wdg_kick(&data_wdg, ( systemVars.timerPoll + 60 ));
+  		u_wdg_kick( WDG_DATA, ( systemVars.timerPoll + 60 ));
 
   		// Espero. Da el tiempo necesario para entrar en tickless.
   		vTaskDelayUntil( &xLastWakeTime, waiting_ticks );
@@ -98,7 +95,7 @@ int8_t xBytes = 0;
 	}
 
 	// Poleo.
-	ainputs_read( dst->df.io.ainputs, &dst->df.io.battery );
+	ainputs_read( dst->df.io.ainputs, &dst->df.io.battery, DF_DATA );
 	dinputs_read( dst->df.io.dinputs );
 	counters_read( dst->df.io.counters );
 	counters_clear();

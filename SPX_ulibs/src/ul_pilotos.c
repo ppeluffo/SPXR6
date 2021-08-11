@@ -53,7 +53,7 @@ bool piloto_init_service(void)
 
 }
 //------------------------------------------------------------------------------------
-void piloto_app_service(void)
+void piloto_app_service( uint8_t app_wdt )
 {
 
 uint8_t slot_actual = -1;
@@ -66,7 +66,7 @@ uint8_t slot;
 
 	for( ;; )
 	{
-
+		u_wdg_kick( app_wdt, 240 );
 		vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
 
 		// Callback para arrancar el test
@@ -271,8 +271,7 @@ float presion[ANALOG_CHANNELS];
 	PLTCB.pA = 0;
 	PLTCB.pB = 0;
 	for ( i = 0; i < samples; i++) {
-		u_wdg_kick(&piloto_wdg, 120);
-		ainputs_read( &presion[0], NULL );
+		ainputs_read( &presion[0], NULL, false );
 		xprintf_P(PSTR("PILOTO pA:[%d]->%0.3f, pB:[%d]->%0.3f\r\n"), i, presion[PLTCB.pA_channel], i, presion[PLTCB.pB_channel] );
 		// La presion la expreso en gramos !!!
 		PLTCB.pA += presion[PLTCB.pA_channel];
@@ -328,7 +327,7 @@ float delta_pres = 0.0;
 	}
 
 	// Paso 4: Intervalo de tiempo entre pulsos en ms.
-	PLTCB.pwidth = 10;
+	PLTCB.pwidth = 20;
 
 	/* Paso 5: Calculo los pulsos a aplicar.
 	 * El motor es de 200 pasos /rev
@@ -531,7 +530,6 @@ uint8_t loops;
 			// Espero que termine de mover el motor. EL callback pone motor_running en false. !!
 			while ( PLTCB.motor_running ) {
 				vTaskDelay( ( TickType_t) (1000 / portTICK_RATE_MS ) );
-				u_wdg_kick(&piloto_wdg, 120);
 			}
 
 		} else {

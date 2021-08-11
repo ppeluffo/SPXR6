@@ -73,7 +73,7 @@
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "4.0.0a"
-#define SPX_FW_DATE "@ 20210810"
+#define SPX_FW_DATE "@ 20210811"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -135,6 +135,8 @@ struct {
 } system_signals;
 
 typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP } t_debug;
+
+#define DF_DATA ( systemVars.debug == DEBUG_DATA )
 
 TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkApp, xHandle_tkComms, xHandle_tkCommsRX ;
 
@@ -229,7 +231,6 @@ void XPRINT_ELAPSED( uint32_t ticks );
 float ELAPSED_TIME_SECS( uint32_t ticks );
 
 // TKCTL
-void ctl_watchdog_kick(uint8_t taskWdg, uint16_t timeout_in_secs );
 uint16_t ctl_readTimeToNextPoll(void);
 void ctl_reload_timerPoll( uint16_t new_time );
 bool ctl_terminal_connected(void);
@@ -253,14 +254,12 @@ uint8_t wdg_resetCause;
 #define WDG_CMD			1
 #define WDG_DATA		2
 #define WDG_APP			3
-#define WDG_COMMS		4
-#define WDG_COMMSRX		5
+#define WDG_COMMSRX		4
+#define WDG_COMMS		5
 
 #define NRO_WDGS		5
 
-uint16_t *wdg_timers[NRO_WDGS];
 uint16_t watchdog_timers[NRO_WDGS];
-
 
 #define WDG_TO30		30
 #define WDG_TO60		60

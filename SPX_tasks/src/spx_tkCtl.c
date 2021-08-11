@@ -28,9 +28,6 @@ static bool f_terminal_connected = false;
 // Timpo que espera la tkControl entre round-a-robin
 #define TKCTL_DELAY_S	5
 
-// La tarea pasa por el mismo lugar c/5s.
-uint16_t ctl_wdg;
-
 //------------------------------------------------------------------------------------
 void tkCtl(void * pvParameters)
 {
@@ -40,7 +37,6 @@ void tkCtl(void * pvParameters)
 	vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
 
 	pv_ctl_init_system();
-	u_wdg_register( WDG_CTL, &ctl_wdg );
 
 	xprintf_P( PSTR("\r\nstarting tkControl..\r\n\0"));
 
@@ -48,7 +44,7 @@ void tkCtl(void * pvParameters)
 	{
 
 		// Paso c/5s plt 30s es suficiente.
-		u_wdg_kick(&ctl_wdg, 30);
+		u_wdg_kick(WDG_CTL, 30);
 
 		// Cada 5s controlo el watchdog y los timers.
 		pv_ctl_check_wdg();
@@ -188,7 +184,7 @@ uint8_t wdg = 0;
 
 		// Cada ciclo reseteo el wdg para que no expire.
 		WDT_Reset();
-		return;
+		//return;
 
 		// Si algun WDG no se borro, me reseteo
 		while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
@@ -203,6 +199,8 @@ uint8_t wdg = 0;
 			}
 
 			if ( watchdog_timers[wdg] == 0 ) {
+				xprintf_P(PSTR("CTL RESET: task %d failed. !!\r\n"), wdg );
+
 				// Me reseteo por watchdog
 				while(1)
 				  ;
@@ -267,19 +265,6 @@ static int8_t time_to_fire_counters = 6;
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES PUBLICAS
-//------------------------------------------------------------------------------------
-void ctl_watchdog_kick(uint8_t taskWdg, uint16_t timeout_in_secs )
-{
-	// Reinicia el watchdog de la tarea taskwdg con el valor timeout.
-	// timeout es uint16_t por lo tanto su maximo valor en segundos es de 65536 ( 18hs )
-
-	while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
-		taskYIELD();
-
-	watchdog_timers[taskWdg] = timeout_in_secs;
-
-	xSemaphoreGive( sem_WDGS );
-}
 //------------------------------------------------------------------------------------
 bool ctl_terminal_connected(void)
 {

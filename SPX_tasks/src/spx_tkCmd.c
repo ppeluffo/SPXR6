@@ -45,8 +45,6 @@ static void cmdKillFunction(void);
 
 RtcTimeType_t rtc;
 
-uint16_t cmd_wdg;
-
 //------------------------------------------------------------------------------------
 void tkCmd(void * pvParameters)
 {
@@ -78,8 +76,6 @@ uint8_t ticks = 0;
 	ticks = 5;
 	frtos_ioctl( fdTERM,ioctl_SET_TIMEOUT, &ticks );
 
-	u_wdg_register( WDG_CMD, &cmd_wdg );
-
 	xprintf_P( PSTR("starting tkCmd..\r\n") );
 
 	//FRTOS_CMD_regtest();
@@ -88,13 +84,13 @@ uint8_t ticks = 0;
 	{
 
 		// Con la terminal desconectada paso c/5s plt 30s es suficiente.
-		u_wdg_kick(&cmd_wdg, 120);
+		u_wdg_kick(WDG_CMD, 120);
 
 	//	PORTF.OUTTGL = 0x02;	// Toggle F1 Led Comms
 
 		// Si no tengo terminal conectada, duermo 25s lo que me permite entrar en tickless.
 		while ( ! ctl_terminal_connected() ) {
-			u_wdg_kick(&cmd_wdg, 120);
+			u_wdg_kick(WDG_CMD, 120);
 			vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
 		}
 
@@ -209,13 +205,13 @@ static void cmdResetFunction(void)
 	if ( strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))  == 0) {
 
 		// Nadie debe usar la memoria !!!
-		ctl_watchdog_kick(WDG_CMD, 0x8000 );
+		u_wdg_kick(WDG_CMD, 0x8000 );
 
 		vTaskSuspend( xHandle_tkData );
-		ctl_watchdog_kick(WDG_DATA, 0x8000 );
+		u_wdg_kick(WDG_DATA, 0x8000 );
 
 		vTaskSuspend( xHandle_tkComms );
-		ctl_watchdog_kick(WDG_COMMS, 0x8000 );
+		u_wdg_kick(WDG_COMMS, 0x8000 );
 
 		if (strcmp_P( strupr(argv[2]), PSTR("SOFT\0")) == 0) {
 			FF_format(false );
@@ -478,7 +474,7 @@ uint8_t cks;
 	// ACH {n}
 	// read ach n
 	if (!strcmp_P( strupr(argv[1]), PSTR("ACH\0")) ) {
-		ainputs_test_channel( atoi(argv[2]));
+		ainputs_test_channel( atoi(argv[2]), DF_DATA );
 		return;
 	}
 
@@ -492,7 +488,7 @@ uint8_t cks;
 	// battery
 	// read battery
 	if (!strcmp_P( strupr(argv[1]), PSTR("BATTERY\0")) ) {
-		ainputs_test_channel(99);
+		ainputs_test_channel(99, DF_DATA );
 		return;
 	}
 
@@ -656,7 +652,6 @@ bool retS = false;
 	// config debug
 	if (!strcmp_P( strupr(argv[1]), PSTR("DEBUG\0"))) {
 		counters_clr_debug();
-		ainputs_clr_debug();
 		if (!strcmp_P( strupr(argv[2]), PSTR("NONE\0"))) {
 			systemVars.debug = DEBUG_NONE;
 			retS = true;
@@ -666,7 +661,6 @@ bool retS = false;
 			retS = true;
 		} else if (!strcmp_P( strupr(argv[2]), PSTR("DATA\0"))) {
 			systemVars.debug = DEBUG_DATA;
-			ainputs_set_debug();
 			retS = true;
 		} else if (!strcmp_P( strupr(argv[2]), PSTR("COMMS\0"))) {
 			systemVars.debug = DEBUG_COMMS;
@@ -830,7 +824,7 @@ static void cmdKillFunction(void)
 	// KILL DATA
 	if (!strcmp_P( strupr(argv[1]), PSTR("DATA\0"))) {
 		vTaskSuspend( xHandle_tkData );
-		ctl_watchdog_kick(WDG_DATA, 0x8000 );
+		u_wdg_kick(WDG_DATA, 0x8000 );
 		pv_snprintfP_OK();
 		return;
 	}
@@ -838,7 +832,7 @@ static void cmdKillFunction(void)
 	// KILL APP
 	if (!strcmp_P( strupr(argv[1]), PSTR("APP\0"))) {
 		vTaskSuspend( xHandle_tkApp );
-		ctl_watchdog_kick(WDG_APP, 0x8000 );
+		u_wdg_kick(WDG_APP, 0x8000 );
 		pv_snprintfP_OK();
 		return;
 	}
@@ -846,7 +840,7 @@ static void cmdKillFunction(void)
 	// KILL COMMSTX
 	if (!strcmp_P( strupr(argv[1]), PSTR("COMMSTX\0"))) {
 		vTaskSuspend( xHandle_tkComms );
-		ctl_watchdog_kick(WDG_COMMS, 0x8000 );
+		u_wdg_kick(WDG_COMMS, 0x8000 );
 		// Dejo la flag de modem prendido para poder leer comandos
 		xCOMMS_stateVars.gprs_prendido = true;
 		pv_snprintfP_OK();
@@ -937,7 +931,7 @@ st_dataRecord_t dr;
 		}
 
 		if ( ( rcds++ % 32) == 0 ) {
-			u_wdg_kick(&cmd_wdg, 120);
+			u_wdg_kick(WDG_CMD, 120);
 		}
 
 		// imprimo

@@ -23,6 +23,7 @@ int8_t state = APAGADO;
 	xCOMMS_stateVars.gprs_prendido = false;
 	xCOMMS_stateVars.gprs_inicializado = false;
 	xCOMMS_stateVars.errores_comms = 0;
+	xCOMMS_stateVars.modem_starts = 0;
 
 	xprintf_P( PSTR("starting tkComms..\r\n\0"));
 
@@ -67,6 +68,8 @@ uint32_t ulNotifiedValue;
 
 
 	for( ;; )	{
+
+		u_wdg_kick(WDG_COMMSRX, 60);
 
 		if ( xCOMMS_stateVars.gprs_prendido == true ) {
 			// Leo el UART de GPRS

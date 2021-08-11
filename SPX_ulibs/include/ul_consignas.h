@@ -32,7 +32,7 @@ void consigna_config_defaults(void);
 void consigna_set_diurna(void);
 void consigna_set_nocturna(void);
 bool consigna_init_service(void);
-void consigna_app_service(void);
+void consigna_app_service( uint8_t app_wdt );
 uint8_t consigna_hash(void);
 
 typedef struct {

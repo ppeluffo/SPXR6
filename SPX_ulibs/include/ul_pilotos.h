@@ -80,7 +80,7 @@ bool piloto_config( char *s_slot, char *s_hhmm, char *s_presion );
 void piloto_config_status(void);
 void piloto_config_defaults(void);
 bool piloto_init_service(void);
-void piloto_app_service(void);
+void piloto_app_service( uint8_t app_wdt );
 uint8_t piloto_hash(void);
 
 

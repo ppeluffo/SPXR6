@@ -231,6 +231,8 @@ int8_t timer = 60;
 
 	xprintf_P( PSTR("COMMS: prendidoONLINE:ESPERA in\r\n"));
 
+	RESET_DEEP_SLEEP();
+
 	// No debo esperar
 	if (  MODO_DISCRETO ) {
 		goto quit;
