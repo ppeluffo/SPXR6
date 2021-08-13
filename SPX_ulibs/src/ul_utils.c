@@ -251,10 +251,11 @@ void u_load_defaults( char *opt )
 	// pwrsave se configura en gprs_utils
 	// timepwrsensor se configura en ul_ainputs
 
+	comms_config_defaults(opt);
+
 	counters_config_defaults();
 	dinputs_config_defaults();
 	ainputs_config_defaults();
-	comms_config_defaults();
 
 	consigna_config_defaults();
 	piloto_config_defaults();

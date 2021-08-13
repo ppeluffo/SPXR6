@@ -47,7 +47,9 @@ int8_t tkXComms_APAGADO(void)
 	// loop
 	for( ;; )
 	{
+		u_wdg_kick(WDG_COMMS, 300);
 		vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
+
 		switch ( state ) {
 		case APAGADO_ENTRY:
 			state_apagado();
@@ -167,13 +169,13 @@ uint32_t init_ticks = sysTicks;
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:PBDONE out: OK (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 
 		// Espero 10s que termine de inicializarze
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:awaiting...\r\n"));
 		timeout = 5 * ( 1 + xCOMMS_stateVars.modem_starts ) ;	// secs
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:awaiting %d s...\r\n"), timeout );
 		vTaskDelay( ( TickType_t)( (timeout * 1000) / portTICK_RATE_MS ) );
 
-		// No quiero ECHO en los comandos
 		FSM_sendATcmd( 2, "AT\r" );
 
+		// No quiero ECHO en los comandos
 		// Sacamos el ECHO porque sino c/frame que mandamos lo repite y llena el rxbuffer al pedo.
 		if ( FSM_sendATcmd( 3, "ATE0\r" ) != ATRSP_OK ) {
 			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATE0 ERROR\r\n"));
@@ -181,7 +183,7 @@ uint32_t init_ticks = sysTicks;
 
 		// Leemos el voltaje de alimentacion
 		if ( FSM_sendATcmd( 5, "AT+CBC\r" ) != ATRSP_OK ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATC ERROR\r\n"));
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:AT+CBC ERROR\r\n"));
 		}
 
 		retS = true;
@@ -206,9 +208,12 @@ static void state_apagado(void)
 
 	xprintf_P( PSTR("COMMS: apagado: in.\r\n\0"));
 
+// ENTRY
 	pv_apagar_modem();
 
 	// Calculo cuanto tiempo voy a esperar apagado (Al menos siempre espero 10s )
+	// DEEP SLEEP es cuando termine de transmitir bien o llegue al maximo de reintentos
+	// Si no pude, duermo 10s y vuelvo a reintentar.
 	if ( DEEP_SLEEP ) {
 		awaittime_for_dial = comms_conf.timerDial;
 	} else {
@@ -217,8 +222,12 @@ static void state_apagado(void)
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: state apagado: await %lu s\r\n\0"), awaittime_for_dial );
 
+// AWAIT
+
 	// Espero durmiendo de a 10s para poder entrar en tickless
 	while ( awaittime_for_dial > 0 )  {
+
+		u_wdg_kick(WDG_COMMS, 300);
 
 		// Espero de a 10s para poder entrar en tickless.
 		vTaskDelay( (portTickType)( 10000 / portTICK_RATE_MS ) );
@@ -231,6 +240,8 @@ static void state_apagado(void)
 		}
 
 	}
+
+// PRENDER
 
 	// Incremento las veces que intento prender el modem.
 	if ( ++xCOMMS_stateVars.modem_starts > MAX_MODEM_STARTS ) {
@@ -249,6 +260,10 @@ static void state_apagado(void)
 //------------------------------------------------------------------------------------
 void pv_prender_modem(void)
 {
+	// Prendo hardware y softare.
+	// Hardware significa activar la fuente.
+	// Software es hacer el toggle en el pin PWR del modem.
+
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:PRENDER_MODEM in.\r\n"));
 	xprintf_PD( DF_COMMS, PSTR("COMMS: modem_starts = %d\r\n"), xCOMMS_stateVars.modem_starts );
 
@@ -261,6 +276,7 @@ void pv_prender_modem(void)
 	// Prendo la fuente del modem (HW)
 	gprs_hw_pwr_on(1);
 	//
+	// Settle time.
 	vTaskDelay( ( TickType_t)( 2000 / portTICK_RATE_MS ) );
 	//
 	// SW switch para arrancar.
@@ -271,6 +287,8 @@ void pv_prender_modem(void)
 //------------------------------------------------------------------------------------
 void pv_apagar_modem(void)
 {
+	// Apago logica ( ordenado ) y fisicamente ( quito la energia ).
+
 	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:APAGAR_MODEM in.\r\n\0"));
 
 	gprs_apagar();

@@ -19,7 +19,7 @@ void tkApp(void * pvParameters)
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
 	vTaskDelay( ( TickType_t)( 5000 / portTICK_RATE_MS ) );
-	xprintf_P( PSTR("starting tkAplicacion..\r\n\0"));
+	xprintf_P( PSTR("starting tkAplicacion (%d)..\r\n"), systemVars.aplicacion_conf.aplicacion );
 
 	if ( systemVars.aplicacion_conf.aplicacion == APP_OFF ) {
 		 tkApp_off( WDG_APP );
@@ -28,10 +28,12 @@ void tkApp(void * pvParameters)
 		consigna_app_service( WDG_APP );
 
 	} else if ( systemVars.aplicacion_conf.aplicacion == APP_PILOTO ) {
+
 		piloto_app_service( WDG_APP );
 	}
 
 	// Default
+	xprintf_P( PSTR("APP: ERROR. Set to off.\r\n"));
 	tkApp_off( WDG_APP );
 }
 //------------------------------------------------------------------------------------

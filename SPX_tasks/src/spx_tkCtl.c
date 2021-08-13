@@ -28,6 +28,16 @@ static bool f_terminal_connected = false;
 // Timpo que espera la tkControl entre round-a-robin
 #define TKCTL_DELAY_S	5
 
+const char string_0[] PROGMEM = "tkCTL";
+const char string_1[] PROGMEM = "tkCMD";
+const char string_2[] PROGMEM = "tkDATA";
+const char string_3[] PROGMEM = "tkAPP";
+const char string_4[] PROGMEM = "tkCOMMSRX";
+const char string_5[] PROGMEM = "tkCOMMS";
+
+
+const char * const wdg_names[] PROGMEM = { string_0, string_1, string_2, string_3, string_4, string_5 };
+
 //------------------------------------------------------------------------------------
 void tkCtl(void * pvParameters)
 {
@@ -181,6 +191,7 @@ static void pv_ctl_check_wdg(void)
 	// Si alguno llego a 0 es que la tarea se colgo y entonces se reinicia el sistema.
 
 uint8_t wdg = 0;
+char buffer[10] = { '\0','\0','\0','\0','\0','\0','\0','\0','\0','\0' } ;
 
 		// Cada ciclo reseteo el wdg para que no expire.
 		WDT_Reset();
@@ -199,7 +210,9 @@ uint8_t wdg = 0;
 			}
 
 			if ( watchdog_timers[wdg] == 0 ) {
-				xprintf_P(PSTR("CTL RESET: task %d failed. !!\r\n"), wdg );
+				memset(buffer,'\0', sizeof(buffer));
+				strcpy_P(buffer, (PGM_P)pgm_read_word(&(wdg_names[wdg])));
+				xprintf_P( PSTR("CTL: RESET WDG TO: task [%s] !!\r\n"),buffer);
 
 				// Me reseteo por watchdog
 				while(1)
@@ -296,3 +309,24 @@ void ctl_set_timeToNextDial( uint32_t new_time )
 	pv_timers[TIME_TO_NEXT_DIAL] = new_time;
 }
 //------------------------------------------------------------------------------------
+void ctl_read_wdt(void)
+{
+	// Lee y muestra en pantalla el valor de los wdgtimers.
+
+uint8_t wdg = 0;
+char buffer[10] = { '\0','\0','\0','\0','\0','\0','\0','\0','\0','\0' } ;
+
+	while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
+		taskYIELD();
+
+	for ( wdg = 0; wdg < NRO_WDGS; wdg++ ) {
+		memset(buffer,'\0', sizeof(buffer));
+		strcpy_P(buffer, (PGM_P)pgm_read_word(&(wdg_names[wdg])));
+		xprintf_P( PSTR("CTL: WDT [%s] = %d\r\n"),buffer, watchdog_timers[wdg] );
+	}
+
+	xSemaphoreGive( sem_WDGS );
+
+}
+//------------------------------------------------------------------------------------
+

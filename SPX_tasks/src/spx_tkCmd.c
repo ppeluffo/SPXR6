@@ -376,6 +376,12 @@ uint8_t cks;
 		return;
 	}
 
+	// WDG TIMERS
+	if (!strcmp_P( strupr(argv[1]), PSTR("WDT\0")) ) {
+		ctl_read_wdt();
+		return;
+	}
+
 	// HASHES
 	// read hashes
 	if (!strcmp_P( strupr(argv[1]), PSTR("HASHES\0"))  ) {
@@ -748,7 +754,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  ina (id) {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
 		xprintf_P( PSTR("  i2cscan {busaddr}, i2cscanbus\r\n"));
 		xprintf_P( PSTR("  ach {n}, din, battery\r\n"));
-		xprintf_P( PSTR("  memory {full}\r\n"));
+		xprintf_P( PSTR("  memory {full}, wdt\r\n"));
 		xprintf_P( PSTR("  gprs {rsp,cts,dcd,ri,sms}\r\n"));
 		xprintf_P( PSTR("       {modo,pref,bands}\r\n"));
 		return;

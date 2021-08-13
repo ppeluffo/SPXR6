@@ -7,17 +7,17 @@
 
 #include <tkComms.h>
 
-static bool state_configurar_ATI(void);
-static bool state_configurar_CIPMODE(void);
-static bool state_configurar_CSUART(void);
-static bool state_configurar_CPIN(void);
-static bool state_configurar_CCID(void);
-static bool state_configurar_CREG(void);
-static bool state_configurar_CPSI(void);
-static bool state_configurar_CIPHEAD(void);
-static bool state_configurar_CGDSOCKCONT(void);
-static void state_configurar_MONSQE(void);
-static bool state_configurar_C1(void);
+static bool cmd_read_ATI(void);
+static bool cmd_set_CIPMODE(void);
+static bool cmd_set_CSUART(void);
+static bool cmd_read_CPIN(void);
+static bool cmd_read_CCID(void);
+static bool cmd_read_CREG(void);
+static bool cmd_read_CPSI(void);
+static bool cmd_set_CIPHEAD(void);
+static bool cmd_set_CGDSOCKCONT(void);
+static void state_MONSQE(void);
+//static bool state_configurar_C1(void);
 static void pv_read_SQE(void) ;
 
 
@@ -25,76 +25,46 @@ static void pv_read_SQE(void) ;
 int8_t tkXComms_PRENDIDO_OFFLINE(void)
 {
 
+	u_wdg_kick(WDG_COMMS, 300);
+
 	xprintf_P( PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
 
 	// Leo el IMEI. Si da error no importa.
-	state_configurar_ATI();
+	cmd_read_ATI();
 
 	// Pongo el modo TCP normal. Es el que tiene por defecto por lo que
 	// si no contesta, no importa tanto.
-	state_configurar_CIPMODE();
+	cmd_set_CIPMODE();
 
 	// Pongo la uart en control 7 hilos. Si no puedo no es grave.
-	state_configurar_CSUART();
+	cmd_set_CSUART();
 
 	//state_configurar_C1();
 
-	if ( !state_configurar_CPIN() )		// Veo si tengo instalado un SIM
+	if ( !cmd_read_CPIN() )		// Veo si tengo instalado un SIM
 		return (APAGADO);
 
 	// Leo el SIMID. Si da error no importa.
-	state_configurar_CCID();
+	cmd_read_CCID();
 
-	if ( !state_configurar_CREG() )		// Confirmo esta registrado en la red
+	if ( !cmd_read_CREG() )		// Confirmo esta registrado en la red
 		return (APAGADO);
 
-	if ( !state_configurar_CPSI() )		// Confirmo estar online en GSM p WCDMA.
+	if ( !cmd_read_CPSI() )		// Confirmo estar online en GSM p WCDMA.
 		return (APAGADO);
 
-	state_configurar_CIPHEAD();			// No muestro los IP head ( consumen mucho buffer al pedo )
+	cmd_set_CIPHEAD();			// No muestro los IP head ( consumen mucho buffer al pedo )
 
-	if ( !state_configurar_CGDSOCKCONT() )	// Configuro el APN
+	if ( !cmd_set_CGDSOCKCONT() )	// Configuro el APN
 		return (APAGADO	);
 
-	state_configurar_MONSQE();		// Monitoreo la SQE
+	state_MONSQE();		// Monitoreo la SQE
 
 	return(PRENDIDO_ONLINE);
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CIPHEAD(void)
-{
-	// El comando CIPHEAD es para que no mande el header IP en la respuesta
-	// Ocupa rxbuffer al pedo.
-
-int8_t cmd_rsp;
-int8_t tryes;
-
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD\r\n"));
-
-	// Veo si ya esta configurado. Pregunto hasta 3 veces.
-	for ( tryes = 0; tryes < 3; tryes++ ) {
-
-		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPHEAD=0\r" );
-
-		if (cmd_rsp	== ATRSP_OK ) {
-			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: OK\r\n") );
-			return ( true );
-		}
-
-		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD retry (%d)\r\n\0"), tryes );
-		FSM_sendATcmd( 2, "AT\r" );
-
-	}
-
-	// Errores luego de 3 reintentos: salgo.
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: ERROR.\r\n"));
-	return(false);
-
-}
-//------------------------------------------------------------------------------------
-static bool state_configurar_ATI(void)
+static bool cmd_read_ATI(void)
 {
 	/*
 	 * Leo el imei del modem para poder trasmitirlo al server
@@ -150,7 +120,7 @@ char *ptr = NULL;
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CIPMODE(void)
+static bool cmd_set_CIPMODE(void)
 {
 	// Pone al modem en modo normal ( no transparente )
 
@@ -208,7 +178,7 @@ set_cipmode:
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CSUART(void)
+static bool cmd_set_CSUART(void)
 {
 	// Pone la uart en modo 7 lines.
 	// Vemos si ya esta configurado.
@@ -268,7 +238,7 @@ set_csuart:
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CPIN(void)
+static bool cmd_read_CPIN(void)
 {
 	// Consulta al modem si tiene un SIM operativo.
 
@@ -301,28 +271,7 @@ int8_t tryes;
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_C1(void)
-{
-	// Pone el registro C1 de modo que el DCD responda al Carrier del modem.
-
-int8_t cmd_rsp;
-
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:C1 in\r\n"));
-
-	// Veo si ya esta configurado. Pregunto hasta 3 veces.
-	cmd_rsp = FSM_sendATcmd( 2, "AT&C1\r" );
-
-	if (cmd_rsp	== ATRSP_OK ) {
-		xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:C1 out: OK\r\n") );
-		return ( true );
-	}
-
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:C1 out: ERROR.\r\n"));
-	return(false);
-
-}
-//------------------------------------------------------------------------------------
-static bool state_configurar_CCID(void)
+static bool cmd_read_CCID(void)
 {
 	/*
 	 * Leo el ccid del sim para poder trasmitirlo al server y asi llevar un control de donde esta c/sim
@@ -377,7 +326,7 @@ char *ptr = NULL;
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CREG(void)
+static bool cmd_read_CREG(void)
 {
 
 	/* Chequeo que el TE este registrado en la red.
@@ -433,7 +382,7 @@ int8_t cmd_rsp;
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CPSI(void)
+static bool cmd_read_CPSI(void)
 {
 	// Chequeo que la red este operativa
 
@@ -469,9 +418,41 @@ int8_t cmd_rsp;
 
 }
 //------------------------------------------------------------------------------------
-static bool state_configurar_CGDSOCKCONT(void)
+static bool cmd_set_CIPHEAD(void)
 {
-	// Pone al modem en modo normal ( no transparente )
+	// El comando CIPHEAD es para que no mande el header IP en la respuesta
+	// Ocupa rxbuffer al pedo.
+
+int8_t cmd_rsp;
+int8_t tryes;
+
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD\r\n"));
+
+	// Veo si ya esta configurado. Pregunto hasta 3 veces.
+	for ( tryes = 0; tryes < 3; tryes++ ) {
+
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPHEAD=0\r" );
+
+		if (cmd_rsp	== ATRSP_OK ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: OK\r\n") );
+			return ( true );
+		}
+
+		// Reintento
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD retry (%d)\r\n\0"), tryes );
+		FSM_sendATcmd( 2, "AT\r" );
+
+	}
+
+	// Errores luego de 3 reintentos: salgo.
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD out: ERROR.\r\n"));
+	return(false);
+
+}
+//------------------------------------------------------------------------------------
+static bool cmd_set_CGDSOCKCONT(void)
+{
+	// Setea el APN.
 
 char strapn[48];
 int8_t cmd_rsp;
@@ -533,7 +514,7 @@ set_cgdsockcont:
 
 }
 //------------------------------------------------------------------------------------
-static void state_configurar_MONSQE(void)
+static void state_MONSQE(void)
 {
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSQ in\r\n"));
 
@@ -572,7 +553,30 @@ int8_t cmd_rsp = -1;
 	}
 }
 //------------------------------------------------------------------------------------
+/*
+ * static bool state_configurar_C1(void)
+{
+	// Pone el registro C1 de modo que el DCD responda al Carrier del modem.
 
+int8_t cmd_rsp;
+
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:C1 in\r\n"));
+
+	// Veo si ya esta configurado. Pregunto hasta 3 veces.
+	cmd_rsp = FSM_sendATcmd( 2, "AT&C1\r" );
+
+	if (cmd_rsp	== ATRSP_OK ) {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:C1 out: OK\r\n") );
+		return ( true );
+	}
+
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:C1 out: ERROR.\r\n"));
+	return(false);
+
+}
+//------------------------------------------------------------------------------------
+ *
+ */
 
 
 

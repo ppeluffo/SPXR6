@@ -73,7 +73,7 @@
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "4.0.0a"
-#define SPX_FW_DATE "@ 20210811"
+#define SPX_FW_DATE "@ 20210813"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -236,6 +236,7 @@ void ctl_reload_timerPoll( uint16_t new_time );
 bool ctl_terminal_connected(void);
 uint32_t ctl_read_timeToNextDial(void);
 void ctl_set_timeToNextDial( uint32_t new_time );
+void ctl_read_wdt(void);
 
 // TKDATA
 void data_read_inputs(st_dataRecord_t *dst, bool f_copy );
@@ -257,7 +258,7 @@ uint8_t wdg_resetCause;
 #define WDG_COMMSRX		4
 #define WDG_COMMS		5
 
-#define NRO_WDGS		5
+#define NRO_WDGS		6
 
 uint16_t watchdog_timers[NRO_WDGS];
 

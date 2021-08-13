@@ -23,7 +23,18 @@
  *  avr-nm -n spxR5.elf | more
  *  avr-nm -Crtd --size-sort spxR5.elf | grep -i ' [dbv] '
  *
- *
+ *  Archivos modificados en el server para version 4.0.0a
+ *  spy.py
+ *  spy.conf
+ *  spy_raw_frame.py
+ *  spy_raw_frame_test.py
+ *  SPY_init_conf_global.py
+ *  SPY_init_conf_analog.py
+ *  SPY_init_conf_app.py
+ *  SPY_init_conf_base.py
+ *  SPY_init_conf_counter.py
+ *  SPY_init_conf_digital.py
+ *  spy_utils.py
  */
 
 #include "spx.h"

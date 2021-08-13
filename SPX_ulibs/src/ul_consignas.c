@@ -208,8 +208,11 @@ void consigna_app_service( uint8_t app_wdt )
 
 RtcTimeType_t rtcDateTime;
 
-	xprintf_P("APP: CONSIGNA\r\n\0");
+	xprintf_P(PSTR("APP: CONSIGNA service START.\r\n"));
 
+	// Debo resetear el wdt porque al aplicar la consigna espero 25s que carguen los
+	// condensadores y me puede resetear el sistema
+	u_wdg_kick( app_wdt, 120);
 	if ( !consigna_init_service() )
 		return;
 
@@ -243,8 +246,9 @@ RtcTimeType_t rtcDateTime;
 			xprintf_P(PSTR("APP: Set CONSIGNA nocturna %02d:%02d\r\n\0"),rtcDateTime.hour,rtcDateTime.min);
 			continue;
 		}
-
 	}
+
+	xprintf_P(PSTR("APP: CONSIGNA APP ERROR\r\n") );
 }
 //------------------------------------------------------------------------------------
 uint8_t consigna_hash(void)

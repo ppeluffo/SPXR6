@@ -79,6 +79,7 @@ int8_t state;
 	// loop
 	for( ;; )
 	{
+		u_wdg_kick(WDG_COMMS, 300);
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
 		switch ( state ) {
@@ -165,6 +166,7 @@ int8_t state;
 			break;
 
 		case ONLINE_ESPERA:
+			u_wdg_kick(WDG_COMMS, 300);
 			if ( state_online_espera() ) {
 				state = ONLINE_DATA;
 			} else {

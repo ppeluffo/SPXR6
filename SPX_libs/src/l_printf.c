@@ -37,6 +37,8 @@ int i;
 	va_start(args, fmt);
 	vsnprintf_P( (char *)stdout_buff, sizeof(stdout_buff),fmt, args);
 	i = frtos_write(fdTERM, (char *)stdout_buff, strlen((char *)stdout_buff) );
+	// Espero que se vacie el buffer 10ms.
+	vTaskDelay( (portTickType)( 10 / portTICK_RATE_MS ) );
 
 	xSemaphoreGive( sem_STDOUT );
 	return(i);

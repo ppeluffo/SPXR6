@@ -114,7 +114,7 @@ void gprs_sw_pwr(void);
 void gprs_apagar(void);
 int gprs_findstr_lineal( uint16_t start, const char *rsp );
 
-void comms_config_defaults(void);
+void comms_config_defaults(char *opt);
 void comms_config_status(void);
 
 

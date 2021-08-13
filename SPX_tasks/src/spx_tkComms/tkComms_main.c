@@ -88,14 +88,25 @@ uint32_t ulNotifiedValue;
 
 }
 //------------------------------------------------------------------------------------
-void comms_config_defaults(void)
+void comms_config_defaults(char *opt)
 {
 
-	strncpy_P( comms_conf.apn, PSTR("SPYMOVIL.VPNANTEL\0"), APN_LENGTH );
-	strncpy_P( comms_conf.server_ip_address, PSTR("192.168.0.20\0"),16);
-	strncpy_P( comms_conf.dlgId, PSTR("DEFAULT\0"),  DLGID_LENGTH );
-	strncpy_P( comms_conf.serverScript, PSTR("/cgi-bin/SPY/spy.py\0"), SCRIPT_LENGTH);
-	strncpy_P( comms_conf.server_tcp_port, PSTR("80\0"), PORT_LENGTH	);
+	if ( strcmp_P( opt, PSTR("SPY")) == 0)  {
+		strncpy_P( comms_conf.apn, PSTR("SPYMOVIL.VPNANTEL"), APN_LENGTH );
+		strncpy_P( comms_conf.server_ip_address, PSTR("192.168.0.9"),16);
+
+	} else 	if ( strcmp_P( opt, PSTR("OSE")) == 0)  {
+		strncpy_P( comms_conf.apn, PSTR("STG1.VPNANTEL"), APN_LENGTH );
+		strncpy_P( comms_conf.server_ip_address, PSTR("172.27.0.26"),16);
+
+	} else  {
+		strncpy_P( comms_conf.apn, PSTR("SPYMOVIL.VPNANTEL"), APN_LENGTH );
+		strncpy_P( comms_conf.server_ip_address, PSTR("192.168.0.9"),16);
+	}
+
+	strncpy_P( comms_conf.dlgId, PSTR("DEFAULT"),  DLGID_LENGTH );
+	strncpy_P( comms_conf.serverScript, PSTR("/cgi-bin/SPY/spy.py"), SCRIPT_LENGTH);
+	strncpy_P( comms_conf.server_tcp_port, PSTR("80"), PORT_LENGTH	);
 
 	comms_conf.timerDial = 900;
 
