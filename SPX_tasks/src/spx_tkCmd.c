@@ -27,6 +27,7 @@ static void pv_cmd_gprs_set_BANDS( char *s_bands);
 static void pv_cmd_gprs_read_MODO(void);
 static void pv_cmd_gprs_read_PREF(void);
 static void pv_cmd_gprs_read_BANDS(void);
+static bool pv_cmd_configMODBUS(void);
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
@@ -517,6 +518,13 @@ bool retS = false;
 
 	FRTOS_CMD_makeArgv();
 
+	// MODBUS:
+	if ( strcmp_P ( strupr( argv[1]), PSTR("MODBUS\0")) == 0 ) {
+		retS = pv_cmd_configMODBUS();
+		retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+
 	// CONSIGNAS
 	// config consigna {diurna,nocturna} hhmm
 	if (!strcmp_P( strupr(argv[1]), PSTR("CONSIGNA\0")) ) {
@@ -791,6 +799,10 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  aplicacion {off,consigna,piloto}\r\n\0"));
 		xprintf_P( PSTR("  consigna {diurna,nocturna} hhmm\r\n\0"));
 		xprintf_P( PSTR("  pslot {idx} {hhmm} {pout}\r\n\0"));
+
+		xprintf_P( PSTR("  modbus slave {addr}\r\n\0"));
+		xprintf_P( PSTR("         channel {0..%d} name addr nro_recds rcode(3,4) type(f,i), div_p10\r\n\0"), ( MODBUS_CHANNELS - 1));
+		xprintf_P( PSTR("         waittime {ms}\r\n\0"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
@@ -1518,6 +1530,28 @@ union {
 			}
 		}
 	}
+}
+//------------------------------------------------------------------------------------
+static bool pv_cmd_configMODBUS(void)
+{
+
+	// config modbus slave {hex_addr}
+	if ( strcmp_P( strupr(argv[2]), PSTR("SLAVE\0")) == 0 ) {
+		return ( modbus_config_slave(argv[3]) );
+	}
+
+	// config modbus channel {0..%d} name addr length rcode(3,4), divisor_p10.
+	if ( strcmp_P( strupr(argv[2]), PSTR("CHANNEL\0")) == 0 ) {
+		return (modbus_config_channel(argv[3],argv[4],argv[5],argv[6],argv[7], argv[8], argv[9]) );
+	}
+
+	// config modbus waittime
+	if ( strcmp_P( strupr(argv[2]), PSTR("WAITTIME\0")) == 0 ) {
+		return (modbus_config_waiting_poll_time( argv[3] ) );
+	}
+
+	return(false);
+
 }
 //------------------------------------------------------------------------------------
 

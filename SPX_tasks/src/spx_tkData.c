@@ -95,10 +95,13 @@ int8_t xBytes = 0;
 	}
 
 	// Poleo.
-	ainputs_read( dst->df.io.ainputs, &dst->df.io.battery, DF_DATA );
-	dinputs_read( dst->df.io.dinputs );
-	counters_read( dst->df.io.counters );
+	ainputs_read( dst->ainputs, &dst->battery, DF_DATA );
+	dinputs_read( dst->dinputs );
+	counters_read( dst->counters );
 	counters_clear();
+
+	modbus_read (dst->modbus );
+
 
 	// Agrego el timestamp
 	xBytes = RTC_read_dtime( &dst->rtc );
@@ -117,11 +120,11 @@ void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl)
 	xfprintf_P(fd, PSTR("TIME:%02d"), dr->rtc.hour );
 	xfprintf_P(fd, PSTR("%02d%02d;"), dr->rtc.min, dr->rtc.sec );
 
-	ainputs_print( fd, dr->df.io.ainputs );
-	dinputs_print( fd, dr->df.io.dinputs );
-	counters_print( fd, dr->df.io.counters );
+	ainputs_print( fd, dr->ainputs );
+	dinputs_print( fd, dr->dinputs );
+	counters_print( fd, dr->counters );
 
-	ainputs_battery_print( fd, dr->df.io.battery );
+	ainputs_battery_print( fd, dr->battery );
 
 	// TAIL
 	// Esto es porque en gprs si mando un cr corto el socket !!!
@@ -148,11 +151,11 @@ char *p;
 	i = sprintf_P( p, PSTR("%02d%02d;"), dr->rtc.min, dr->rtc.sec );
 	p += i;
 
-	p = ainputs_sprintf( p, dr->df.io.ainputs );
-	p = dinputs_sprintf( p, dr->df.io.dinputs );
-	p = counters_sprintf( p, dr->df.io.counters );
+	p = ainputs_sprintf( p, dr->ainputs );
+	p = dinputs_sprintf( p, dr->dinputs );
+	p = counters_sprintf( p, dr->counters );
 
-	p = ainputs_battery_sprintf(p, dr->df.io.battery );
+	p = ainputs_battery_sprintf(p, dr->battery );
 
 	return(i);
 }

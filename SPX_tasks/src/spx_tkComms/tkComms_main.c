@@ -49,7 +49,7 @@ int8_t state = APAGADO;
 
 }
 //------------------------------------------------------------------------------------
-void tkCommsRX(void * pvParameters)
+void tkGprsRX(void * pvParameters)
 {
 	// Esta tarea lee y procesa las respuestas del GPRS. Lee c/caracter recibido y lo va
 	// metiendo en un buffer circular propio del GPRS que permite luego su impresion,
@@ -64,7 +64,7 @@ uint32_t ulNotifiedValue;
 	while ( !startTask )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
-	xprintf_P( PSTR("starting tkCommsRX..\r\n\0"));
+	xprintf_P( PSTR("starting tkGprsRX..\r\n\0"));
 
 
 	for( ;; )	{

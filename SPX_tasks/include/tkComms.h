@@ -70,8 +70,22 @@ struct {
 
 //------------------------------------------------------------------------------------
 
+#define AUX_TXBUFFER_LEN	16
+struct {
+	char buffer[AUX_TXBUFFER_LEN];
+	uint8_t ptr;
+} aux_txbuffer;
+
+#define AUX_RXBUFFER_LEN	16
+struct {
+	char buffer[AUX_RXBUFFER_LEN];
+	uint8_t ptr;
+} aux_rxbuffer;
+
+//------------------------------------------------------------------------------------
+
 typedef enum { APAGADO, PRENDIDO_OFFLINE, PRENDIDO_ONLINE } t_xcomms_states;
-typedef enum { ATRSP_NONE, ATRSP_OK, ATRSP_ERROR, ATRSP_TIMEOUT, ATRSP_UNKNOWN } t_at_commands_responses;
+typedef enum { ATRSP_NONE, ATRSP_OK, ATRSP_ERROR, ATRSP_TIMEOUT, ATRSP_OUT_INMEDIATE, ATRSP_UNKNOWN } t_at_commands_responses;
 
 #define TIMETOCHECKSMS 			60
 #define MAXTIMEOFFLINEAWAITON	600
@@ -101,7 +115,6 @@ uint16_t gprs_rxbuffer_usedspace(void);
 
 void gprs_rxbuffer_put( char data);
 bool gprs_rxbuffer_put2( char data );
-bool gprs_rxbuffer_get( char * data );
 void gprs_flush_RX_buffer(void);
 void gprs_flush_TX_buffer(void);
 void gprs_print_RX_buffer(void);
@@ -117,8 +130,19 @@ int gprs_findstr_lineal( uint16_t start, const char *rsp );
 void comms_config_defaults(char *opt);
 void comms_config_status(void);
 
-
 //--------------------------------------------------------------------------------------------
+
+void aux_init(void);
+void aux_rxbuffer_reset(void);
+void aux_txbuffer_reset(void);
+bool aux_rxbuffer_full(void);
+bool aux_rxbuffer_empty(void);
+uint16_t aux_rxbuffer_usedspace(void);
+void aux_rxbuffer_put( char data);
+bool aux_rxbuffer_put2( char data );
+void aux_flush_RX_buffer(void);
+void aux_flush_TX_buffer(void);
+bool aux_rxbuffer_copyto ( uint8_t *dst_buffer, uint8_t *size, int8_t max_size );
 
 
 #endif /* SRC_SPX_TASKS_SPX_TKCOMMS_TKCOMMS_H_ */

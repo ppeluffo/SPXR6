@@ -73,7 +73,7 @@
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "4.0.0a"
-#define SPX_FW_DATE "@ 20210813"
+#define SPX_FW_DATE "@ 20210820"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -90,10 +90,11 @@
 
 #define tkCtl_STACK_SIZE		384
 #define tkCmd_STACK_SIZE		384
-#define tkData_STACK_SIZE		512
+#define tkData_STACK_SIZE		384
 #define tkApp_STACK_SIZE		384
-#define tkComms_STACK_SIZE		640
-#define tkCommsRX_STACK_SIZE	384
+#define tkComms_STACK_SIZE		384
+#define tkGprsRX_STACK_SIZE		384
+#define tkAuxRX_STACK_SIZE		384
 
 #define XPRINT_TICKS() xprintf_PD( DF_COMMS,  PSTR("ticks: %lu "), sysTicks );
 #define XPRINT_TICKSrn() xprintf_PD( DF_COMMS,  PSTR("ticks: %lu\r\n"), sysTicks );
@@ -113,8 +114,11 @@ StackType_t xTask_App_Buffer [tkApp_STACK_SIZE];
 StaticTask_t xTask_Comms_Buffer_Ptr;
 StackType_t xTask_Comms_Buffer [tkComms_STACK_SIZE];
 
-StaticTask_t xTask_CommsRX_Buffer_Ptr;
-StackType_t xTask_CommsRX_Buffer [tkCommsRX_STACK_SIZE];
+StaticTask_t xTask_GprsRX_Buffer_Ptr;
+StackType_t xTask_GprsRX_Buffer [tkGprsRX_STACK_SIZE];
+
+StaticTask_t xTask_AuxRX_Buffer_Ptr;
+StackType_t xTask_AuxRX_Buffer [tkGprsRX_STACK_SIZE];
 
 
 #define tkCtl_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
@@ -122,7 +126,8 @@ StackType_t xTask_CommsRX_Buffer [tkCommsRX_STACK_SIZE];
 #define tkData_TASK_PRIORITY	 	( tskIDLE_PRIORITY + 1 )
 #define tkApp_TASK_PRIORITY	 		( tskIDLE_PRIORITY + 1 )
 #define tkComms_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
-#define tkCommsRX_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
+#define tkGprsRX_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
+#define tkAuxRX_TASK_PRIORITY		( tskIDLE_PRIORITY + 1 )
 
 // Estructura que maneja las señales del sistema
 struct {
@@ -134,11 +139,11 @@ struct {
 	bool sgn_poll_now;
 } system_signals;
 
-typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP } t_debug;
+typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP, DEBUG_MODBUS } t_debug;
 
 #define DF_DATA ( systemVars.debug == DEBUG_DATA )
 
-TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkApp, xHandle_tkComms, xHandle_tkCommsRX ;
+TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkApp, xHandle_tkComms, xHandle_tkGprsRX, xHandle_tkAuxRX ;
 
 bool startTask;
 uint32_t sysTicks;
@@ -160,7 +165,8 @@ void tkCmd(void * pvParameters);
 void tkData(void * pvParameters);
 void tkApp(void * pvParameters);
 void tkComms(void * pvParameters);
-void tkCommsRX(void * pvParameters);
+void tkGprsRX(void * pvParameters);
+void tkAuxRX(void * pvParameters);
 
 #define DLGID_LENGTH		12
 #define IP_LENGTH			24
@@ -173,21 +179,13 @@ void tkCommsRX(void * pvParameters);
 
 // Estructura de un registro
 typedef struct {
-	float ainputs[ANALOG_CHANNELS];			// 4 * 2 = 8
-	uint8_t dinputs[DINPUTS_CHANNELS];		// 2 * 1 = 2
-	float counters[COUNTER_CHANNELS];		// 4 * 2 = 8
-	float battery;							// 4 * 1 = 4
-} st_io_t;									// ----- = 22
-
-// Estructura de datos comun independiente de la arquitectura de IO
-typedef union u_dataframe {
-	st_io_t io;	// 24
-} u_dataframe_t;	// 56
-
-typedef struct {
-	u_dataframe_t df;	// 56
-	RtcTimeType_t rtc;	//  7
-} st_dataRecord_t;		// 63
+	float ainputs[ANALOG_CHANNELS];			// 4 * 5 = 20
+	uint8_t dinputs[DINPUTS_CHANNELS];		// 2 * 1 =  2
+	float counters[COUNTER_CHANNELS];		// 4 * 2 =  8
+	float battery;							// 4 * 1 =  4
+	float modbus[MODBUS_CHANNELS];			// 4 * 20 = 80
+	RtcTimeType_t  rtc;						//   7
+} st_dataRecord_t;							// 121
 
 typedef struct {
 	char dlgId[DLGID_LENGTH];
@@ -257,8 +255,9 @@ uint8_t wdg_resetCause;
 #define WDG_APP			3
 #define WDG_COMMSRX		4
 #define WDG_COMMS		5
+#define WDG_AUXRX		6
 
-#define NRO_WDGS		6
+#define NRO_WDGS		7
 
 uint16_t watchdog_timers[NRO_WDGS];
 

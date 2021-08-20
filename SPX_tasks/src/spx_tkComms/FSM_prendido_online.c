@@ -260,6 +260,13 @@ int8_t timer = 60;
 			goto quit;
 		}
 
+		if ( SPX_SIGNAL( SGN_REDIAL )) {
+			SPX_CLEAR_SIGNAL( SGN_REDIAL );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: SGN_REDIAL rcvd.\r\n\0"));
+			exit_code = true;
+			goto quit;
+		}
+
 	 }
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ESPERA out\r\n"));
@@ -408,6 +415,13 @@ uint32_t init_ticks = sysTicks;
 
 	reset_datalogger = false;
 
+	// No quiero ECHO en los comandos
+	// Sacamos el ECHO porque sino c/frame que mandamos lo repite y llena el rxbuffer al pedo.
+	if ( FSM_sendATcmd( 3, "ATE0\r" ) != ATRSP_OK ) {
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATE0 ERROR\r\n"));
+	}
+
+
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ENTRY out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 	return(true);
 }
@@ -542,19 +556,19 @@ int8_t cmd_rsp;
 	// Si no responde mando un AT.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
 
-		cmd_rsp = FSM_sendATcmd( 10, "AT+CIPOPEN?\r");
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CIPOPEN?\r");
 
 		if (cmd_rsp	== ATRSP_OK ) {
 
 			if ( gprs_check_response( 0, "CIPOPEN: 0,\"TCP\"")  ) {
 				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (open) OK (%d)\r\n\0"), tryes );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (open) OK (t=%d)\r\n\0"), tryes );
 				return ( sock_OPEN );
 			}
 
 			if ( gprs_check_response( 0, "CIPOPEN: 0") ) {
 				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (close) OK (%d)\r\n\0"), tryes );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (close) OK (t=%d)\r\n\0"), tryes );
 				return ( sock_CLOSE );
 			}
 
@@ -565,14 +579,14 @@ int8_t cmd_rsp;
 
 			if ( gprs_check_response( 0, "+IP ERROR:") ) {
 				//xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS dcd=%d\r\n"), IO_read_DCD() );
-				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (unknown) OK (%d)\r\n\0"), tryes );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (unknown) OK (t=%d) (rsp=%d) \r\n\0"), tryes, cmd_rsp );
 				return ( sock_UNKNOWN );
 			}
 		}
 
 		// Reintento
 		vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: socketSTATUS retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: socketSTATUS retry (%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		// Probamos con un AT
 		FSM_sendATcmd( 2, "AT\r" );
 

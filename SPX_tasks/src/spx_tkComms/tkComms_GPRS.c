@@ -45,6 +45,15 @@
 
 #include "tkComms.h"
 
+const char at_string_0[] PROGMEM = "rspNONE";
+const char at_string_1[] PROGMEM = "rspOK";
+const char at_string_2[] PROGMEM = "rspERROR";
+const char at_string_3[] PROGMEM = "rspTO";
+const char at_string_4[] PROGMEM = "rspOUTNOW";
+const char at_string_5[] PROGMEM = "rspUNKNOWN";
+
+const char * const AT_RESPONSES[] PROGMEM = { at_string_0, at_string_1, at_string_2, at_string_3, at_string_4, at_string_5 };
+
 //------------------------------------------------------------------------------------
 // MANEJO DEL BUFFER DE RECEPCION DE GPRS ( Circular o Lineal )
 // Lo alimenta la rx interrupt del puerto gprs.
@@ -115,13 +124,6 @@ bool gprs_rxbuffer_put2( char data )
 		 return(true);
 	 }
 
-    return(false);
-}
-//------------------------------------------------------------------------------------
-bool gprs_rxbuffer_get( char * data )
-{
-	// Retorna el ultimo y true.
-	// Si esta vacio retorna false.
     return(false);
 }
 //------------------------------------------------------------------------------------
@@ -271,18 +273,26 @@ void gprs_sw_pwr(void)
 
 }
 //------------------------------------------------------------------------------------
+void AT_RSP2NAME(int8_t at_rsp_code )
+{
+
+}
+//------------------------------------------------------------------------------------
 int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd )
 {
 	// Envia un comando:
 	// Sale por: OK/ERROR/BufferFull/TIMEOUT
 
 	// Las respuestas pueden ser nula ( no espero ) u otra.
+
+	// ATRSP_NONE, ATRSP_OK, ATRSP_ERROR, ATRSP_TIMEOUT, ATRSP_OUT_INMEDIATE, ATRSP_UNKNOWN
+
 	// El comando lo doy una sola vez !!!.
 	// Si me da error u respuesta no esperada, no tiene sentido repetir el comando.
-	// El timeout es en segundos pero chequeo c/100 ms.
+	// El timeout es en segundos pero chequeo c/50 ms.
 
 int8_t exit_code = -1;
-int16_t local_timer = (10 * timeout);
+int16_t ticks = (20 * timeout);	// Cuantos ticks de 50ms corresponden al timeout.
 
 	//xprintf_P(PSTR("DEBUG: timeout=%d\r\n"), timeout);
 	//xprintf_P(PSTR("DEBUG: cmd=%s\r\n"), cmd );
@@ -292,20 +302,22 @@ int16_t local_timer = (10 * timeout);
 	//xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: (%d) %s\r\n"), local_timer, cmd );
 	gprs_flush_TX_buffer();
 	// Espera antes de c/comando. ( ver recomendaciones de TELIT )
-	vTaskDelay( (portTickType)( 50 / portTICK_RATE_MS ) );
+	vTaskDelay( (portTickType)( 250 / portTICK_RATE_MS ) );
 	xfprintf_P( fdGPRS , PSTR("%s"), cmd);
 
+	// Respuesta inmediata: No importa el resultado.
 	if ( timeout == 0 ) {
 		// Salida inmediata:
 		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: OUT INMEDIATE.\r\n"));
-		return(99);
+		exit_code = ATRSP_OUT_INMEDIATE;
+		return(exit_code);
 	}
 
 	// Espero respuesta
 	while ( exit_code == -1 ) {
 
-		// Espero de a 100 ms.
-		vTaskDelay( (portTickType)( 100 / portTICK_RATE_MS ) );
+		// Espero 1 tick: Cada 50 ms chequeo el buffer de salida del modem por una respuesta.
+		vTaskDelay( (portTickType)( 50 / portTICK_RATE_MS ) );
 
 		// Chequeo respuestas:
 		while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
@@ -328,8 +340,7 @@ int16_t local_timer = (10 * timeout);
 		xSemaphoreGive( sem_RXBUFF );
 
 		// TIMEOUT
-		local_timer -= 10;
-		if (  local_timer <= 0 ) {
+		if (  ticks-- <= 0 ) {
 			exit_code = ATRSP_TIMEOUT;
 		}
 	}
@@ -337,16 +348,17 @@ int16_t local_timer = (10 * timeout);
 	// Print debug causes
 	switch( exit_code) {
 	case ATRSP_OK:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ATRSP_OK\r\n"));
+		//xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ATRSP_OK\r\n"));
 		break;
 	case ATRSP_ERROR:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ERROR\r\n"));
+		//xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ERROR\r\n"));
 		break;
 	case ATRSP_TIMEOUT:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: TIMEOUT\r\n"));
+		//xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: TIMEOUT\r\n"));
 		break;
 	default:
-		xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ERROR RSP NO ESPERADA !!\r\n"));
+		//xprintf_PD( DF_COMMS, PSTR("COMMS: FSM_sendATcmd: ERROR RSP NO ESPERADA !!\r\n"));
+		exit_code = ATRSP_UNKNOWN;
 		break;
 	}
 

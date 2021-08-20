@@ -35,6 +35,14 @@
  *  SPY_init_conf_counter.py
  *  SPY_init_conf_digital.py
  *  spy_utils.py
+ *
+ *  R4.0.0a @ 2021-08-16:
+ *  - En modo apagado prendo ATE1 para seguir en el log los comandos enviados
+ *    En modo online (entry) lo apago ATE0 para no llenar el rxbuffer con lineas de comandos
+ *  - El CSQ no se estaba actualizando y mandaba 0. Actualizo la variable xCOMMS_stateVars.csq.
+ *  - En modo online espera y modo apagado espera, monitoreo la senal SPX_REDIAL
+ *  - Cuando apago el modem, actualizo xCOMMS_stateVars.csq a 0.
+ *
  */
 
 #include "spx.h"
@@ -85,7 +93,8 @@ int main( void )
 	xHandle_tkData = xTaskCreateStatic(tkData, "IN", tkData_STACK_SIZE, (void *)1, tkData_TASK_PRIORITY, xTask_Data_Buffer, &xTask_Data_Buffer_Ptr );
 	xHandle_tkApp = xTaskCreateStatic(tkApp, "APP", tkApp_STACK_SIZE, (void *)1, tkApp_TASK_PRIORITY, xTask_App_Buffer, &xTask_App_Buffer_Ptr );
 	xHandle_tkComms = xTaskCreateStatic(tkComms, "COMMS", tkComms_STACK_SIZE, (void *)1, tkComms_TASK_PRIORITY, xTask_Comms_Buffer, &xTask_Comms_Buffer_Ptr );
-	xHandle_tkCommsRX = xTaskCreateStatic(tkCommsRX, "RX", tkCommsRX_STACK_SIZE, (void *)1, tkCommsRX_TASK_PRIORITY, xTask_CommsRX_Buffer, &xTask_CommsRX_Buffer_Ptr );
+	xHandle_tkGprsRX = xTaskCreateStatic(tkGprsRX, "RX", tkGprsRX_STACK_SIZE, (void *)1, tkGprsRX_TASK_PRIORITY, xTask_GprsRX_Buffer, &xTask_GprsRX_Buffer_Ptr );
+	xHandle_tkAuxRX = xTaskCreateStatic(tkAuxRX, "AUX", tkAuxRX_STACK_SIZE, (void *)1, tkAuxRX_TASK_PRIORITY, xTask_AuxRX_Buffer, &xTask_AuxRX_Buffer_Ptr );
 
 	/* Arranco el RTOS. */
 	vTaskStartScheduler();

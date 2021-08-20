@@ -110,12 +110,12 @@ char *ptr = NULL;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:ATI retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r" );
 	}
 
 	// Errores luego de 3 reintentos: salgo.
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:ATI out: ERROR.\r\n"));
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:ATI out: ERROR\r\n"));
 	return(false);
 
 }
@@ -145,7 +145,7 @@ int8_t tryes;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r");
 		// No importa si no responde.
 
@@ -167,7 +167,7 @@ set_cipmode:
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE set retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPMODE set retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r" );
 		// No importa si no responde.
 	}
@@ -204,7 +204,7 @@ int8_t tryes;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		// Probamos con un AT
 		FSM_sendATcmd( 2, "AT\r" );
 
@@ -227,7 +227,7 @@ set_csuart:
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART set retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CSUART set retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r" );
 		// No importa si no responde.
 	}
@@ -260,7 +260,7 @@ int8_t tryes;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPIN retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r" );
 
 	}
@@ -315,7 +315,7 @@ char *ptr = NULL;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CCID retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		// Probamos con un AT
 		FSM_sendATcmd( 2, "AT\r" );
 	}
@@ -371,7 +371,7 @@ int8_t cmd_rsp;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		// Probamos con un AT
 		FSM_sendATcmd( 2, "AT\r" );
 	}
@@ -406,7 +406,7 @@ int8_t cmd_rsp;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CPSI retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		// Probamos con un AT
 		FSM_sendATcmd( 2, "AT\r" );
 
@@ -439,7 +439,7 @@ int8_t tryes;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CIPHEAD retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r" );
 
 	}
@@ -477,7 +477,7 @@ int8_t tryes;
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		// Probamos con un AT
 		FSM_sendATcmd( 2, "AT\r" );
 	}
@@ -502,7 +502,7 @@ set_cgdsockcont:
 		}
 
 		// Reintento
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set retry (%d)\r\n\0"), tryes );
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT set retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
 		FSM_sendATcmd( 2, "AT\r" );
 		// No importa si no responde.
 	}
@@ -550,6 +550,8 @@ int8_t cmd_rsp = -1;
 			dbm = 113 - 2 * csq;
 		}
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: monitorCSQ: csq=%d, DBM=%d\r\n\0"), csq, dbm );
+		xCOMMS_stateVars.csq = csq;
+
 	}
 }
 //------------------------------------------------------------------------------------
