@@ -100,7 +100,7 @@ int8_t xBytes = 0;
 	counters_read( dst->counters );
 	counters_clear();
 
-	modbus_read (dst->modbus );
+	//modbus_read (dst->modbus );
 
 
 	// Agrego el timestamp

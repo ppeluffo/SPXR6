@@ -87,6 +87,8 @@ bool modbus_config_waiting_poll_time( char *s_waiting_poll_time);
 uint8_t modbus_hash(void);
 bool modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
 void modbus_read_channel ( uint8_t ch, float *result );
+void modbus_test_genpoll(char *arg_ptr[16] );
+void modbus_test_chpoll(char *s_channel);
 
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );

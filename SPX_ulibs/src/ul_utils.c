@@ -257,8 +257,8 @@ void u_load_defaults( char *opt )
 	dinputs_config_defaults();
 	ainputs_config_defaults();
 
-	consigna_config_defaults();
-	piloto_config_defaults();
+	aplicacion_config_defaults();
+
 	modbus_config_defaults();
 
 }

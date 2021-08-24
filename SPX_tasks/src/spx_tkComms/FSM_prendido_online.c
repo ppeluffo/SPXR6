@@ -80,7 +80,7 @@ int8_t state;
 	for( ;; )
 	{
 		u_wdg_kick(WDG_COMMS, 300);
-		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+		vTaskDelay( ( TickType_t)( 10 / portTICK_RATE_MS ) );
 
 		switch ( state ) {
 		case ONLINE_ENTRY:
@@ -1467,15 +1467,17 @@ static bool process_rsp_app(void)
 {
 	//	PLOAD=CLASS:APP;OFF;
 	//  PLOAD=CLASS:APP;CONSIGNA;HHMM1:530;HHMM2:2330;
-	//  PLOAD=CLASS:APP;PILOTO;SLOT0:0530,1.20;SLOT1:0630,2.30;SLOT2:0730,3.10;SLOT3:1230,2.50;SLOT4:2330,2.70
+	//  PLOAD=CLASS:APP;PILOTO;PPR:3000;PWIDTH:20;SLOT0:0530,1.20;SLOT1:0630,2.30;SLOT2:0730,3.10;SLOT3:1230,2.50;SLOT4:2330,2.70
 
 char *ts = NULL;
 char localStr[32] = { 0 };
 uint8_t slot;
 char *stringp = NULL;
 char *token = NULL;
-char *tk_hhmm= NULL;
-char *tk_pres= NULL;
+char *tk_ppr = NULL;
+char *tk_pwidth = NULL;
+char *tk_hhmm = NULL;
+char *tk_pres = NULL;
 char *delim = ",;:=><";
 bool save_flag = false;
 char id[2];
@@ -1512,6 +1514,24 @@ char str_base[8];
 
 		systemVars.aplicacion_conf.aplicacion = APP_PILOTO;
 		save_flag = true;
+
+		// PULSEXREV
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "PPR");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);		// PPR
+		token = strsep(&stringp,delim);		// 3000
+		piloto_config_ppr(token);
+
+		// PWIDTH
+		ts = strstr( gprs_rxbuffer.buffer, "PWIDTH");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);		// PWIDTH
+		token = strsep(&stringp,delim);		// 20
+		piloto_config_pwidth(token);
+
 		// SLOTS?
 		for (slot=0; slot < MAX_PILOTO_PSLOTS; slot++ ) {
 			memset( &str_base, '\0', sizeof(str_base) );
@@ -1526,7 +1546,7 @@ char str_base[8];
 				tk_pres = strsep(&stringp,delim);		//1.34
 				id[0] = '0' + slot;
 				id[1] = '\0';
-				piloto_config( id, tk_hhmm, tk_pres );
+				piloto_config_slot( id, tk_hhmm, tk_pres );
 			}
 		}
 		reset_datalogger = true;

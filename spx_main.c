@@ -42,7 +42,13 @@
  *  - El CSQ no se estaba actualizando y mandaba 0. Actualizo la variable xCOMMS_stateVars.csq.
  *  - En modo online espera y modo apagado espera, monitoreo la senal SPX_REDIAL
  *  - Cuando apago el modem, actualizo xCOMMS_stateVars.csq a 0.
+ *  - El config default pone aplicacion en 0 y modbus en off.
  *
+ *  R4.0.0b @ 2021-08-24:
+ *  - Como los motores de los pilotos pueden cambiar los pulsoxrev, agrego 2 parametros a pilotos_conf
+ *    que son pulsoXrev y pwidth.
+ *    Estos se configuran por cmdMode y online.
+ *  - Agrego setear en GPRS el modo,sat,band,pref.
  */
 
 #include "spx.h"

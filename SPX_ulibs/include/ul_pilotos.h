@@ -33,15 +33,14 @@ typedef struct {		// Elemento de piloto: presion, hora.
 
 // PILOTO
 typedef struct {
+	uint16_t pulsesXrev;
+	uint16_t pWidth;
 	st_piloto_slot_t pltSlots[ MAX_PILOTO_PSLOTS ];
 } piloto_conf_t;
 
 piloto_conf_t piloto_conf;
 
 typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
-
-#define PULSOS_X_REV			3000		// 3000 pulsos para girar 1 rev
-#define DPRES_X_REV				0.500		// 500 gr c/rev del piloto
 
 #define MAX_INTENTOS			5
 #define MAX_P_SAMPLES			10
@@ -76,7 +75,9 @@ uint16_t piloto_wdg;
 void piloto_setup_outofrtos(void );
 void piloto_run_presion_test(char *s_pRef );
 void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth );
-bool piloto_config( char *s_slot, char *s_hhmm, char *s_presion );
+bool piloto_config_slot( char *s_slot, char *s_hhmm, char *s_presion );
+void piloto_config_ppr( char *s_pulseXrev );
+void piloto_config_pwidth( char *s_pwidth );
 void piloto_config_status(void);
 void piloto_config_defaults(void);
 bool piloto_init_service(void);

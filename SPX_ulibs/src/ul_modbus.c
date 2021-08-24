@@ -115,22 +115,19 @@ uint8_t i;
 
 	xprintf_P( PSTR(">Modbus: ( name,address,type,nro_regs,factor_p10,rcode )\r\n"));
 
-	xprintf_P( PSTR("   sla_addr=0x%02x"), modbus_conf.slave_address);
+	xprintf_P( PSTR("   sla_addr=0x%02x, wpTime=%d\r\n"), modbus_conf.slave_address, modbus_conf.waiting_poll_time );
 	if ( modbus_conf.slave_address == 0x00 ) {
-		xprintf_P(PSTR("\r\n"));
 		return;
 	}
 
-	xprintf_P( PSTR("   wpTime=%d"), modbus_conf.waiting_poll_time );
-
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
 		if ( (i % 4) == 0 ) {
-			xprintf_P(PSTR("\r\n   "));
+			xprintf_P(PSTR("   "));
 		}
 
 		if ( strcmp ( modbus_conf.channel[i].name, "X" ) == 0 ) {
 			xprintf_P(PSTR("\r\n"));
-			break;
+			return;
 		}
 
 		xprintf_P( PSTR("MB%02d:[%s,0x%04X,%c,%d,0x%02d,%0.3f], "), i,
@@ -140,7 +137,12 @@ uint8_t i;
 				modbus_conf.channel[i].nro_regs,
 				modbus_conf.channel[i].rcode,
 				modbus_conf.channel[i].divisor_p10	);
+
+		if ( ((i+1) % 4) == 0 ) {
+			xprintf_P(PSTR("\r\n"));
+		}
 	}
+
 	xprintf_P(PSTR("\r\n"));
 
 }
@@ -267,6 +269,60 @@ void modbus_read_channel ( uint8_t ch, float *result )
 	}
 	//
 	vTaskDelay( ( TickType_t)( modbus_conf.waiting_poll_time / portTICK_RATE_MS ) );
+}
+//------------------------------------------------------------------------------------
+// FUNCIONES DE TEST
+//------------------------------------------------------------------------------------
+void modbus_test_genpoll(char *arg_ptr[16] )
+{
+	// Recibe el argv con los datos en char hex para trasmitir el frame.
+	// El formato es: { type(F|I} sla fcode addr length }
+	// write modbus genpoll F 9 3 4118 2
+	// TX: (len=8):[0x09][0x03][0x10][0x16][0x00][0x02][0x20][0x47]
+
+	/*
+	xprintf_P(PSTR("MODBUS GENPOLL START:\r\n"));
+
+	memset( hreg.rep_str, '\0', 4 );
+	memset ( &mbus_ctl, '\0', sizeof(mbus_ctl));
+
+	mbus_ctl.type = toupper(arg_ptr[3][0]);
+	mbus_ctl.sla_address = atoi(arg_ptr[4]);
+	mbus_ctl.function_code = atoi(arg_ptr[5]);
+	mbus_ctl.address = atoi(arg_ptr[6]);
+	mbus_ctl.length = atoi(arg_ptr[7]);
+	mbus_ctl.divisor_p10 = 1;
+
+	pv_modbus_io( true, &mbus_ctl, &hreg);
+	*/
+
+	xprintf_P(PSTR("MODBUS GENPOLL END:\r\n"));
+
+}
+//------------------------------------------------------------------------------------
+void modbus_test_chpoll(char *s_channel)
+{
+/*
+uint8_t channel;
+hold_reg_t hreg;
+
+	xprintf_P(PSTR("MODBUS CHPOLL START:\r\n"));
+
+	channel = atoi(s_channel);
+
+	if ( channel >= MODBUS_CHANNELS ) {
+		xprintf_P(PSTR("ERROR: Nro.canal < %d\r\n"), MODBUS_CHANNELS);
+		return;
+	}
+
+	if ( ! strcmp ( systemVars.modbus_conf.mbchannel[channel].name, "X" ) ) {
+		xprintf_P(PSTR("ERROR: Canal no definido (X)\r\n"));
+		return;
+	}
+
+	modbus_poll_channel(true, channel, &hreg );
+*/
+	xprintf_P(PSTR("MODBUS CHPOLL END.\r\n"));
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES PRIVADAS

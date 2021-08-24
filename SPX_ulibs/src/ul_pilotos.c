@@ -29,6 +29,8 @@ int8_t slot;
 		piloto_conf.pltSlots[slot].pTime.min = 0;
 		piloto_conf.pltSlots[slot].presion = 0.0;
 	}
+	piloto_conf.pulsesXrev = 3000;
+	piloto_conf.pWidth = 20;
 }
 //------------------------------------------------------------------------------------
 void piloto_config_status(void)
@@ -37,6 +39,7 @@ void piloto_config_status(void)
 int8_t slot;
 
 	xprintf_P( PSTR("  modo: PILOTO\r\n"));
+	xprintf_P( PSTR("    PulsosXrev=%d, pWidth=%d(ms)\r\n"), piloto_conf.pulsesXrev, piloto_conf.pWidth  );
 	xprintf_P( PSTR("    Slots: "));
 	for (slot=0; slot < MAX_PILOTO_PSLOTS ;slot++) {
 		xprintf_P( PSTR("[%02d]%02d:%02d->%0.2f "), slot, piloto_conf.pltSlots[slot].pTime.hour, piloto_conf.pltSlots[slot].pTime.min,piloto_conf.pltSlots[slot].presion  );
@@ -198,7 +201,7 @@ void piloto_setup_outofrtos(void )
 
 }
 //------------------------------------------------------------------------------------
-bool piloto_config( char *s_slot, char *s_hhmm, char *s_presion )
+bool piloto_config_slot( char *s_slot, char *s_hhmm, char *s_presion )
 {
 	// Configura un slot
 
@@ -224,6 +227,16 @@ uint8_t slot;
 	}
 
 	return(false);
+}
+//------------------------------------------------------------------------------------
+void piloto_config_ppr( char *s_pulseXrev )
+{
+	piloto_conf.pulsesXrev = atoi(s_pulseXrev);
+}
+//------------------------------------------------------------------------------------
+void piloto_config_pwidth( char *s_pwidth )
+{
+	piloto_conf.pWidth = atoi(s_pwidth);
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES PRIVADAS
@@ -327,7 +340,8 @@ float delta_pres = 0.0;
 	}
 
 	// Paso 4: Intervalo de tiempo entre pulsos en ms.
-	PLTCB.pwidth = 20;
+	//PLTCB.pwidth = 20;
+	PLTCB.pwidth = piloto_conf.pWidth;
 
 	/* Paso 5: Calculo los pulsos a aplicar.
 	 * El motor es de 200 pasos /rev
@@ -336,7 +350,8 @@ float delta_pres = 0.0;
 	 * El piloto es de 4->1500gr.
 	 */
 	delta_pres = fabs(PLTCB.pB - PLTCB.pRef);
-	PLTCB.pulsos_calculados = (uint16_t) ( delta_pres * PULSOS_X_REV  / DPRES_X_REV );
+	//PLTCB.pulsos_calculados = (uint16_t) ( delta_pres * PULSOS_X_REV  / DPRES_X_REV );
+	PLTCB.pulsos_calculados = (uint16_t) ( delta_pres * piloto_conf.pulsesXrev  / DPRES_X_REV );
 
 	//xprintf_P(PSTR("DEBUG: pulsos_calculados: %d\r\n"), PLTCB.pulsos_calculados );
 

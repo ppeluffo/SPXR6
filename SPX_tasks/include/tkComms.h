@@ -130,6 +130,15 @@ int gprs_findstr_lineal( uint16_t start, const char *rsp );
 void comms_config_defaults(char *opt);
 void comms_config_status(void);
 
+void gprs_set_MODO( uint8_t modo);
+void gprs_set_PREF(uint8_t modo);
+void gprs_set_BANDS( char *s_bands);
+void gprs_set_SAT(uint8_t modo);
+
+void gprs_read_MODO(void);
+void gprs_read_PREF(void);
+void gprs_read_BANDS(void);
+
 //--------------------------------------------------------------------------------------------
 
 void aux_init(void);
