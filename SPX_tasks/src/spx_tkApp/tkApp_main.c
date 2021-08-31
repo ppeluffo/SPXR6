@@ -15,11 +15,10 @@ void tkApp(void * pvParameters)
 ( void ) pvParameters;
 
 	// Espero la notificacion para arrancar
-	while ( !startTask )
+	while ( ((start_byte >> WDG_APP) & 1 ) != 1 )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
-	vTaskDelay( ( TickType_t)( 5000 / portTICK_RATE_MS ) );
-	xprintf_P( PSTR("starting tkAplicacion (%d)..\r\n"), systemVars.aplicacion_conf.aplicacion );
+	xprintf_P( PSTR("starting tkAplicacion..") );
 
 	if ( systemVars.aplicacion_conf.aplicacion == APP_OFF ) {
 		 tkApp_off( WDG_APP );
@@ -32,7 +31,7 @@ void tkApp(void * pvParameters)
 	}
 
 	// Default
-	xprintf_P( PSTR("APP: ERROR. Set to off.\r\n"));
+	xprintf_P( PSTR("\r\nAPP: ERROR. Set to off.\r\n"));
 	tkApp_off( WDG_APP );
 }
 //------------------------------------------------------------------------------------
@@ -42,7 +41,7 @@ void tkApp_off( uint8_t app_wdt )
 	// ( solo monitoreo ), debemos dormir para que pueda entrar en
 	// tickless
 
-	xprintf_P( PSTR("APP: OFF\r\n\0"));
+	xprintf_P( PSTR("OFF\r\n"));
 
 	for( ;; )
 	{

@@ -72,7 +72,7 @@ int8_t tkXComms_PRENDIDO_ONLINE(void)
 
 int8_t state;
 
-	xprintf_P( PSTR("COMMS: state prendidoONLINE.\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoONLINE.\r\n"));
 
 	state = ONLINE_ENTRY;
 
@@ -198,7 +198,7 @@ static bool state_online_data(void)
 bool exit_code = true;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:DATA in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:DATA in\r\n"));
 
 	if ( reset_datalogger) {
 		xprintf_PD( DF_COMMS, PSTR("COMMS: Reset...\r\n"));
@@ -231,7 +231,7 @@ static bool state_online_espera(void)
 bool exit_code = false;
 int8_t timer = 60;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:ESPERA in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ESPERA in\r\n"));
 
 	RESET_DEEP_SLEEP();
 
@@ -281,7 +281,7 @@ static bool state_online_app(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:APP in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:APP in\r\n"));
 
 	if (sendFrame( FRM_APP )) {
 		process_rsp_app();
@@ -298,7 +298,7 @@ static bool state_online_counter(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:COUNTER in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:COUNTER in\r\n"));
 
 	if (sendFrame( FRM_COUNTER )) {
 		process_rsp_counters();
@@ -315,7 +315,7 @@ static bool state_online_digital(void)
 bool exit_code = true;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:DIGITAL in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:DIGITAL in\r\n"));
 
 	if (sendFrame( FRM_DIGITAL )) {
 		process_rsp_digital();
@@ -332,7 +332,7 @@ static bool state_online_analog(void)
 bool exit_code = true;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:ANALOG in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ANALOG in\r\n"));
 
 	if (sendFrame( FRM_ANALOG )) {
 		process_rsp_analog();
@@ -349,7 +349,7 @@ static bool state_online_base(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:BASE in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:BASE in\r\n"));
 
 	if (sendFrame( FRM_BASE )) {
 		process_rsp_base();
@@ -366,7 +366,7 @@ static bool state_online_global(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:GLOBAL in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:GLOBAL in\r\n"));
 
 	if (sendFrame( FRM_GLOBAL )) {
 		process_rsp_global();
@@ -387,7 +387,7 @@ static bool state_online_auth(void)
 bool exit_code = false;
 uint32_t init_ticks = sysTicks;
 
-	xprintf_P( PSTR("COMMS: prendidoONLINE:AUTH in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:AUTH in\r\n"));
 
 	if (sendFrame( FRM_AUTH )) {
 		process_rsp_auth();
@@ -428,7 +428,7 @@ uint32_t init_ticks = sysTicks;
 //------------------------------------------------------------------------------------
 static bool state_online_exit(void)
 {
-	xprintf_P( PSTR("COMMS: prendidoONLINE:EXIT\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:EXIT\r\n"));
 	return(true);
 }
 /* ------------------------------------------------------------------------------------
@@ -978,8 +978,8 @@ uint32_t init_ticks = sysTicks;
 	// Envio el frame. El buffer es mayor que lo que maneja xprintf por lo que lo envio directo !!!
 	xprintf_PD( DF_COMMS, PSTR("COMMS: send_txbuffer send\r\n"));
 	gprs_flush_RX_buffer();
-	//sxprintf_D( fdGPRS, DF_COMMS , gprs_txbuffer.buffer, size );
-	sxprintf_D( fdGPRS, true , gprs_txbuffer.buffer, size );
+	sxprintf_D( fdGPRS, DF_COMMS , gprs_txbuffer.buffer, size );
+	//sxprintf_D( fdGPRS, true , gprs_txbuffer.buffer, size );
 
 	// Espero la confirmacion del modem hasta 2000 msecs. No borro el RX buffer !!!.
 	// Si el socket se cierra recibo +IPCLOSE: 0,1.
@@ -1115,7 +1115,7 @@ char *ptr = NULL;
 				ts++;
 			}
 			*ptr = '\0';
-			xprintf_P( PSTR("COMMS: IPADDR [%s]\r\n\0"), xCOMMS_stateVars.ip_assigned );
+			xprintf_PD( DF_COMMS, PSTR("COMMS: IPADDR [%s]\r\n\0"), xCOMMS_stateVars.ip_assigned );
 		}
 	}
 }
@@ -1240,7 +1240,7 @@ static bool process_rsp_global(void)
 //------------------------------------------------------------------------------------
 static bool process_rsp_base(void)
 {
-	//	TYPE=INIT&PLOAD=CLASS:BASE;TPOLL:60;TDIAL:60;PWST:5;CNT_HW:OPTO
+	//	TYPE=INIT&PLOAD=CLASS:BASE;TPOLL:60;TDIAL:60;PWST:5;HW_CNT:OPTO
 
 char *ts = NULL;
 char localStr[32] = { 0 };
@@ -1295,7 +1295,7 @@ bool save_flag = false;
 	// CNT_HW
 	if ( gprs_check_response( 0, "HW_CNT") ) {
 		memset(localStr,'\0',sizeof(localStr));
-		ts = strstr( gprs_rxbuffer.buffer, "PWST");
+		ts = strstr( gprs_rxbuffer.buffer, "HW_CNT");
 		strncpy(localStr, ts, sizeof(localStr));
 		stringp = localStr;
 		token = strsep(&stringp,delim);		// CNT_HW

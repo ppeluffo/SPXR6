@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.0b"
-#define SPX_FW_DATE "@ 20210824"
+#define SPX_FW_REV "4.0.0c"
+#define SPX_FW_DATE "@ 20210831"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -145,8 +145,8 @@ typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP
 
 TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkApp, xHandle_tkComms, xHandle_tkGprsRX, xHandle_tkAuxRX ;
 
-bool startTask;
 uint32_t sysTicks;
+uint8_t start_byte;
 
 xSemaphoreHandle sem_SYSVars;
 StaticSemaphore_t SYSVARS_xMutexBuffer;
@@ -245,8 +245,6 @@ int16_t data_sprintf_inputs( char *sbuffer ,st_dataRecord_t *dr, uint16_t ctl );
 int32_t xcomms_time_to_next_dial(void);
 
 // WATCHDOG
-
-
 uint8_t wdg_resetCause;
 
 #define WDG_CTL			0

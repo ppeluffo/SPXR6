@@ -481,6 +481,7 @@ int timeout;
 
 			if ( timeout == 0 ) {
 				// Error de transmision: SALGO
+				IO_clr_AUX_RTS();
 				return(-1);
 			}
 		}

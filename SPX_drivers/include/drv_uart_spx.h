@@ -27,8 +27,8 @@ uint8_t term_txStorage[TERM_TXSTORAGE_SIZE];
 uint8_t gprs_rxStorage[GPRS_RXSTORAGE_SIZE];
 uint8_t gprs_txStorage[GPRS_TXSTORAGE_SIZE];
 
-#define AUX1_RXSTORAGE_SIZE	128
-#define AUX1_TXSTORAGE_SIZE	128
+#define AUX1_RXSTORAGE_SIZE	32
+#define AUX1_TXSTORAGE_SIZE	32
 uint8_t aux1_rxStorage[AUX1_RXSTORAGE_SIZE];
 uint8_t aux1_txStorage[AUX1_TXSTORAGE_SIZE];
 

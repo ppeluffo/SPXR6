@@ -20,13 +20,14 @@ void tkAuxRX(void * pvParameters)
 char c;
 uint32_t ulNotifiedValue;
 
-	aux_init();
-
 	// Espero la notificacion para arrancar
-	while ( !startTask )
+	while ( ((start_byte >> WDG_AUXRX) & 1 ) != 1 )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
-	xprintf_P( PSTR("starting tkAuxRX..\r\n\0"));
+
+	xprintf_P( PSTR("starting tkAuxRX..\r\n"));
+
+	aux_init();
 
 	for( ;; )	{
 
@@ -55,6 +56,33 @@ void aux_init(void)
 	IO_clr_AUX_PWR();
 	IO_clr_AUX_RTS();
 
+	if ( systemVars.modbus_conf.slave_address != 0x00 ) {
+		xprintf_P( PSTR("AUX1: power on..\r\n"));
+		aux_prender();
+	}
+
+}
+//------------------------------------------------------------------------------------
+void aux_prender(void)
+{
+	// Prendo la fuente del aux.
+	IO_set_AUX_PWR();
+	vTaskDelay( 1000 / portTICK_RATE_MS );
+}
+//------------------------------------------------------------------------------------
+void aux_apagar(void)
+{
+	IO_clr_AUX_PWR();
+}
+//------------------------------------------------------------------------------------
+void aux_rts_on(void)
+{
+	IO_set_AUX_RTS();
+}
+//------------------------------------------------------------------------------------
+void aux_rts_off(void)
+{
+	IO_clr_AUX_RTS();
 }
 //------------------------------------------------------------------------------------
 void aux_rxbuffer_reset(void)
@@ -159,3 +187,32 @@ int8_t i;
 
 }
 //------------------------------------------------------------------------------------
+void aux_print_RX_buffer( bool ascii_mode )
+{
+	// Imprimo en hexadecimal el buffer.
+
+char *p;
+
+	// Imprimo todo el buffer local de RX. Sale por \0.
+	xprintf_P( PSTR ("AUX: rxbuff>\r\n\0"));
+
+	p = aux_rxbuffer.buffer;
+	while(*p) {
+		if ( ascii_mode ) {
+			xprintf_P( PSTR("%c"),(*p));
+		} else {
+			xprintf_P( PSTR("[0x%02x]"),(*p));
+		}
+		*p++;
+	}
+
+	xprintf_P( PSTR ("\r\n[%d]\r\n\0"), aux_rxbuffer.ptr );
+
+}
+//------------------------------------------------------------------------------------
+uint8_t aux_get_RX_buffer_ptr(void)
+{
+	return(aux_rxbuffer.ptr);
+}
+//------------------------------------------------------------------------------------
+

@@ -208,7 +208,7 @@ void consigna_app_service( uint8_t app_wdt )
 
 RtcTimeType_t rtcDateTime;
 
-	xprintf_P(PSTR("APP: CONSIGNA service START.\r\n"));
+	xprintf_P(PSTR("CONSIGNA\r\n"));
 
 	// Debo resetear el wdt porque al aplicar la consigna espero 25s que carguen los
 	// condensadores y me puede resetear el sistema

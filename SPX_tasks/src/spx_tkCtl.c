@@ -42,13 +42,23 @@ const char * const wdg_names[] PROGMEM = { string_0, string_1, string_2, string_
 void tkCtl(void * pvParameters)
 {
 
+	// Esta es la primer tarea que arranca.
+
 ( void ) pvParameters;
+uint8_t i;
 
 	vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
 
 	pv_ctl_init_system();
 
 	xprintf_P( PSTR("\r\nstarting tkControl..\r\n\0"));
+
+	// Arranco a habilitar el resto de las tareas cada 500ms
+	for ( i = 1; i < NRO_WDGS; i++) {
+		WDT_Reset();
+		vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
+		start_byte |= 1 << i;
+	}
 
 	for( ;; )
 	{
@@ -146,9 +156,6 @@ uint8_t i;
 	xprintf_P( PSTR("SPX: DINPUTS=%d, COUNTERS=%d, ANINPUTS=%d\r\n\0"), DINPUTS_CHANNELS, COUNTER_CHANNELS, ANALOG_CHANNELS );
 
 	xprintf_P( PSTR("------------------------------------------------\r\n\0"));
-
-	// Habilito a arrancar al resto de las tareas
-	startTask = true;
 
 }
 //------------------------------------------------------------------------------------
@@ -273,7 +280,7 @@ static int8_t time_to_fire_counters = 6;
 
 	if ( --time_to_fire_counters ==  0 ) {
 		counters_run();
-		xprintf_P( PSTR("COUNTERS Enabled.\r\n\0") );
+		xprintf_P( PSTR("COUNTERS: Enabled\r\n\0") );
 	}
 }
 //------------------------------------------------------------------------------------

@@ -56,9 +56,9 @@ typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
 
 struct {
 	bool start_test;
-	int16_t pulsos_calculados;
-	int16_t pulsos_a_aplicar;
-	int16_t pulse_counts;
+	float pulsos_calculados;
+	float pulsos_a_aplicar;
+	uint16_t pulse_counts;
 	uint16_t pwidth;
 	t_stepper_dir dir;
 	int8_t pA_channel;

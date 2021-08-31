@@ -27,7 +27,7 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 
 	u_wdg_kick(WDG_COMMS, 300);
 
-	xprintf_P( PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
 
 	// Leo el IMEI. Si da error no importa.
 	cmd_read_ATI();
@@ -83,7 +83,7 @@ char *ts = NULL;
 char c = '\0';
 char *ptr = NULL;
 
-	xprintf_P ( PSTR("COMMS: prendidoOFFLINE:ATI in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI in\r\n"));
 
 	memset( xCOMMS_stateVars.gprs_imei, '\0', sizeof(xCOMMS_stateVars.gprs_imei) );
 
@@ -103,7 +103,7 @@ char *ptr = NULL;
 					ts++;
 				}
 				*ptr = '\0';
-				xprintf_P( PSTR("COMMS: gprs imei=[%s]\r\n\0"), xCOMMS_stateVars.gprs_imei );
+				xprintf_PD( DF_COMMS, PSTR("COMMS: gprs imei=[%s]\r\n\0"), xCOMMS_stateVars.gprs_imei );
 			}
 			xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:ATI out: OK\r\n") );
 			return ( true );
@@ -127,7 +127,7 @@ static bool cmd_set_CIPMODE(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_P(  PSTR("COMMS: prendidoOFFLINE:CIPMODE in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPMODE in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -186,7 +186,7 @@ static bool cmd_set_CSUART(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CSUART in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CSUART in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -245,7 +245,7 @@ static bool cmd_read_CPIN(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CPIN in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPIN in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -287,7 +287,7 @@ char *ts = NULL;
 char c = '\0';
 char *ptr = NULL;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CCID in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CCID in\r\n"));
 
 	memset( xCOMMS_stateVars.gprs_ccid, '\0', sizeof(xCOMMS_stateVars.gprs_ccid) );
 
@@ -355,7 +355,7 @@ uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CREG in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CREG in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -390,7 +390,7 @@ uint8_t timeout = 0;
 int8_t tryes;
 int8_t cmd_rsp;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CPSI in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CPSI in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -426,7 +426,7 @@ static bool cmd_set_CIPHEAD(void)
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CIPHEAD\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPHEAD\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
@@ -458,7 +458,7 @@ char strapn[48];
 int8_t cmd_rsp;
 int8_t tryes;
 
-	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CGDSOCKCONT in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {

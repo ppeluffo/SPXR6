@@ -22,6 +22,8 @@
 
 #define MODBUS_CHANNELS 20
 
+typedef enum { u16=0,i16,u32,i32,FLOAT } t_modbus_types;
+
 /*
  * En modbus leemos de a 1 canal, no bloques !!
  * Los canales pueden ser holding_registers ( 0x03 ) o input_registers (0x04).
@@ -33,7 +35,7 @@
  */
 typedef struct {
 	char name[PARAMNAME_LENGTH];
-	char type;			// ( 'F','I' )
+	t_modbus_types type;
 	uint16_t address;
 	uint8_t nro_regs; 	// Cada registro son 2 bytes por lo que siempre leemos 2 x N.
 	float divisor_p10;	// factor por el que multiplicamos para tener la magnitud
@@ -57,7 +59,10 @@ modbus_conf_t modbus_conf;
  * De acuerdo a lo que lea es como queda interpretado
  */
 typedef union {
+	uint16_t u16_value;
+	int16_t i16_value;
 	uint32_t u32_value;
+	int32_t i32_value;
 	float float_value;
 	uint8_t raw_value[4];
 	char str_value[4];		// Almaceno NaN cuando hay un error.
@@ -74,7 +79,7 @@ typedef struct {
 	uint8_t rx_buffer[MBUS_RXMSG_LENGTH];
 	uint8_t tx_size;
 	uint8_t rx_size;
-	uint8_t payload[4];
+	uint8_t length;
 } mbus_CONTROL_BLOCK_t;
 
 
@@ -94,6 +99,9 @@ void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 bool pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 bool pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void modbus_print( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void modbus_data_print( file_descriptor_t fd, float mbus_data[] );
+char * modbus_sprintf( char *sbuffer, float src[] );
 
 
 #endif /* SPX_ULIBS_INCLUDE_UL_MODBUS_H_ */

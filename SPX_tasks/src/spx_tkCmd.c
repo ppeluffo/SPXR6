@@ -21,6 +21,8 @@ static void pv_cmd_I2Cscan(bool busscan);
 static bool pv_cmd_configGPRS(void);
 static void pv_RTC_drift_test(void);
 static bool pv_cmd_configMODBUS(void);
+static bool pv_cmd_rwAUX(uint8_t cmd_mode );
+static bool pv_cmd_modbus(void);
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
@@ -49,10 +51,8 @@ uint8_t ticks = 0;
 ( void ) pvParameters;
 
 	// Espero la notificacion para arrancar
-	while ( !startTask )
+	while ( ((start_byte >> WDG_CMD) & 1 ) != 1 )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
-
-	vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
 
 	FRTOS_CMD_init( xputChar, xprintf_cmd );
 
@@ -72,7 +72,10 @@ uint8_t ticks = 0;
 
 	xprintf_P( PSTR("starting tkCmd..\r\n") );
 
+	// Comienzo a disparar la orden de arrancar las tareas
+
 	//FRTOS_CMD_regtest();
+
 	// loop
 	for( ;; )
 	{
@@ -148,6 +151,9 @@ st_dataRecord_t dr;
 		break;
 	case DEBUG_COMMS:
 		xprintf_P( PSTR("  debug: comms\r\n") );
+		break;
+	case DEBUG_MODBUS:
+		xprintf_P( PSTR("  debug: modbus\r\n") );
 		break;
 	default:
 		xprintf_P( PSTR("  debug: ???\r\n") );
@@ -232,22 +238,19 @@ static void cmdWriteFunction(void)
 
 	FRTOS_CMD_makeArgv();
 
+	// AUX
+	// write aux rts {on|off}
+	// write aux cmd {acmd}
+	if ( strcmp_P( strupr(argv[1]), PSTR("AUX\0")) == 0 ) {
+		( pv_cmd_rwAUX(WR_CMD)) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+
 	// MODBUS
 	// mbustest genpoll {type(F|I} sla fcode addr length }\r\n\0"));
 	//          chpoll {ch}\r\n\0"));
 	if ( strcmp_P( strupr(argv[1]), PSTR("MBUSTEST")) == 0 ) {
-		if ( strcmp_P( strupr(argv[2]), PSTR("GENPOLL")) == 0 ) {
-			modbus_test_genpoll(argv);
-			pv_snprintfP_OK();
-			return;
-		}
-
-		if ( strcmp_P( strupr(argv[2]), PSTR("CHPOLL")) == 0 ) {
-			modbus_test_chpoll(argv[3]);
-			pv_snprintfP_OK();
-			return;
-		}
-		pv_snprintfP_ERR();
+		pv_cmd_modbus() ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}
 
@@ -382,6 +385,13 @@ st_dataRecord_t dr;
 uint8_t cks;
 
 	FRTOS_CMD_makeArgv();
+
+	// AUX
+	// read aux rsp
+	if (!strcmp_P( strupr(argv[1]), PSTR("AUX\0")) ) {
+		pv_cmd_rwAUX(RD_CMD);
+		return;
+	}
 
 
 	if (!strcmp_P( strupr(argv[1]), PSTR("RTCDTEST\0")) ) {
@@ -707,6 +717,9 @@ bool retS = false;
 		} else if (!strcmp_P( strupr(argv[2]), PSTR("COMMS\0"))) {
 			systemVars.debug = DEBUG_COMMS;
 			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("MODBUS\0"))) {
+			systemVars.debug = DEBUG_MODBUS;
+			retS = true;
 		} else {
 			retS = false;
 		}
@@ -774,12 +787,15 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  steppertest {fw|rev} {pulses} {pwidth_ms}\r\n"));
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
-		xprintf_P( PSTR("  mbustest genpoll {type(F|I} sla fcode addr length }\r\n\0"));
-		xprintf_P( PSTR("           chpoll {ch}\r\n\0"));
+		xprintf_P( PSTR("  mbustest genpoll {type(F|I} sla fcode addr nro_recds\r\n"));
+		xprintf_P( PSTR("           chpoll {ch}\r\n"));
 
-		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n\0"));
-		xprintf_P( PSTR("       cmd {atcmd}, redial, monsqe\r\n\0"));
-		//xprintf_P( PSTR("       sms,qsms,fsms {nbr,msg}\r\n\0"));
+		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n"));
+		xprintf_P( PSTR("       cmd {atcmd}, redial, monsqe\r\n"));
+		//xprintf_P( PSTR("       sms,qsms,fsms {nbr,msg}\r\n"));
+
+		xprintf_P( PSTR("  aux {pwr,rts} {on|off}\r\n"));
+		xprintf_P( PSTR("      cmd {acmd}\r\n"));
 
 		return;
 	}
@@ -796,6 +812,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  memory {full}, wdt\r\n"));
 		xprintf_P( PSTR("  gprs {rsp,cts,dcd,ri,sms}\r\n"));
 		xprintf_P( PSTR("       {modo,pref,bands}\r\n"));
+		xprintf_P( PSTR("  aux rsp\r\n"));
 		return;
 
 	}
@@ -818,7 +835,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("       bands {bandslist}\r\n\0"));
 		xprintf_P( PSTR("  timerpoll {val}, timerdial {val}, timepwrsensor {val}\r\n\0"));
 
-		xprintf_P( PSTR("  debug {none,counter,data,comms}\r\n\0"));
+		xprintf_P( PSTR("  debug {none,counter,data,comms,modbus}\r\n\0"));
 
 		xprintf_P( PSTR("  digital {0..%d} {dname}\r\n\0"), ( DINPUTS_CHANNELS - 1 ) );
 
@@ -833,7 +850,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("         ppr, pwidth \r\n\0"));
 
 		xprintf_P( PSTR("  modbus slave {addr}\r\n\0"));
-		xprintf_P( PSTR("         channel {0..%d} name addr nro_recds rcode(3,4) type(f,i), div_p10\r\n\0"), ( MODBUS_CHANNELS - 1));
+		xprintf_P( PSTR("         channel {0..%d} name addr nro_recds rcode(3,4) type(u16,i16,u32,i32,float), div_p10\r\n\0"), ( MODBUS_CHANNELS - 1));
 		xprintf_P( PSTR("         waittime {ms}\r\n\0"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO}\r\n\0"));
@@ -842,7 +859,7 @@ static void cmdHelpFunction(void)
 
 	// HELP KILL
 	else if (!strcmp_P( strupr(argv[1]), PSTR("KILL\0")) ) {
-		xprintf_P( PSTR("-kill {data, piloto, commstx }\r\n\0"));
+		xprintf_P( PSTR("-kill {data, app, commstx }\r\n\0"));
 		return;
 
 	} else {
@@ -1340,4 +1357,89 @@ static bool pv_cmd_configMODBUS(void)
 
 }
 //------------------------------------------------------------------------------------
+bool pv_cmd_rwAUX(uint8_t cmd_mode )
+{
+
+	if ( cmd_mode == WR_CMD ) {
+
+		// write aux (pwr|rts) {on|off}
+		if ( strcmp_P( strupr(argv[2]), PSTR("PWR\0")) == 0 ) {
+			if ( strcmp_P( strupr(argv[3]), PSTR("ON\0")) == 0 ) {
+				aux_prender();
+				return(true);
+			}
+			if ( strcmp_P( strupr(argv[3]), PSTR("OFF\0")) == 0 ) {
+				aux_apagar();
+				return(true);
+			}
+			return(false);
+		}
+
+
+		if ( strcmp_P( strupr(argv[2]), PSTR("RTS\0")) == 0 ) {
+			if ( strcmp_P( strupr(argv[3]), PSTR("ON\0")) == 0 ) {
+				aux_rts_on();
+				return(true);
+			}
+			if ( strcmp_P( strupr(argv[3]), PSTR("OFF\0")) == 0 ) {
+				aux_rts_off();
+				return(true);
+			}
+			return(false);
+		}
+
+
+		// CMD
+		// write aux cmd {atcmd}
+		if ( strcmp_P(strupr(argv[2]), PSTR("CMD\0")) == 0 ) {
+			//xprintf_P( PSTR("%s\r\0"),argv[3] );
+			aux_flush_TX_buffer();
+			aux_flush_RX_buffer();
+			// RTS ON. Habilita el sentido de trasmision del chip.
+			aux_rts_on();
+			xfprintf_P( fdAUX1,PSTR("%s\r\0"),argv[3] );
+			xprintf_P( PSTR("sent->%s\r\n\0"),argv[3] );
+			aux_rts_off();
+			return(true);
+		}
+
+		return(false);
+	}
+
+
+	if ( cmd_mode == RD_CMD ) {
+		// RSP
+		// read aux rsp
+		if ( strcmp_P(strupr(argv[2]), PSTR("RSP\0")) == 0 ) {
+			aux_print_RX_buffer( true );
+			aux_flush_RX_buffer();
+			return(true);
+		}
+		pv_snprintfP_ERR();
+		return(false);
+	}
+
+	return(false);
+}
+//------------------------------------------------------------------------------------
+static bool pv_cmd_modbus(void)
+{
+	// modbus genpoll {type(F|I} sla fcode addr nro_recds
+	if ( strcmp_P( strupr(argv[2]), PSTR("GENPOLL")) == 0 ) {
+		modbus_test_genpoll(argv);
+		return(true);
+
+	}
+
+	// modbus chpoll {ch}
+	if ( strcmp_P( strupr(argv[2]), PSTR("CHPOLL")) == 0 ) {
+		modbus_test_chpoll(argv[3]);
+		return(true);
+	}
+
+	return(false);
+
+}
+//------------------------------------------------------------------------------------
+
 

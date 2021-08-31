@@ -15,9 +15,8 @@ void tkComms(void * pvParameters)
 int8_t state = APAGADO;
 
 	// Espero la notificacion para arrancar
-	while ( !startTask )
+	while ( ((start_byte >> WDG_COMMS) & 1 ) != 1 )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
-
 
 	gprs_init();
 	xCOMMS_stateVars.gprs_prendido = false;
@@ -26,6 +25,8 @@ int8_t state = APAGADO;
 	xCOMMS_stateVars.modem_starts = 0;
 
 	xprintf_P( PSTR("starting tkComms..\r\n\0"));
+
+	vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
 
 	// loop
 	for( ;; )
@@ -59,13 +60,11 @@ void tkGprsRX(void * pvParameters)
 char c;
 uint32_t ulNotifiedValue;
 
-
 	// Espero la notificacion para arrancar
-	while ( !startTask )
+	while ( ((start_byte >> WDG_COMMSRX) & 1 ) != 1 )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
 	xprintf_P( PSTR("starting tkGprsRX..\r\n\0"));
-
 
 	for( ;; )	{
 

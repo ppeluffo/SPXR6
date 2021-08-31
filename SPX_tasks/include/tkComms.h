@@ -54,7 +54,7 @@ t_xCOMMS_stateVars xCOMMS_stateVars;
 
 comms_conf_t comms_conf;
 
-#define GPRS_TXBUFFER_LEN	256
+#define GPRS_TXBUFFER_LEN	384
 struct {
 	char buffer[GPRS_TXBUFFER_LEN];
 	uint16_t ptr;
@@ -142,6 +142,11 @@ void gprs_read_BANDS(void);
 //--------------------------------------------------------------------------------------------
 
 void aux_init(void);
+void aux_prender(void);
+void aux_apagar(void);
+void aux_rts_on(void);
+void aux_rts_off(void);
+
 void aux_rxbuffer_reset(void);
 void aux_txbuffer_reset(void);
 bool aux_rxbuffer_full(void);
@@ -152,6 +157,8 @@ bool aux_rxbuffer_put2( char data );
 void aux_flush_RX_buffer(void);
 void aux_flush_TX_buffer(void);
 bool aux_rxbuffer_copyto ( uint8_t *dst_buffer, uint8_t *size, int8_t max_size );
+void aux_print_RX_buffer( bool ascii_mode );
+uint8_t aux_get_RX_buffer_ptr(void);
 
 
 #endif /* SRC_SPX_TASKS_SPX_TKCOMMS_TKCOMMS_H_ */

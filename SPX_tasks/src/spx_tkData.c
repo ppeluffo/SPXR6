@@ -34,7 +34,7 @@ TickType_t xLastWakeTime = 0;
 uint32_t waiting_ticks = 0;
 
 	// Espero la notificacion para arrancar
-	while ( !startTask )
+	while ( ((start_byte >> WDG_DATA) & 1 ) != 1 )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
 	ainputs_init();
@@ -44,10 +44,10 @@ uint32_t waiting_ticks = 0;
 	xprintf_P( PSTR("starting tkData..\r\n\0"));
 
 	// Initialise the xLastWakeTime variable with the current time.
- 	 xLastWakeTime = xTaskGetTickCount();
+ 	xLastWakeTime = xTaskGetTickCount();
 
- 	 // Al arrancar poleo a los 10s
- 	 waiting_ticks = (uint32_t)(10) * 1000 / portTICK_RATE_MS;
+ 	// Al arrancar poleo a los 10s
+ 	waiting_ticks = (uint32_t)(10) * 1000 / portTICK_RATE_MS;
 
   	// loop
   	for( ;; ) {
@@ -60,6 +60,7 @@ uint32_t waiting_ticks = 0;
   		// Poleo
   		memset( &dataRecd,'\0',sizeof(dataRecd));
  		data_read_inputs(&dataRecd, false);
+ 		xprintf_P(PSTR("DATA: "));
   		data_print_inputs(fdTERM, &dataRecd, 0);
   		pv_data_guardar_en_BD();
 
@@ -100,8 +101,7 @@ int8_t xBytes = 0;
 	counters_read( dst->counters );
 	counters_clear();
 
-	//modbus_read (dst->modbus );
-
+	modbus_read (dst->modbus );
 
 	// Agrego el timestamp
 	xBytes = RTC_read_dtime( &dst->rtc );
@@ -123,6 +123,8 @@ void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl)
 	ainputs_print( fd, dr->ainputs );
 	dinputs_print( fd, dr->dinputs );
 	counters_print( fd, dr->counters );
+
+	modbus_data_print( fd, dr->modbus );
 
 	ainputs_battery_print( fd, dr->battery );
 
@@ -154,6 +156,8 @@ char *p;
 	p = ainputs_sprintf( p, dr->ainputs );
 	p = dinputs_sprintf( p, dr->dinputs );
 	p = counters_sprintf( p, dr->counters );
+
+	p = modbus_sprintf( p, dr->modbus );
 
 	p = ainputs_battery_sprintf(p, dr->battery );
 

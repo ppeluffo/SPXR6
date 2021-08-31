@@ -16,7 +16,12 @@ void pv_piloto_print_parametros(void);
 bool pv_piloto_determinar_canales_presion(void);
 void pv_piloto_leer_presiones( int8_t samples, uint16_t intervalo_secs );
 bool pv_piloto_leer_slot_actual( uint8_t *slot_id );
-void pv_piloto_ajustar_presion( void );
+void pv_piloto_ajustar_presion( uint8_t app_wdt );
+
+bool control_ajuste_pA(void);
+bool control_ajuste_pB(void);
+bool control_ajuste_banda(void);
+bool control_ajuste_pRef(void);
 
 //------------------------------------------------------------------------------------
 void piloto_config_defaults(void)
@@ -62,20 +67,20 @@ void piloto_app_service( uint8_t app_wdt )
 uint8_t slot_actual = -1;
 uint8_t slot;
 
-	xprintf_P("APP: PILOTO\r\n\0");
+	xprintf_P(PSTR("PILOTO\r\n"));
 
 	if ( !piloto_init_service() )
 		return;
 
 	for( ;; )
 	{
-		u_wdg_kick( app_wdt, 240 );
+		u_wdg_kick( app_wdt,  240 );
 		vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
 
 		// Callback para arrancar el test
 		if ( PLTCB.start_test) {
 			PLTCB.start_test = false;
-			pv_piloto_ajustar_presion();
+			pv_piloto_ajustar_presion( app_wdt );
 			continue;
 		}
 
@@ -85,7 +90,7 @@ uint8_t slot;
 				xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
 				xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
 				PLTCB.pRef = piloto_conf.pltSlots[slot_actual].presion;
-				pv_piloto_ajustar_presion();
+				pv_piloto_ajustar_presion( app_wdt );
 			}
 		}
 	}
@@ -351,7 +356,7 @@ float delta_pres = 0.0;
 	 */
 	delta_pres = fabs(PLTCB.pB - PLTCB.pRef);
 	//PLTCB.pulsos_calculados = (uint16_t) ( delta_pres * PULSOS_X_REV  / DPRES_X_REV );
-	PLTCB.pulsos_calculados = (uint16_t) ( delta_pres * piloto_conf.pulsesXrev  / DPRES_X_REV );
+	PLTCB.pulsos_calculados = ( delta_pres * piloto_conf.pulsesXrev  / DPRES_X_REV );
 
 	//xprintf_P(PSTR("DEBUG: pulsos_calculados: %d\r\n"), PLTCB.pulsos_calculados );
 
@@ -368,7 +373,7 @@ float delta_pres = 0.0;
 	 *           Si son menos de 500 no lo corrijo.
 	 */
 	if ( ( PLTCB.dir == STEPPER_FWD) && ( PLTCB.pulsos_calculados > 500 ) ) {
-		PLTCB.pulsos_a_aplicar = (uint16_t) (0.7 * PLTCB.pulsos_calculados);
+		PLTCB.pulsos_a_aplicar = (0.7 * PLTCB.pulsos_calculados);
 	} else {
 		PLTCB.pulsos_a_aplicar = PLTCB.pulsos_calculados;
 	}
@@ -377,12 +382,12 @@ float delta_pres = 0.0;
 	//AJUSTE_BASICO:
 	// METODO 2: Los pulsos son los que me da el calculo.
 
-	// Paso 7: Controlo no avanzar mas de 500gr aprox x loop !!!
-	if ( PLTCB.pulsos_a_aplicar > 3000 ) {
-		PLTCB.pulsos_a_aplicar = 3000;
+	// Paso 7: Controlo no avanzar mas de 500gr aprox x loop !!! ( 1 revolucion )
+	if ( PLTCB.pulsos_a_aplicar > piloto_conf.pulsesXrev ) {
+		PLTCB.pulsos_a_aplicar = piloto_conf.pulsesXrev;
 	}
 
-	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
+	PLTCB.pulse_counts = (uint16_t) PLTCB.pulsos_a_aplicar;
 	//xprintf_P(PSTR("DEBUG: pulsoe_counts: %d\r\n"), PLTCB.pulse_counts );
 }
 //------------------------------------------------------------------------------------
@@ -395,8 +400,8 @@ void pv_piloto_print_parametros(void)
 	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"),   PLTCB.pRef );
 	xprintf_P(PSTR("PILOTO: deltaP=%.03f\r\n"), ( PLTCB.pB - PLTCB.pRef));
-	xprintf_P(PSTR("PILOTO: pulses calc=%d\r\n"), PLTCB.pulsos_calculados );
-	xprintf_P(PSTR("PILOTO: pulses apply=%d\r\n"), PLTCB.pulsos_a_aplicar );
+	xprintf_P(PSTR("PILOTO: pulses calc=%.01f\r\n"), PLTCB.pulsos_calculados );
+	xprintf_P(PSTR("PILOTO: pulses apply=%.01f\r\n"), PLTCB.pulsos_a_aplicar );
 	xprintf_P(PSTR("PILOTO: pwidth=%d\r\n"), PLTCB.pwidth );
 	if ( PLTCB.dir == STEPPER_FWD ) {
 		xprintf_P(PSTR("PILOTO: dir=Forward\r\n"));
@@ -476,7 +481,7 @@ uint16_t slot_hhmm;
 
 }
 //------------------------------------------------------------------------------------
-void pv_piloto_ajustar_presion( void )
+void pv_piloto_ajustar_presion( uint8_t app_wdt )
 {
 
 uint8_t loops;
@@ -492,33 +497,27 @@ uint8_t loops;
 	for ( loops = 0; loops < MAX_INTENTOS; loops++ ) {
 
 		xprintf_P(PSTR("PILOTO: Ajuste #%d\r\n"), loops );
+		u_wdg_kick( app_wdt,  240 );
 
 		// Lee la presion actual
 		pv_piloto_leer_presiones( 5, INTERVALO_PB_SECS );
 
 		// Controles previos a intentar ajustar la presion
-		// Las presiones deben ser positivas.
-		if ( PLTCB.pA < MIN_PA_PB ) {
-			xprintf_P(PSTR("PILOTO: Ajuste ERROR: pA < %.02f.!!\r\n"), MIN_PA_PB );
+		// CONTROL 1: La presion pA debe ser positiva.
+		if ( ! control_ajuste_pA() )
 			return;
-		}
 
-		if ( PLTCB.pB < MIN_PA_PB ) {
-			xprintf_P(PSTR("PILOTO: Ajuste ERROR: pB < %.02f.!!\r\n"), MIN_PA_PB);
+		// CONTROL 2: La presion pB debe ser positiva.
+		if ( ! control_ajuste_pB() )
 			return;
-		}
 
-		// Debe haber una diferencia de DELTA_PA_PB (300 gr) minima para ajustar
-		if ( ( PLTCB.pA - PLTCB.pB ) < DELTA_PA_PB ) {
-			xprintf_P(PSTR("PILOTO: Ajuste ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
-			return;
-		}
+		// CONTROL 3: Debe haber una banda ( diferencia de DELTA_PA_PB (300 gr)) minima para ajustar
+		//if ( ! control_ajuste_banda() )
+		//	return;
 
-		// La presion de referencia debe ser menor a pA
-		if ( ( PLTCB.pA - PLTCB.pRef ) < DELTA_PA_PREF ) {
-			xprintf_P(PSTR("PILOTO: Ajuste ERROR: (pA-pRef) < %.02f gr.!!\r\n"), DELTA_PA_PREF );
+		// CONTROL 4: pREF debe ser menor que pA, y debe dejar una banda ( no acercarce mucho a pA )
+		if ( ! control_ajuste_pRef() )
 			return;
-		}
 
 		// Calculo la direccion y los pulsos a aplicar
 		pv_piloto_calcular_parametros_ajuste();
@@ -558,6 +557,72 @@ uint8_t loops;
 
 	}
 
+}
+//------------------------------------------------------------------------------------
+bool control_ajuste_pA(void)
+{
+	// Controlo que la pA sea positiva ( mayor que un minimo de 0.5k)
+
+bool retS = false;
+
+	if ( PLTCB.pA < MIN_PA_PB ) {
+		xprintf_P(PSTR("PILOTO: Ajuste ERROR: pA < %.02f.!!\r\n"), MIN_PA_PB );
+		retS = false;
+	} else {
+		retS = true;
+	}
+
+	return(retS);
+}
+//------------------------------------------------------------------------------------
+bool control_ajuste_pB(void)
+{
+	// Controlo que la pB sea positiva ( mayor que un minimo de 0.5k)
+
+bool retS = false;
+
+	if ( PLTCB.pB < MIN_PA_PB ) {
+		xprintf_P(PSTR("PILOTO: Ajuste ERROR: pB < %.02f.!!\r\n"), MIN_PA_PB );
+		retS = false;
+	} else {
+		retS = true;
+	}
+
+	return(retS);
+}
+//------------------------------------------------------------------------------------
+bool control_ajuste_banda(void)
+{
+	// La banda entre pA y pB debe ser mayor a 300gr para que  trabaje la reguladora
+
+bool retS = false;
+
+	if ( ( PLTCB.pA - PLTCB.pB ) < DELTA_PA_PB ) {
+		xprintf_P(PSTR("PILOTO: Ajuste ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
+		retS = false;
+	} else {
+		retS = true;
+	}
+
+	return(retS);
+}
+//------------------------------------------------------------------------------------
+bool control_ajuste_pRef(void)
+{
+	// Cuando ajuste, debe quedar una banda respecto de pA
+	// Si no queda, ajusto la pREF para que suba todo lo posible hasta la nueva banda.
+
+bool retS = true;
+
+	// La presion de referencia debe ser menor a pA
+	if ( ( PLTCB.pA - PLTCB.pRef ) < DELTA_PA_PREF ) {
+		// La nueva pA ( PLTCB.pRef ) debe dejar una banda de ajuste con pA.
+		PLTCB.pRef = PLTCB.pA - DELTA_PA_PREF;
+		xprintf_P(PSTR("PILOTO: Recalculo (pA-pRef) < %.02f gr.!!\r\n"), DELTA_PA_PREF );
+		xprintf_P(PSTR("        Nueva pRef=%.02f\r\n"), PLTCB.pRef );
+	}
+
+	return(retS);
 }
 //------------------------------------------------------------------------------------
 

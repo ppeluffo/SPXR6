@@ -36,6 +36,22 @@
  *  SPY_init_conf_digital.py
  *  spy_utils.py
  *
+ *  R4.0.0c @ 2021-08-31:
+ *  - Modbus: Polea e imprime todos los canales.
+ *    NO TRANSMITE los canales modbus !!
+ *    NO SE CONFIGURA online modbus !!
+ *    REVISAR CONFIGRAR CANALES MODBUS LA ADDRESS !!!
+ *  - Pilotos:
+ *    Sale por wdg al ajustar. Corregido
+ *    En el ajuste, considera pB y no pREF para el dP: Corregido.
+ *
+ *  R4.0.0b @ 2021-08-24:
+ *  - Como los motores de los pilotos pueden cambiar los pulsoxrev, agrego 2 parametros a pilotos_conf
+ *    que son pulsoXrev y pwidth.
+ *    Estos se configuran por cmdMode y online.
+ *  - Agrego setear en GPRS el modo,sat,band,pref.
+ *  - Por un bug no se configuraba el modo hw de los contadores. Listo.
+ *
  *  R4.0.0a @ 2021-08-16:
  *  - En modo apagado prendo ATE1 para seguir en el log los comandos enviados
  *    En modo online (entry) lo apago ATE0 para no llenar el rxbuffer con lineas de comandos
@@ -44,11 +60,6 @@
  *  - Cuando apago el modem, actualizo xCOMMS_stateVars.csq a 0.
  *  - El config default pone aplicacion en 0 y modbus en off.
  *
- *  R4.0.0b @ 2021-08-24:
- *  - Como los motores de los pilotos pueden cambiar los pulsoxrev, agrego 2 parametros a pilotos_conf
- *    que son pulsoXrev y pwidth.
- *    Estos se configuran por cmdMode y online.
- *  - Agrego setear en GPRS el modo,sat,band,pref.
  */
 
 #include "spx.h"
@@ -78,6 +89,7 @@ int main( void )
 	frtos_open(fdTERM, 9600 );
 	frtos_open(fdGPRS, 115200);
 	frtos_open(fdI2C, 100 );
+	frtos_open(fdAUX1, 9600);
 
 	// Creo los semaforos
 	sem_SYSVars = xSemaphoreCreateMutexStatic( &SYSVARS_xMutexBuffer );
@@ -85,7 +97,6 @@ int main( void )
 	sem_AINPUTS = xSemaphoreCreateMutexStatic( &AINPUTS_xMutexBuffer );
 	sem_RXBUFF = xSemaphoreCreateMutexStatic( &RXBUFF_xMutexBuffer );
 
-	startTask = false;
 	xprintf_init();
 	FAT_init();
 	consigna_init();
@@ -94,6 +105,8 @@ int main( void )
 	counters_setup_outofrtos();
 
 	// Creamos las tareas
+	start_byte = 0x00;
+
 	xHandle_tkCtl = xTaskCreateStatic(tkCtl, "CTL", tkCtl_STACK_SIZE, (void *)1, tkCtl_TASK_PRIORITY, xTask_Ctl_Buffer, &xTask_Ctl_Buffer_Ptr );
 	xHandle_tkCmd = xTaskCreateStatic(tkCmd, "CMD", tkCmd_STACK_SIZE, (void *)1, tkCmd_TASK_PRIORITY, xTask_Cmd_Buffer, &xTask_Cmd_Buffer_Ptr );
 	xHandle_tkData = xTaskCreateStatic(tkData, "IN", tkData_STACK_SIZE, (void *)1, tkData_TASK_PRIORITY, xTask_Data_Buffer, &xTask_Data_Buffer_Ptr );

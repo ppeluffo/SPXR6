@@ -93,7 +93,7 @@ int8_t tkXComms_APAGADO(void)
 //------------------------------------------------------------------------------------
 static void state_exit(void)
 {
-	xprintf_P( PSTR("COMMS: apagado:EXIT\r\n\0"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado:EXIT\r\n\0"));
 }
 //------------------------------------------------------------------------------------
 static bool state_cpas(void)
@@ -211,7 +211,7 @@ static void state_apagado(void)
 {
 	// Apago el modem y quedo esperando que pase el tiempo.
 
-	xprintf_P( PSTR("COMMS: apagado: in.\r\n\0"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: apagado: in.\r\n\0"));
 
 // ENTRY
 	pv_apagar_modem();
