@@ -9,9 +9,9 @@
 #include <tkComms.h>
 #include "tkApp.h"
 
-typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT } t_states_prendido_online;
+typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_MODBUS_LOW, ONLINE_MODBUS_HIGH, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT } t_states_prendido_online;
 typedef enum { SF_ENTRY, SF_SOCK_STATUS, SF_SOCK_OPEN, SF_NET_STATUS, SF_SEND, SF_RSP, SF_EXIT } t_sendFrames_states;
-typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_APP, FRM_DATA } t_frames;
+typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_MODBUS_LOW, FRM_MODBUS_HIGH, FRM_APP, FRM_DATA } t_frames;
 
 typedef enum { sock_OPEN = 0, sock_CLOSE, sock_UNKNOWN, sock_TOUT } t_socket_status;
 typedef enum { net_OPEN = 0, net_CLOSE, net_UNKNOWN, net_TOUT } t_network_status;
@@ -23,6 +23,8 @@ static bool state_online_base(void);
 static bool state_online_analog(void);
 static bool state_online_digital(void);
 static bool state_online_counter(void);
+static bool state_online_modbus_low(void);
+static bool state_online_modbus_high(void);
 static bool state_online_app(void);
 static bool state_online_data(void);
 static bool state_online_espera(void);
@@ -53,6 +55,7 @@ static bool process_rsp_analog(void);
 static bool process_rsp_digital(void);
 static bool process_rsp_counters(void);
 static bool process_rsp_app(void);
+static bool process_rsp_modbus(void);
 static bool process_rsp_data(void);
 
 uint16_t datos_pendientes_transmitir(void);
@@ -62,6 +65,8 @@ bool f_send_init_frame_base;
 bool f_send_init_frame_analog;
 bool f_send_init_frame_digital;
 bool f_send_init_frame_counters;
+bool f_send_init_frame_modbus_low;
+bool f_send_init_frame_modbus_high;
 bool f_send_init_frame_app;
 
 bool reset_datalogger;
@@ -139,8 +144,28 @@ int8_t state;
 
 		case ONLINE_COUNTER:
 			if ( ! f_send_init_frame_counters ) {
-				state = ONLINE_APP;
+				state = ONLINE_MODBUS_LOW;
 			} else if ( state_online_counter() ) {
+				state = ONLINE_MODBUS_LOW;
+			} else {
+				state = ONLINE_EXIT;
+			}
+			break;
+
+		case ONLINE_MODBUS_LOW:
+			if ( ! f_send_init_frame_modbus_low ) {
+				state = ONLINE_MODBUS_HIGH;
+			} else if ( state_online_modbus_low() ) {
+				state = ONLINE_MODBUS_HIGH;
+			} else {
+				state = ONLINE_EXIT;
+			}
+			break;
+
+		case ONLINE_MODBUS_HIGH:
+			if ( ! f_send_init_frame_modbus_high ) {
+				state = ONLINE_APP;
+			} else if ( state_online_modbus_high() ) {
 				state = ONLINE_APP;
 			} else {
 				state = ONLINE_EXIT;
@@ -293,6 +318,40 @@ uint32_t init_ticks = sysTicks;
 	return(exit_code);
 }
 //------------------------------------------------------------------------------------
+static bool state_online_modbus_low(void)
+{
+bool exit_code = true;
+uint32_t init_ticks = sysTicks;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_LOW in\r\n"));
+
+	if (sendFrame( FRM_MODBUS_LOW )) {
+		process_rsp_modbus();
+		socket_close();
+		exit_code = true;
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_LOW out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+	return(exit_code);
+}
+//------------------------------------------------------------------------------------
+static bool state_online_modbus_high(void)
+{
+bool exit_code = true;
+uint32_t init_ticks = sysTicks;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_HIGH in\r\n"));
+
+	if (sendFrame( FRM_MODBUS_HIGH )) {
+		process_rsp_modbus();
+		socket_close();
+		exit_code = true;
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_HIGH out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+	return(exit_code);
+}
+//------------------------------------------------------------------------------------
 static bool state_online_counter(void)
 {
 bool exit_code = false;
@@ -411,6 +470,8 @@ uint32_t init_ticks = sysTicks;
 	f_send_init_frame_analog = false;
 	f_send_init_frame_digital = false;
 	f_send_init_frame_counters = false;
+	f_send_init_frame_modbus_low = false;
+	f_send_init_frame_modbus_high = false;
 	f_send_init_frame_app = false;
 
 	reset_datalogger = false;
@@ -906,6 +967,7 @@ uint32_t init_ticks = sysTicks;
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("AN:0x%02X;" ), ainputs_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("DG:0x%02X;" ), dinputs_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CNT:0x%02X;" ), counters_hash() );
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("MB:0x%02X;" ), modbus_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("APP:0x%02X;" ), aplicacion_hash() );
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
@@ -931,6 +993,18 @@ uint32_t init_ticks = sysTicks;
 	case FRM_COUNTER:
 		i = prepare_header(FRM_COUNTER);
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_COUNTER;"));
+		i +=  prepare_tail(i);
+		ret_code = send_txbuffer();
+		break;
+	case FRM_MODBUS_LOW:
+		i = prepare_header(FRM_MODBUS_LOW);
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_MBUS_LOW;"));
+		i +=  prepare_tail(i);
+		ret_code = send_txbuffer();
+		break;
+	case FRM_MODBUS_HIGH:
+		i = prepare_header(FRM_MODBUS_HIGH);
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_MBUS_HIGH;"));
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
@@ -1213,6 +1287,8 @@ static bool process_rsp_global(void)
 	f_send_init_frame_analog = false;
 	f_send_init_frame_digital = false;
 	f_send_init_frame_counters = false;
+	f_send_init_frame_modbus_low = false;
+	f_send_init_frame_modbus_high = false;
 	f_send_init_frame_app = false;
 
 	if ( gprs_check_response( 0, "BASE") ) {
@@ -1229,6 +1305,14 @@ static bool process_rsp_global(void)
 
 	if ( gprs_check_response( 0, "COUNTERS") ) {
 		f_send_init_frame_counters = true;
+	}
+
+	if ( gprs_check_response( 0, "MBUS_LOW") ) {
+		f_send_init_frame_modbus_low = true;
+	}
+
+	if ( gprs_check_response( 0, "MBUS_HIGH") ) {
+		f_send_init_frame_modbus_high = true;
 	}
 
 	if ( gprs_check_response( 0, "APLICACION") ) {
@@ -1463,6 +1547,98 @@ char str_base[8];
 
 }
 //------------------------------------------------------------------------------------
+static bool process_rsp_modbus(void)
+{
+
+	/*
+	 * TYPE=INIT&PLOAD=CLASS:MODBUS;SLA:0;MBWT:10;MB00:T0,2069,2,3,FLOAT,0;MB01:T1,2069,2,3,FLOAT,0;MB02:T2,2062,2,3,FLOAT,0;
+	 * MB03:T3,2063,2,3,FLOAT,0;MB04:T4,2064,2,3,FLOAT,0;MB05:X,0,1,3,U16,0;MB06:X,0,1,3,U16,0;MB07:X,0,1,3,U16,0;
+	 * MB08:X,0,1,3,U16,0;MB09:X,0,1,3,U16,0;MB10:X,0,1,3,U16,0;MB11:X,0,1,3,U16,0;MB12:X,0,1,3,U16,0;MB13:X,0,1,3,U16,0;
+	 * MB14:X,0,1,3,U16,0;MB15:X,0,1,3,U16,0;MB16:X,0,1,3,U16,0;MB17:X,0,1,3,U16,0;MB18:X,0,1,3,U16,0;MB19:X,0,1,3,U16,0;
+	 *
+	 */
+
+
+char *ts = NULL;
+char localStr[32] = { 0 };
+char *stringp = NULL;
+char *tk_sla= NULL;
+char *tk_mbwt= NULL;
+char *tk_name= NULL;
+char *tk_address= NULL;
+char *tk_size = NULL;
+char *tk_fcode = NULL;
+char *tk_type = NULL;
+char *tk_pow10 = NULL;
+char *delim = ",;:=><";
+bool save_flag = false;
+uint8_t ch;
+char str_base[8];
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus in\r\n\0"));
+	gprs_print_RX_buffer();
+
+	// SLA
+	if ( gprs_check_response( 0, "SLA") ) {
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "SLA");
+		strncpy(localStr, ts, sizeof(localStr));
+		//xprintf_P(PSTR("DEBUG_SLA: [%s]\r\n"), localStr);
+		stringp = localStr;
+		tk_sla = strsep(&stringp,delim);		// SLA
+		tk_sla = strsep(&stringp,delim);		// Value
+		modbus_config_slave(tk_sla);
+		save_flag = true;
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus SLA[%s]\r\n"), tk_sla);
+	}
+
+	// MBWT
+	if ( gprs_check_response( 0, "MBWT") ) {
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "MBWT");
+		strncpy(localStr, ts, sizeof(localStr));
+		//xprintf_P(PSTR("DEBUG_MBWT: [%s]\r\n"), localStr);
+		stringp = localStr;
+		tk_mbwt = strsep(&stringp,delim);		// MBWT
+		tk_mbwt = strsep(&stringp,delim);		// Value
+		modbus_config_waiting_poll_time(tk_mbwt);
+		save_flag = true;
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus MBWT[%s]\r\n"), tk_mbwt);
+	}
+
+	// MBxx?
+	for (ch=0; ch < MODBUS_CHANNELS; ch++ ) {
+		memset( &str_base, '\0', sizeof(str_base) );
+		snprintf_P( str_base, sizeof(str_base), PSTR("MB%02d\0"), ch );
+
+		if ( gprs_check_response( 0, str_base ) ) {
+			memset(localStr,'\0',sizeof(localStr));
+			ts = strstr( gprs_rxbuffer.buffer, str_base);
+			strncpy(localStr, ts, sizeof(localStr));
+			xprintf_P(PSTR("DEBUG_MB%02d: [%s]\r\n"), ch, localStr);
+			stringp = localStr;
+			tk_name = strsep(&stringp,delim);		//MB00
+			tk_name = strsep(&stringp,delim);		//name
+			tk_address = strsep(&stringp,delim);	//Address
+			tk_size = strsep(&stringp,delim);		//size
+			tk_fcode = strsep(&stringp,delim);		//fcode
+			tk_type = strsep(&stringp,delim);		//type
+			tk_pow10 = strsep(&stringp,delim);		//pow10
+
+			modbus_config_channel( ch, tk_name, tk_address, tk_size, tk_fcode, tk_type, tk_pow10 );
+
+			xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig MB%02d\r\n"), ch );
+			save_flag = true;
+		}
+	}
+
+	if ( save_flag ) {
+		u_save_params_in_NVMEE();
+	}
+
+	return(true);
+}
+//------------------------------------------------------------------------------------
 static bool process_rsp_app(void)
 {
 	//	PLOAD=CLASS:APP;OFF;
@@ -1474,8 +1650,6 @@ char localStr[32] = { 0 };
 uint8_t slot;
 char *stringp = NULL;
 char *token = NULL;
-char *tk_ppr = NULL;
-char *tk_pwidth = NULL;
 char *tk_hhmm = NULL;
 char *tk_pres = NULL;
 char *delim = ",;:=><";

@@ -21,6 +21,7 @@ void pv_piloto_ajustar_presion( uint8_t app_wdt );
 bool control_ajuste_pA(void);
 bool control_ajuste_pB(void);
 bool control_ajuste_banda(void);
+bool control_ajuste_pApB(void);
 bool control_ajuste_pRef(void);
 
 //------------------------------------------------------------------------------------
@@ -511,11 +512,16 @@ uint8_t loops;
 		if ( ! control_ajuste_pB() )
 			return;
 
-		// CONTROL 3: Debe haber una banda ( diferencia de DELTA_PA_PB (300 gr)) minima para ajustar
+		// CONTROL 3: pA debe ser mayor pB
+		if ( ! control_ajuste_pApB() )
+			return;
+
+		// CONTROL 4: Debe haber una banda ( diferencia de DELTA_PA_PB (300 gr)) minima para ajustar
+		// Esto no lo controlo porque si la pA baja a menos de la regulacion, pA y pB se pegan.
 		//if ( ! control_ajuste_banda() )
 		//	return;
 
-		// CONTROL 4: pREF debe ser menor que pA, y debe dejar una banda ( no acercarce mucho a pA )
+		// CONTROL 5: pREF debe ser menor que pA, y debe dejar una banda ( no acercarce mucho a pA )
 		if ( ! control_ajuste_pRef() )
 			return;
 
@@ -583,6 +589,24 @@ bool retS = false;
 
 	if ( PLTCB.pB < MIN_PA_PB ) {
 		xprintf_P(PSTR("PILOTO: Ajuste ERROR: pB < %.02f.!!\r\n"), MIN_PA_PB );
+		retS = false;
+	} else {
+		retS = true;
+	}
+
+	return(retS);
+}
+//------------------------------------------------------------------------------------
+bool control_ajuste_pApB(void)
+{
+	// pA debe ser mayor que pB
+	// Puede ocurrir que baje la alta debajo de la regulacion con lo que pB se pega
+	// a la alta y ambas quedan iguales.
+
+bool retS = false;
+
+	if ( PLTCB.pA < PLTCB.pB  ) {
+		xprintf_P(PSTR("PILOTO: Ajuste ERROR: ( pA < pB) .!!\r\n") );
 		retS = false;
 	} else {
 		retS = true;

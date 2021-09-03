@@ -38,7 +38,7 @@ typedef struct {
 	t_modbus_types type;
 	uint16_t address;
 	uint8_t nro_regs; 	// Cada registro son 2 bytes por lo que siempre leemos 2 x N.
-	float divisor_p10;	// factor por el que multiplicamos para tener la magnitud
+	uint8_t divisor_p10;	// factor de potencia de 10 por el que dividimos para tener la magnitud
 	uint8_t rcode;		// Codigo con el que se lee
 } modbus_channel_t;
 
@@ -68,6 +68,11 @@ typedef union {
 	char str_value[4];		// Almaceno NaN cuando hay un error.
 } modbus_hold_t; // (4)
 
+typedef union {
+	float value;
+	uint8_t raw[4];	// Almaceno NaN (FF FF FF FF ) cuando hay un error.
+} modbus_value_t;
+
 typedef struct {
 	uint8_t sla_address;
 	uint8_t function_code;
@@ -80,28 +85,33 @@ typedef struct {
 	uint8_t tx_size;
 	uint8_t rx_size;
 	uint8_t length;
+	bool io_status;
 } mbus_CONTROL_BLOCK_t;
 
 
-bool modbus_read( float mbus_data[] );
 void modbus_config_defaults(void);
 void modbus_config_status(void);
 bool modbus_config_slave( char *s_slave_address );
-bool modbus_config_channel( char *s_ch, char *s_name, char *s_addr, char *s_nro_recds, char *s_rcode, char *s_type, char *s_divisor_p10 );
+bool modbus_config_channel( uint8_t channel, char *s_name, char *s_addr, char *s_nro_recds, char *s_rcode, char *s_type, char *s_divisor_p10 );
 bool modbus_config_waiting_poll_time( char *s_waiting_poll_time);
+
 uint8_t modbus_hash(void);
-bool modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
-void modbus_read_channel ( uint8_t ch, float *result );
-void modbus_test_genpoll(char *arg_ptr[16] );
-void modbus_test_chpoll(char *s_channel);
+
+void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void modbus_read( float mbus_data[] );
+float modbus_read_channel ( uint8_t ch );
 
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
-bool pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
-bool pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
+void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+
 void modbus_print( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
 void modbus_data_print( file_descriptor_t fd, float mbus_data[] );
 char * modbus_sprintf( char *sbuffer, float src[] );
+
+void modbus_test_genpoll(char *arg_ptr[16] );
+void modbus_test_chpoll(char *s_channel);
 
 
 #endif /* SPX_ULIBS_INCLUDE_UL_MODBUS_H_ */

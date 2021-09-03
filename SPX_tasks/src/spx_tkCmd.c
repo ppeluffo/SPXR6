@@ -1345,7 +1345,7 @@ static bool pv_cmd_configMODBUS(void)
 
 	// config modbus channel {0..%d} name addr length rcode(3,4), divisor_p10.
 	if ( strcmp_P( strupr(argv[2]), PSTR("CHANNEL\0")) == 0 ) {
-		return (modbus_config_channel(argv[3],argv[4],argv[5],argv[6],argv[7], argv[8], argv[9]) );
+		return (modbus_config_channel(atoi(argv[3]) ,argv[4],argv[5],argv[6],argv[7], argv[8], argv[9]) );
 	}
 
 	// config modbus waittime

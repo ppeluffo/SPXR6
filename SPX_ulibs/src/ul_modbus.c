@@ -60,18 +60,19 @@ mbus_CONTROL_BLOCK_t mbus_cb;
 modbus_hold_t hold_reg;
 
 //------------------------------------------------------------------------------------
-bool modbus_read( float mbus_data[] )
+// READ
+//------------------------------------------------------------------------------------
+void modbus_read( float mbus_data[] )
 {
 	// Lee todos los canales modbus configurados y deja los valores en el correspondiente
 	// luegar del array del parametro.
 	// Los nombres de los canales deben ser #X y estar en order. Al primer canal X, sale. !!!
 
-bool retS = false;
 uint8_t ch;
 
 	// Si no tengo canales configurados, salgo.
 	if ( modbus_conf.slave_address == 0x00 ) {
-		return(true);
+		return;
 	}
 
 	for ( ch = 0; ch < MODBUS_CHANNELS; ch++) {
@@ -80,10 +81,41 @@ uint8_t ch;
 			break;
 		}
 		//
-		modbus_read_channel ( ch, &mbus_data[ch] );
+		mbus_data[ch] = modbus_read_channel ( ch );
 	}
 
-	return(retS);
+	return;
+}
+//------------------------------------------------------------------------------------
+float modbus_read_channel ( uint8_t ch )
+{
+	/*
+	 *  Poleo un canal.
+	 *  La funcion modbus_io me devuelve el valor leido en un hreg.
+	 *  Dependiendo del tipo es como lo interpreto.
+	 *  SIEMPRE lo convierto a float para devolverlo !!!.
+	 */
+
+uint32_t init_ticks = sysTicks;
+
+	xprintf_PD( DF_MBUS, PSTR("MODBUS: CHPOLL %02d START\r\n"),ch );
+	// Preparo el registro con los datos del canal
+	// Poleo el canal.
+	mbus_cb.sla_address = modbus_conf.slave_address;
+	mbus_cb.function_code = modbus_conf.channel[ch].rcode;
+	mbus_cb.address = modbus_conf.channel[ch].address;
+	mbus_cb.nro_recds = modbus_conf.channel[ch].nro_regs;
+	mbus_cb.type = modbus_conf.channel[ch].type;
+	mbus_cb.divisor_p10 = modbus_conf.channel[ch].divisor_p10;
+	//
+	modbus_io( DF_MBUS, &mbus_cb, &hold_reg );
+	//
+	modbus_print( DF_MBUS, &mbus_cb, &hold_reg );
+
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: CHPOLL END (%.3f s.)\r\n"), ELAPSED_TIME_SECS(init_ticks) );
+
+	return( hold_reg.float_value );
+
 }
 //------------------------------------------------------------------------------------
 // CONFIGURACION
@@ -95,15 +127,15 @@ uint8_t i;
 
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
 		strcpy( modbus_conf.channel[i].name, "X");
-		modbus_conf.channel[i].address = 0x00;
-		modbus_conf.channel[i].type = FLOAT;
+		modbus_conf.channel[i].address = 0;
+		modbus_conf.channel[i].type = u16;
 		modbus_conf.channel[i].nro_regs = 1;
-		modbus_conf.channel[i].divisor_p10 = 1.0;
-		modbus_conf.channel[i].rcode = 0x03;
+		modbus_conf.channel[i].divisor_p10 = 0;
+		modbus_conf.channel[i].rcode = 3;
 	}
 
 	modbus_conf.slave_address = 0x00;
-	modbus_conf.waiting_poll_time = 250;
+	modbus_conf.waiting_poll_time = 1;
 
 }
 //------------------------------------------------------------------------------------
@@ -112,7 +144,7 @@ void modbus_config_status(void)
 
 uint8_t i;
 
-	xprintf_P( PSTR(">Modbus: ( name,address,type,nro_regs,rcode,factor_p10 )\r\n"));
+	xprintf_P( PSTR(">Modbus: ( name,address,nro_regs,rcode,type,factor_p10 )\r\n"));
 
 	xprintf_P( PSTR("   sla_addr=0x%02x, wpTime=%d\r\n"), modbus_conf.slave_address, modbus_conf.waiting_poll_time );
 	if ( modbus_conf.slave_address == 0x00 ) {
@@ -120,7 +152,7 @@ uint8_t i;
 	}
 
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
-		if ( (i % 4) == 0 ) {
+		if ( (i % 2) == 0 ) {
 			xprintf_P(PSTR("   "));
 		}
 
@@ -130,6 +162,8 @@ uint8_t i;
 		}
 
 		xprintf_P( PSTR("MB%02d:[%s,0x%04X,"), i, modbus_conf.channel[i].name, modbus_conf.channel[i].address );
+
+		xprintf_P( PSTR("0x%X,0x%X,"), modbus_conf.channel[i].nro_regs, modbus_conf.channel[i].rcode );
 
 		switch(	modbus_conf.channel[i].type ) {
 		case u16:
@@ -145,13 +179,13 @@ uint8_t i;
 			xprintf_P(PSTR("I32,"));
 			break;
 		case FLOAT:
-			xprintf_P(PSTR("FLOAT,"));
+			xprintf_P(PSTR("FLT,"));
 			break;
 		}
 
-		xprintf_P( PSTR("%d,0x%02d,%0.3f], "), modbus_conf.channel[i].nro_regs, modbus_conf.channel[i].rcode, modbus_conf.channel[i].divisor_p10	);
+		xprintf_P( PSTR("%d], "), modbus_conf.channel[i].divisor_p10	);
 
-		if ( ((i+1) % 4) == 0 ) {
+		if ( ((i+1) % 2) == 0 ) {
 			xprintf_P(PSTR("\r\n"));
 		}
 	}
@@ -163,41 +197,45 @@ uint8_t i;
 bool modbus_config_slave( char *s_slave_address )
 {
 	modbus_conf.slave_address = atoi(s_slave_address);
+	//xprintf_P(PSTR("DEBUG MBSLA: [%s][%d]\r\n"), s_slave_address, modbus_conf.slave_address );
 	return(true);
 }
 //------------------------------------------------------------------------------------
-bool modbus_config_channel( char *s_ch, char *s_name, char *s_addr, char *s_nro_recds, char *s_rcode, char *s_type, char *s_divisor_p10 )
+bool modbus_config_channel( uint8_t channel, char *s_name, char *s_addr, char *s_nro_recds, char *s_rcode, char *s_type, char *s_divisor_p10 )
 {
-uint8_t i;
+	// Todos los datos vienen en decimal !!!
 
-	i = atoi(s_ch);
+	xprintf_P(PSTR("DEBUG MBCH%02d: name:[%s],addr:[%s],nrecs:[%s],rcode:[%s],type:[%s],pow10:[%s]\r\n"),
+			channel, s_name, s_addr, s_nro_recds, s_rcode, s_type, s_divisor_p10 );
 
 	if (( s_name == NULL ) || ( s_addr == NULL) || (s_nro_recds == NULL) || ( s_rcode == NULL) || ( s_divisor_p10 == NULL)  ) {
 		return(false);
 	}
 
-	snprintf_P( modbus_conf.channel[i].name, PARAMNAME_LENGTH, PSTR("%s\0"), s_name );
-	modbus_conf.channel[i].address = atoi(s_addr);
-	modbus_conf.channel[i].nro_regs = atoi(s_nro_recds);
-	modbus_conf.channel[i].rcode = atoi(s_rcode);
-
 	if ( !strcmp_P( strupr(s_type), PSTR("U16"))) {
-		modbus_conf.channel[i].type = u16;
+		modbus_conf.channel[channel].type = u16;
 
 	} else 	if ( !strcmp_P( strupr(s_type), PSTR("I16"))) {
-		modbus_conf.channel[i].type = i16;
+		modbus_conf.channel[channel].type = i16;
 
 	} else 	if ( !strcmp_P( strupr(s_type), PSTR("U32"))) {
-		modbus_conf.channel[i].type = u32;
+		modbus_conf.channel[channel].type = u32;
 
 	} else 	if ( !strcmp_P( strupr(s_type), PSTR("I32"))) {
-		modbus_conf.channel[i].type = i32;
+		modbus_conf.channel[channel].type = i32;
 
 	} else 	if ( !strcmp_P( strupr(s_type), PSTR("FLOAT"))) {
-		modbus_conf.channel[i].type = FLOAT;
+		modbus_conf.channel[channel].type = FLOAT;
+
+	} else {
+		return(false);
 	}
 
-	modbus_conf.channel[i].divisor_p10 = atoi(s_divisor_p10);
+	snprintf_P( modbus_conf.channel[channel].name, PARAMNAME_LENGTH, PSTR("%s\0"), s_name );
+	modbus_conf.channel[channel].address = atoi(s_addr);
+	modbus_conf.channel[channel].nro_regs = atoi(s_nro_recds);
+	modbus_conf.channel[channel].rcode = atoi(s_rcode);
+	modbus_conf.channel[channel].divisor_p10 = atoi(s_divisor_p10);
 	return(true);
 
 }
@@ -207,8 +245,11 @@ bool modbus_config_waiting_poll_time( char *s_waiting_poll_time)
 	// Configura el tiempo que espera una respuesta
 
 	modbus_conf.waiting_poll_time = atoi(s_waiting_poll_time);
+	//xprintf_P(PSTR("DEBUG MBWT: [%s][%d]\r\n"), s_waiting_poll_time, modbus_conf.waiting_poll_time );
 	return(true);
 }
+//------------------------------------------------------------------------------------
+// AUXILIARES
 //------------------------------------------------------------------------------------
 uint8_t modbus_hash(void)
 {
@@ -222,7 +263,7 @@ int16_t free_size = sizeof(hash_buffer);
 	memset(hash_buffer,'\0', sizeof(hash_buffer));
 
 	j = 0;
-	j += snprintf_P( &hash_buffer[j], free_size, PSTR("MODBUS;SLA:%04d;"), modbus_conf.slave_address );
+	j += snprintf_P( &hash_buffer[j], free_size, PSTR("MODBUS;SLA:%04d;MBWT:%03d;"), modbus_conf.slave_address,modbus_conf.waiting_poll_time );
 	//xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
 	free_size = (  sizeof(hash_buffer) - j );
 	if ( free_size < 0 ) goto exit_error;
@@ -238,17 +279,58 @@ int16_t free_size = sizeof(hash_buffer);
 		memset(hash_buffer,'\0', sizeof(hash_buffer));
 		free_size = sizeof(hash_buffer);
 		// Copio sobe el buffer una vista ascii ( imprimible ) de c/registro.
-		j = snprintf_P( hash_buffer, free_size, PSTR("MB%02d:%s,%04d,%02d,%02d,%c;%.03f;"), i,
-				modbus_conf.channel[i].name,
-				modbus_conf.channel[i].address,
-				modbus_conf.channel[i].nro_regs,
-				modbus_conf.channel[i].rcode,
-				modbus_conf.channel[i].type,
-				modbus_conf.channel[i].divisor_p10
-				);
+		switch( modbus_conf.channel[i].type ) {
+		case u16:
+			j = snprintf_P( hash_buffer, free_size, PSTR("MB%02d:%s,%04d,%02d,%02d,U16,%02d;"), i,
+					modbus_conf.channel[i].name,
+					modbus_conf.channel[i].address,
+					modbus_conf.channel[i].nro_regs,
+					modbus_conf.channel[i].rcode,
+					modbus_conf.channel[i].divisor_p10
+					);
+			break;
+		case i16:
+			j = snprintf_P( hash_buffer, free_size, PSTR("MB%02d:%s,%04d,%02d,%02d,I16,%02d;"), i,
+					modbus_conf.channel[i].name,
+					modbus_conf.channel[i].address,
+					modbus_conf.channel[i].nro_regs,
+					modbus_conf.channel[i].rcode,
+					modbus_conf.channel[i].divisor_p10
+					);
+			break;
+		case u32:
+			j = snprintf_P( hash_buffer, free_size, PSTR("MB%02d:%s,%04d,%02d,%02d,U32,%02d;"), i,
+					modbus_conf.channel[i].name,
+					modbus_conf.channel[i].address,
+					modbus_conf.channel[i].nro_regs,
+					modbus_conf.channel[i].rcode,
+					modbus_conf.channel[i].divisor_p10
+					);
+			break;
+		case i32:
+			j = snprintf_P( hash_buffer, free_size, PSTR("MB%02d:%s,%04d,%02d,%02d,I32,%02d;"), i,
+					modbus_conf.channel[i].name,
+					modbus_conf.channel[i].address,
+					modbus_conf.channel[i].nro_regs,
+					modbus_conf.channel[i].rcode,
+					modbus_conf.channel[i].divisor_p10
+					);
+			break;
+		case FLOAT:
+			j = snprintf_P( hash_buffer, free_size, PSTR("MB%02d:%s,%04d,%02d,%02d,FLOAT,%02d;"), i,
+					modbus_conf.channel[i].name,
+					modbus_conf.channel[i].address,
+					modbus_conf.channel[i].nro_regs,
+					modbus_conf.channel[i].rcode,
+					modbus_conf.channel[i].divisor_p10
+					);
+			break;
+
+		}
+
 		free_size = (  sizeof(hash_buffer) - j );
 		if ( free_size < 0 ) goto exit_error;
-		//xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
+		xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
 		// Apunto al comienzo para recorrer el buffer
 		p = hash_buffer;
 		while (*p != '\0') {
@@ -263,74 +345,6 @@ exit_error:
 	xprintf_P( PSTR("MODBUS: Hash ERROR !!!\r\n\0"));
 	return(0x00);
 
-}
-//------------------------------------------------------------------------------------
-bool modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
-{
-	//
-	pv_modbus_make_ADU (mbus_cb);
-	pv_modbus_txmit_ADU( f_debug, mbus_cb );
-
-	// Espero la respuesta
-	vTaskDelay( (portTickType)( systemVars.modbus_conf.waiting_poll_time / portTICK_RATE_MS ) );
-
-	if ( ! pv_modbus_rcvd_ADU( f_debug, mbus_cb ) )
-		return(false);
-
-	if ( ! pv_modbus_decode_ADU ( f_debug, mbus_cb,hreg ) )
-		return(false);
-
-	return(true);
-}
-//------------------------------------------------------------------------------------
-void modbus_read_channel ( uint8_t ch, float *result )
-{
-	/*
-	 *  Poleo un canal.
-	 *  La funcion modbus_io me devuelve el valor leido en un hreg.
-	 *  Dependiendo del tipo es como lo interpreto.
-	 *  SIEMPRE lo convierto a float para devolverlo !!!.
-	 */
-
-	// Poleo el canal.
-	mbus_cb.sla_address = modbus_conf.slave_address;
-	mbus_cb.function_code = modbus_conf.channel[ch].rcode;
-	mbus_cb.address = modbus_conf.channel[ch].address;
-	mbus_cb.nro_recds = modbus_conf.channel[ch].nro_regs;
-	mbus_cb.type = modbus_conf.channel[ch].type;
-	mbus_cb.divisor_p10 = modbus_conf.channel[ch].divisor_p10;
-	//
-	modbus_io( DF_MBUS, &mbus_cb, &hold_reg );
-	//
-	// Retorno el valor como float
-	if ( strcmp ( hold_reg.str_value, "NaN") == 0 ) {
-		hold_reg.raw_value[0] = 0xFF;
-		hold_reg.raw_value[1] = 0xFF;
-		hold_reg.raw_value[2] = 0xFF;
-		hold_reg.raw_value[3] = 0xFF;
-		*result = hold_reg.float_value;
-		return;
-	}
-
-	if ( mbus_cb.type == FLOAT) {
-		*result = hold_reg.float_value;
-
-	} else if (mbus_cb.type == i16 ) {
-		*result = 1.0 * hold_reg.i16_value / pow(10, mbus_cb.divisor_p10 );
-
-	} else if (mbus_cb.type == u16 ) {
-		*result = 1.0 * hold_reg.u16_value / pow(10, mbus_cb.divisor_p10 );
-
-	} else if (mbus_cb.type == u32 ) {
-		*result = 1.0 * ( hold_reg.u32_value ) / pow(10, mbus_cb.divisor_p10 );
-
-	} else if (mbus_cb.type == i32 ) {
-		*result = 1.0 * ( hold_reg.i32_value ) / pow(10, mbus_cb.divisor_p10 );
-
-	}
-
-	//
-	vTaskDelay( ( TickType_t)( modbus_conf.waiting_poll_time / portTICK_RATE_MS ) );
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES DE TEST
@@ -352,7 +366,7 @@ void modbus_test_genpoll(char *arg_ptr[16] )
 	mbus_cb.function_code = atoi(arg_ptr[5]);
 	mbus_cb.address = atoi(arg_ptr[6]);
 	mbus_cb.nro_recds = atoi(arg_ptr[7]);
-	mbus_cb.divisor_p10 = 1.0;
+	mbus_cb.divisor_p10 = 1;
 	//
 	modbus_io( true, &mbus_cb, &hold_reg );
 	//
@@ -367,9 +381,6 @@ void modbus_test_chpoll(char *s_channel)
 	// Hace un poleo de un canal modbus definido en el datalogger
 
 uint8_t ch;
-uint32_t init_ticks = sysTicks;
-
-	xprintf_P(PSTR("MODBUS: CHPOLL START\r\n"));
 
 	ch = atoi(s_channel);
 
@@ -383,23 +394,11 @@ uint32_t init_ticks = sysTicks;
 		return;
 	}
 
-	// Preparo el registro con los datos del canal
-	// Poleo el canal.
-	mbus_cb.sla_address = modbus_conf.slave_address;
-	mbus_cb.function_code = modbus_conf.channel[ch].rcode;
-	mbus_cb.address = modbus_conf.channel[ch].address;
-	mbus_cb.nro_recds = modbus_conf.channel[ch].nro_regs;
-	mbus_cb.type = modbus_conf.channel[ch].type;
-	mbus_cb.divisor_p10 = modbus_conf.channel[ch].divisor_p10;
-	//
-	modbus_io( true, &mbus_cb, &hold_reg );
-	//
-	modbus_print( true, &mbus_cb, &hold_reg );
+	modbus_read_channel(ch);
 
-	xprintf_P(PSTR("MODBUS: CHPOLL END (%.3f s.)\r\n"), ELAPSED_TIME_SECS(init_ticks) );
 }
 //------------------------------------------------------------------------------------
-// FUNCIONES PRIVADAS
+// PROCESO
 //------------------------------------------------------------------------------------
 uint16_t pv_modbus_CRC16( uint8_t *msg, uint8_t msg_size )
 {
@@ -420,6 +419,31 @@ uint8_t uindex;
 
 	return( CRC_Hi << 8 | CRC_Lo);
 
+}
+//------------------------------------------------------------------------------------
+void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+{
+	//
+	mbus_cb->io_status = false;
+	//
+	pv_modbus_make_ADU (mbus_cb);
+	pv_modbus_txmit_ADU( f_debug, mbus_cb );
+
+	// Espero la respuesta
+	vTaskDelay( (portTickType)( systemVars.modbus_conf.waiting_poll_time / portTICK_RATE_MS ) );
+
+	pv_modbus_rcvd_ADU( f_debug, mbus_cb );
+	pv_modbus_decode_ADU ( f_debug, mbus_cb,hreg );
+
+	// Proceso los errores escribiendo un NaN
+	if ( mbus_cb->io_status == false ) {
+		hreg->raw_value[0] = 0xFF;
+		hreg->raw_value[1] = 0xFF;
+		hreg->raw_value[2] = 0xFF;
+		hreg->raw_value[3] = 0xFF;
+	}
+
+	return;
 }
 //------------------------------------------------------------------------------------
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb )
@@ -486,7 +510,7 @@ uint8_t i;
 	//xprintf_PD( f_debug, PSTR("MODBUS: TX end(%d):\r\n"),i);
 }
 //------------------------------------------------------------------------------------
-bool pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
+void pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
 {
 	// Recibe del auxBuffer un frame modbus y lo almacena en mbus_data_s.rx_buffer
 	//
@@ -514,7 +538,6 @@ bool pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
 uint16_t crc_rcvd;
 uint16_t crc_calc;
 uint8_t i;
-bool retS = false;
 int8_t lBytes, rBytes;
 int8_t timeout_counts;
 
@@ -558,7 +581,7 @@ int8_t timeout_counts;
 	if ( mbus_cb->rx_size < 3) {
 		// Timeout error:
 		xprintf_PD( f_debug, PSTR("MODBUS: RX TIMEOUT ERROR\r\n\0"));
-		retS = false;
+		mbus_cb->io_status = false;
 		goto quit;
 	}
 
@@ -569,20 +592,20 @@ int8_t timeout_counts;
 	if ( crc_calc != crc_rcvd) {
 		xprintf_PD( f_debug, PSTR("MODBUS: RX CRC ERROR: rx[0x%02x], calc[0x%02x]\r\n\0"), crc_rcvd, crc_calc);
 		// De acuerdo al protocolo se ignora el frame recibido con errores CRC
-		retS = false;
+		mbus_cb->io_status = false;
 		goto quit;
 	}
 
-	retS = true;
+	mbus_cb->io_status = true;
 
 quit:
 
 	//xprintf_PD( f_debug, PSTR("MODBUS: RX end\r\n") );
-	return(retS);
+	return;
 
 }
 //------------------------------------------------------------------------------------
-bool pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
 {
 	/*
 	 *
@@ -610,13 +633,15 @@ bool pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 	 *
 	 */
 
-
-bool retS = false;
-
 	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE start\r\n"));
 
 	memset( hreg->str_value, '\0', 4 );
 	mbus_cb->length = 0;
+
+	// Si vengo con error de read ya salgo
+	if ( mbus_cb->io_status == false ) {
+		goto quit;
+	}
 
 	// De acuerdo al function_code, determino del string recibido cuantos bytes recibí.
 	if ( mbus_cb->function_code == 3 ) {
@@ -634,7 +659,7 @@ bool retS = false;
 
 	} else {
 		// Error:
-		strcpy( hreg->str_value, "NaN" );
+		mbus_cb->io_status = false;
 		goto quit;
 	}
 
@@ -668,7 +693,6 @@ bool retS = false;
 		hreg->raw_value[1] = mbus_cb->rx_buffer[5];
 		hreg->raw_value[2] = mbus_cb->rx_buffer[4];
 		hreg->raw_value[3] = mbus_cb->rx_buffer[3];
-		retS = true;
 
 	} else if ( mbus_cb->type == i16) {
 		/*
@@ -743,8 +767,8 @@ bool retS = false;
 
 
 	} else {
-		// Error:
-		strcpy( hreg->str_value, "NaN" );
+		// Error de configuracion del type.
+		mbus_cb->io_status = false;
 		goto quit;
 	}
 
@@ -752,7 +776,7 @@ quit:
 
 	xprintf_PD(f_debug, PSTR("MODBUS: DECODE b0[0x%02X] b1[0x%02X] b2[0x%02X] b3[0x%02X]\r\n"), hreg->raw_value[0], hreg->raw_value[1], hreg->raw_value[2], hreg->raw_value[3]);
 	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE end\r\n") );
-	return(retS);
+	return;
 
 }
 //------------------------------------------------------------------------------------
@@ -763,11 +787,12 @@ float pvalue;
 
 	if ( f_debug ) {
 
-		if ( strcmp ( hreg->str_value, "NaN") == 0 ) {
+		if ( mbus_cb->io_status == false ) {
 			xprintf_PD( f_debug, PSTR("MODBUS: VALUE NaN\r\n"));
 			return;
 		}
 
+		// La operacion de io es exitosa.
 		if ( mbus_cb->type == FLOAT) {
 			xprintf_PD( f_debug, PSTR("MODBUS: VALUE %.03f (F)\r\n"), hreg->float_value);
 
@@ -793,10 +818,15 @@ float pvalue;
 	}
 }
 //------------------------------------------------------------------------------------
+// PRINT
+//------------------------------------------------------------------------------------
 void modbus_data_print( file_descriptor_t fd, float mbus_data[] )
 {
+	// Muestra el valor de los canales leidos en la terminal
+	// Todos los canales son float
 
 uint8_t ch;
+modbus_value_t data;
 
 	// Si no tengo canales configurados, salgo.
 	if ( modbus_conf.slave_address == 0x00 ) {
@@ -808,8 +838,14 @@ uint8_t ch;
 		if ( strcmp ( modbus_conf.channel[ch].name, "X" ) == 0 ) {
 			break;
 		}
+
 		//
-		xfprintf_P(fd, PSTR("%s:%.02f;"), modbus_conf.channel[ch].name, mbus_data[ch] );
+		data.value = mbus_data[ch];
+		if ( ( data.raw[0] == 0xFF) && ( data.raw[1] == 0xFF) && ( data.raw[2] == 0xFF) && ( data.raw[3] == 0xFF)) {
+			xfprintf_P(fd, PSTR("%s:NaN;"), modbus_conf.channel[ch].name );
+		} else {
+			xfprintf_P(fd, PSTR("%s:%.02f;"), modbus_conf.channel[ch].name, mbus_data[ch] );
+		}
 	}
 }
 //------------------------------------------------------------------------------------
@@ -822,13 +858,24 @@ char * modbus_sprintf( char *sbuffer, float src[] )
 uint8_t i = 0;
 int16_t pos = 0;
 char *p;
+modbus_value_t data;
 
 	p = sbuffer;
 	for ( i = 0; i < MODBUS_CHANNELS; i++) {
-		if ( strcmp ( modbus_conf.channel[i].name, "X" ) != 0 ) {
-			pos = sprintf_P( p, PSTR("%s:%.02f;"), modbus_conf.channel[i].name, src[i] );
-			p += pos;
+		// Si un canal no esta definido, salgo
+		if ( strcmp ( modbus_conf.channel[i].name, "X" ) == 0 ) {
+			break;
 		}
+
+		//
+		data.value = src[i];
+		if ( ( data.raw[0] == 0xFF) && ( data.raw[1] == 0xFF) && ( data.raw[2] == 0xFF) && ( data.raw[3] == 0xFF)) {
+			pos = sprintf_P( p, PSTR("%s:NaN;"), modbus_conf.channel[i].name );
+		} else {
+			pos = sprintf_P( p, PSTR("%s:%.02f;"), modbus_conf.channel[i].name, src[i] );
+		}
+		p += pos;
+
 	}
 
 	return(p);
