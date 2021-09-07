@@ -3,6 +3,21 @@
  *
  *  Created on: 10 ago. 2021
  *      Author: pablo
+ *
+ *  Testing: Registros a programar en pyModSlave
+ *  cd /home/pablo/Spymovil/python/pennv/ml/lib/python3.8/site-packages/pyModSlave
+ *  python3 pyModSlave.py
+ *
+ *
+ *  FLOATS:
+ *  150.31 0x4316 51EC
+ *  934.77 0x4469 B148
+ *  5.22   0x40A7 0A3D
+ *  -18.3  0xC192 6666
+ *  7641   0x45EE C800
+ *
+ *  SHMETERS:
+ *
  */
 
 #ifndef SPX_ULIBS_INCLUDE_UL_MODBUS_H_
@@ -23,6 +38,7 @@
 #define MODBUS_CHANNELS 20
 
 typedef enum { u16=0,i16,u32,i32,FLOAT } t_modbus_types;
+typedef enum { KINCO=0, SHINCO, TAO  } t_modbus_format;
 
 /*
  * En modbus leemos de a 1 canal, no bloques !!
@@ -45,6 +61,7 @@ typedef struct {
 typedef struct {
 	uint8_t slave_address;
 	uint16_t waiting_poll_time;
+	t_modbus_format data_format;
 	modbus_channel_t channel[MODBUS_CHANNELS];
 } modbus_conf_t;
 
@@ -85,6 +102,7 @@ typedef struct {
 	uint8_t tx_size;
 	uint8_t rx_size;
 	uint8_t length;
+	modbus_hold_t write_value;
 	bool io_status;
 } mbus_CONTROL_BLOCK_t;
 
@@ -94,6 +112,7 @@ void modbus_config_status(void);
 bool modbus_config_slave( char *s_slave_address );
 bool modbus_config_channel( uint8_t channel, char *s_name, char *s_addr, char *s_nro_recds, char *s_rcode, char *s_type, char *s_divisor_p10 );
 bool modbus_config_waiting_poll_time( char *s_waiting_poll_time);
+bool modbus_config_data_format( char *s_format);
 
 uint8_t modbus_hash(void);
 
@@ -112,6 +131,8 @@ char * modbus_sprintf( char *sbuffer, float src[] );
 
 void modbus_test_genpoll(char *arg_ptr[16] );
 void modbus_test_chpoll(char *s_channel);
+
+void modbus_write_output_register( char *s_address, char *s_type, char *s_value );
 
 
 #endif /* SPX_ULIBS_INCLUDE_UL_MODBUS_H_ */

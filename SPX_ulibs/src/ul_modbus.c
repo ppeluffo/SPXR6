@@ -59,6 +59,9 @@ const uint8_t auchCRCLo[] PROGMEM = {
 mbus_CONTROL_BLOCK_t mbus_cb;
 modbus_hold_t hold_reg;
 
+void pv_modbus_decoder_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void pv_modbus_decoder_shinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+
 //------------------------------------------------------------------------------------
 // READ
 //------------------------------------------------------------------------------------
@@ -97,8 +100,14 @@ float modbus_read_channel ( uint8_t ch )
 	 */
 
 uint32_t init_ticks = sysTicks;
+float pvalue = 0.0;
 
 	xprintf_PD( DF_MBUS, PSTR("MODBUS: CHPOLL %02d START\r\n"),ch );
+
+	// Para acceder al bus debo tomar el semaforo.
+	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
+		taskYIELD();
+
 	// Preparo el registro con los datos del canal
 	// Poleo el canal.
 	mbus_cb.sla_address = modbus_conf.slave_address;
@@ -112,9 +121,32 @@ uint32_t init_ticks = sysTicks;
 	//
 	modbus_print( DF_MBUS, &mbus_cb, &hold_reg );
 
+	// Siempre retorno un float
+	// La operacion de io es exitosa.
+	if ( mbus_cb.type == FLOAT) {
+		pvalue = hold_reg.float_value;
+
+	} else if (mbus_cb.type == i16 ) {
+		// En este caso importa el parametro divisor_p10 ya que convierte al entero en float
+		pvalue = 1.0 * hold_reg.i16_value / pow(10, mbus_cb.divisor_p10 );
+
+	} else if (mbus_cb.type == u16 ) {
+		pvalue = 1.0 * hold_reg.u16_value / pow(10, mbus_cb.divisor_p10 );
+
+	} else if (mbus_cb.type == u32 ) {
+		pvalue = 1.0 * hold_reg.u32_value / pow(10, mbus_cb.divisor_p10 );
+
+	} else if (mbus_cb.type == i32 ) {
+		pvalue = 1.0 * hold_reg.i32_value / pow(10, mbus_cb.divisor_p10 );
+
+	}
+
+	xSemaphoreGive( sem_MBUS );
+
 	xprintf_PD(DF_MBUS, PSTR("MODBUS: CHPOLL END (%.3f s.)\r\n"), ELAPSED_TIME_SECS(init_ticks) );
 
-	return( hold_reg.float_value );
+
+	return( pvalue );
 
 }
 //------------------------------------------------------------------------------------
@@ -136,6 +168,7 @@ uint8_t i;
 
 	modbus_conf.slave_address = 0x00;
 	modbus_conf.waiting_poll_time = 1;
+	modbus_conf.data_format = KINCO;
 
 }
 //------------------------------------------------------------------------------------
@@ -147,8 +180,24 @@ uint8_t i;
 	xprintf_P( PSTR(">Modbus: ( name,address,nro_regs,rcode,type,factor_p10 )\r\n"));
 
 	xprintf_P( PSTR("   sla_addr=0x%02x, wpTime=%d\r\n"), modbus_conf.slave_address, modbus_conf.waiting_poll_time );
+
 	if ( modbus_conf.slave_address == 0x00 ) {
 		return;
+	}
+
+	switch (modbus_conf.data_format ) {
+	case KINCO:
+		xprintf_P( PSTR("   format=kinco\r\n"));
+		break;
+	case SHINCO:
+		xprintf_P( PSTR("   format=shinco\r\n"));
+		break;
+	case TAO:
+		xprintf_P( PSTR("   format=tao\r\n"));
+		break;
+	default:
+		xprintf_P( PSTR("   format=ERROR\r\n"));
+		break;
 	}
 
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
@@ -249,6 +298,20 @@ bool modbus_config_waiting_poll_time( char *s_waiting_poll_time)
 	return(true);
 }
 //------------------------------------------------------------------------------------
+bool modbus_config_data_format( char *s_format)
+{
+	// Configura como interpreto los bytes recibidos del slave
+	if ( !strcmp_P( strupr(s_format), PSTR("KINCO"))) {
+		modbus_conf.data_format = KINCO;
+	} else if ( !strcmp_P( strupr(s_format), PSTR("SHINCO"))) {
+		modbus_conf.data_format = SHINCO;
+	} else if ( !strcmp_P( strupr(s_format), PSTR("TAO"))) {
+		modbus_conf.data_format = TAO;
+	}
+	return(true);
+
+}
+//------------------------------------------------------------------------------------
 // AUXILIARES
 //------------------------------------------------------------------------------------
 uint8_t modbus_hash(void)
@@ -263,7 +326,7 @@ int16_t free_size = sizeof(hash_buffer);
 	memset(hash_buffer,'\0', sizeof(hash_buffer));
 
 	j = 0;
-	j += snprintf_P( &hash_buffer[j], free_size, PSTR("MODBUS;SLA:%04d;MBWT:%03d;"), modbus_conf.slave_address,modbus_conf.waiting_poll_time );
+	j += snprintf_P( &hash_buffer[j], free_size, PSTR("MODBUS;SLA:%04d;MBWT:%03d;FORMAT:%d"), modbus_conf.slave_address,modbus_conf.waiting_poll_time, modbus_conf.data_format );
 	//xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
 	free_size = (  sizeof(hash_buffer) - j );
 	if ( free_size < 0 ) goto exit_error;
@@ -330,7 +393,7 @@ int16_t free_size = sizeof(hash_buffer);
 
 		free_size = (  sizeof(hash_buffer) - j );
 		if ( free_size < 0 ) goto exit_error;
-		xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
+		//xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
 		// Apunto al comienzo para recorrer el buffer
 		p = hash_buffer;
 		while (*p != '\0') {
@@ -360,17 +423,35 @@ void modbus_test_genpoll(char *arg_ptr[16] )
 
 	xprintf_P(PSTR("MODBUS: GENPOLL START\r\n"));
 
+	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
+		taskYIELD();
+
 	// Preparo el registro con los datos del canal
-	mbus_cb.type = toupper(arg_ptr[3][0]);
+	if ( strcmp ( strupr(arg_ptr[3]), "FLOAT" ) == 0 ) {
+		mbus_cb.type = FLOAT;
+	} else 	if ( strcmp ( strupr(arg_ptr[3]), "I16" ) == 0 ) {
+		mbus_cb.type = i16;
+	} else 	if ( strcmp ( strupr(arg_ptr[3]), "U16" ) == 0 ) {
+		mbus_cb.type = u16;
+	} else 	if ( strcmp ( strupr(arg_ptr[3]), "I32" ) == 0 ) {
+		mbus_cb.type = i32;
+	} else 	if ( strcmp ( strupr(arg_ptr[3]), "U32" ) == 0 ) {
+		mbus_cb.type = u32;
+	} else {
+		return;
+	}
+
 	mbus_cb.sla_address = atoi(arg_ptr[4]);
 	mbus_cb.function_code = atoi(arg_ptr[5]);
 	mbus_cb.address = atoi(arg_ptr[6]);
 	mbus_cb.nro_recds = atoi(arg_ptr[7]);
-	mbus_cb.divisor_p10 = 1;
+	mbus_cb.divisor_p10 = 0;
 	//
 	modbus_io( true, &mbus_cb, &hold_reg );
 	//
 	modbus_print( true, &mbus_cb, &hold_reg );
+
+	xSemaphoreGive( sem_MBUS );
 
 	xprintf_P(PSTR("MODBUS: GENPOLL END\r\n"));
 
@@ -395,6 +476,34 @@ uint8_t ch;
 	}
 
 	modbus_read_channel(ch);
+
+}
+//------------------------------------------------------------------------------------
+void modbus_write_output_register( char *s_address, char *s_type, char *s_value )
+{
+	// Siempre escribimos con codigo 6, 2 bytes, un u16
+
+
+	xprintf_P(PSTR("MODBUS: OUTREG START\r\n"));
+
+	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
+		taskYIELD();
+
+	// Preparo el registro con los datos del canal
+	mbus_cb.sla_address = modbus_conf.slave_address;
+	mbus_cb.function_code = 6;		// Write por ahora 2 bytes u16.
+	mbus_cb.address = atoi(s_address);
+	mbus_cb.divisor_p10 = 1;
+	mbus_cb.type = u16;
+	mbus_cb.nro_recds = 1;
+	mbus_cb.write_value.u16_value = atoi(s_value);
+	//
+	modbus_io( true, &mbus_cb, &hold_reg );
+	modbus_print( true, &mbus_cb, &hold_reg );
+
+	xSemaphoreGive( sem_MBUS );
+
+	xprintf_P(PSTR("MODBUS: OUTREG END\r\n"));
 
 }
 //------------------------------------------------------------------------------------
@@ -459,8 +568,16 @@ uint16_t crc;
 	mbus_cb->tx_buffer[1] = mbus_cb->function_code;		// FCODE
 	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);		// DST_ADDR_H
 	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );				// DST_ADDR_L
-	mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);		// NRO_REG_HI
-	mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
+
+	// WRITE ?
+	if ( mbus_cb->function_code == 6 ) {
+		mbus_cb->tx_buffer[4] = mbus_cb->write_value.raw_value[1];		// WRITE_DATA_HIGH
+		mbus_cb->tx_buffer[5] = mbus_cb->write_value.raw_value[0];		// WRITE_DATA_LOW
+	} else {
+		// READ:
+		mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);	// NRO_REG_HI
+		mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
+	}
 
 	// CRC
 	size = 6;
@@ -609,6 +726,8 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 {
 	/*
 	 *
+	 * https://betterexplained.com/articles/understanding-big-and-little-endian-byte-order/
+	 *
 	 * En la decodificacion de los enteros no hay problema porque los flowmeters y los PLC
 	 * mandan el MSB primero.
 	 * En el caso de los float, solo los mandan los PLC y ahi hay un swap de los bytes por
@@ -663,8 +782,44 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		goto quit;
 	}
 
+	//DECODERS
+
+	if ( modbus_conf.data_format == KINCO ) {
+		pv_modbus_decoder_kinco(f_debug, mbus_cb, hreg);
+
+	} else if ( modbus_conf.data_format == SHINCO ) {
+		pv_modbus_decoder_shinco(f_debug, mbus_cb, hreg);
+
+	}  else if ( modbus_conf.data_format == TAO ) {
+		//pv_modbus_decoder_tao();
+
+	} else {
+		// Error:
+		mbus_cb->io_status = false;
+		goto quit;
+	}
+
+
+quit:
+
+	xprintf_PD(f_debug, PSTR("MODBUS: DECODE b0[0x%02X] b1[0x%02X] b2[0x%02X] b3[0x%02X]\r\n"), hreg->raw_value[0], hreg->raw_value[1], hreg->raw_value[2], hreg->raw_value[3]);
+	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE end\r\n") );
+	return;
+
+}
+//------------------------------------------------------------------------------------
+// DECODERS
+//------------------------------------------------------------------------------------
+void pv_modbus_decoder_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+{
 	/*
-	 * De acuerdo al 'type' y al largo, los interpreto
+	 *  EL PLC KINCO MANDA LOS FLOAT COMO 4 BYTES CON LOS WORDS INTERCAMBIADOS ( swap words )
+	 *  5.89  => 0x 40 BC 7A E1
+	 *  PLC   ->    7A E1 40 BC
+	 *
+	 *  LOS INT16/UINT16 LOS MANDA SIN CAMBIARLOS DE LUGAR.
+	 *  355 => 0x 01 63
+	 *  PLC ->    01 63
 	 */
 
 	if ( mbus_cb->type == FLOAT) {
@@ -672,6 +827,11 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		 *  https://www.binaryconvert.com
 		 *  https://baseconvert.com/
 		 *  123,45 => 42F6E666
+		 *
+		 *  IEEE754 floats are always stored little-endian but
+		 *  The IEEE754 specification for floating point numbers
+		 *  simply doesn't cover the endianness problem and may
+		 *  vary from machine to machine
 		 *
 		 *  Decodifico un float. No importa si lo lei con fcode 3 o 6. !!!
 		 *  Leo 4 bytes que representa a un float (F)
@@ -687,12 +847,14 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		 *  Bytes=b0[0x79] b1[0xE9] b2[0xF6] b3[0x42]
 		 *             0         1        2       3
 		 *            LSB                        MSB
+		 *
+		 *
 		 */
-		xprintf_PD(f_debug, PSTR("MODBUS: DECODE float\r\n"));
-		hreg->raw_value[0] = mbus_cb->rx_buffer[6];
-		hreg->raw_value[1] = mbus_cb->rx_buffer[5];
-		hreg->raw_value[2] = mbus_cb->rx_buffer[4];
-		hreg->raw_value[3] = mbus_cb->rx_buffer[3];
+		xprintf_PD(f_debug, PSTR("MODBUS: kDECODER float\r\n"));
+		hreg->raw_value[0] = mbus_cb->rx_buffer[4];
+		hreg->raw_value[1] = mbus_cb->rx_buffer[3];
+		hreg->raw_value[2] = mbus_cb->rx_buffer[6];
+		hreg->raw_value[3] = mbus_cb->rx_buffer[5];
 
 	} else if ( mbus_cb->type == i16) {
 		/*
@@ -713,8 +875,14 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		 *  1234 => 0x04D2
 		 *  -1234 => 0xFB2E
 		 *
+		 *  Recibo 2 bytes.
+		 *  42561 => 0xA641
+		 *  345 => [0x01][0x59]
+		 *            3     4
+		 *
 		 */
-		xprintf_PD(f_debug, PSTR("MODBUS: DECODE int16\r\n"));
+
+		xprintf_PD(f_debug, PSTR("MODBUS: kDECODER int16\r\n"));
 		hreg->raw_value[0] = mbus_cb->rx_buffer[4];
 		hreg->raw_value[1] = mbus_cb->rx_buffer[3];
 		hreg->raw_value[2] = 0x00;
@@ -722,12 +890,16 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 
 	} else if ( mbus_cb->type == u16) {
 
+		// Recibo 2 bytes.
 		// 42561 => 0xA641
-		xprintf_PD(f_debug, PSTR("MODBUS: DECODE uint16\r\n"));
+		// 345 => [0x01][0x59]
+		//           3     4
+		xprintf_PD(f_debug, PSTR("MODBUS: kDECODER uint16\r\n"));
 		hreg->raw_value[0] = mbus_cb->rx_buffer[4];
 		hreg->raw_value[1] = mbus_cb->rx_buffer[3];
 		hreg->raw_value[2] = 0x00;
 		hreg->raw_value[3] = 0x00;
+
 
 	} else if ( mbus_cb->type == i32) {
 		/*
@@ -750,7 +922,55 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		 *  47231 => 0x0000B87F
 		 *  -47231 => 0xFFFF4781
 		 */
-		xprintf_PD(f_debug, PSTR("MODBUS: DECODE int32\r\n"));
+		xprintf_PD(f_debug, PSTR("MODBUS: kDECODER int32\r\n"));
+		hreg->raw_value[0] = mbus_cb->rx_buffer[6];
+		hreg->raw_value[1] = mbus_cb->rx_buffer[5];
+		hreg->raw_value[2] = mbus_cb->rx_buffer[4];
+		hreg->raw_value[3] = mbus_cb->rx_buffer[3];
+
+	} else if ( mbus_cb->type == u32) {
+		// 84500 => 0x00014A14
+		xprintf_PD(f_debug, PSTR("MODBUS: kDECODER uint32\r\n"));
+		hreg->raw_value[0] = mbus_cb->rx_buffer[6];
+		hreg->raw_value[1] = mbus_cb->rx_buffer[5];
+		hreg->raw_value[2] = mbus_cb->rx_buffer[4];
+		hreg->raw_value[3] = mbus_cb->rx_buffer[3];
+
+	} else {
+		// Error de configuracion del type.
+		mbus_cb->io_status = false;
+		return;
+	}
+
+}
+//------------------------------------------------------------------------------------
+void pv_modbus_decoder_shinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+{
+	// Solo manda enteros de 16 o 32 bytes !!!
+
+	if ( mbus_cb->type == FLOAT) {
+
+		xprintf_PD(f_debug, PSTR("MODBUS: ERROR Shinco not use float\r\n"));
+
+	} else if ( mbus_cb->type == i16) {
+
+		xprintf_PD(f_debug, PSTR("MODBUS: sDECODER int16\r\n"));
+		hreg->raw_value[0] = mbus_cb->rx_buffer[4];
+		hreg->raw_value[1] = mbus_cb->rx_buffer[3];
+		hreg->raw_value[2] = 0x00;
+		hreg->raw_value[3] = 0x00;
+
+	} else if ( mbus_cb->type == u16) {
+
+		xprintf_PD(f_debug, PSTR("MODBUS: sDECODER uint16\r\n"));
+		hreg->raw_value[0] = mbus_cb->rx_buffer[4];
+		hreg->raw_value[1] = mbus_cb->rx_buffer[3];
+		hreg->raw_value[2] = 0x00;
+		hreg->raw_value[3] = 0x00;
+
+	} else if ( mbus_cb->type == i32) {
+
+		xprintf_PD(f_debug, PSTR("MODBUS: sDECODER int32\r\n"));
 		hreg->raw_value[0] = mbus_cb->rx_buffer[6];
 		hreg->raw_value[1] = mbus_cb->rx_buffer[5];
 		hreg->raw_value[2] = mbus_cb->rx_buffer[4];
@@ -758,25 +978,17 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 
 	} else if ( mbus_cb->type == u32) {
 
-		// 84500 => 0x00014A14
-		xprintf_PD(f_debug, PSTR("MODBUS: DECODE uint32\r\n"));
+		xprintf_PD(f_debug, PSTR("MODBUS: sDECODER uint32\r\n"));
 		hreg->raw_value[0] = mbus_cb->rx_buffer[6];
 		hreg->raw_value[1] = mbus_cb->rx_buffer[5];
 		hreg->raw_value[2] = mbus_cb->rx_buffer[4];
 		hreg->raw_value[3] = mbus_cb->rx_buffer[3];
 
-
 	} else {
 		// Error de configuracion del type.
 		mbus_cb->io_status = false;
-		goto quit;
+		return;
 	}
-
-quit:
-
-	xprintf_PD(f_debug, PSTR("MODBUS: DECODE b0[0x%02X] b1[0x%02X] b2[0x%02X] b3[0x%02X]\r\n"), hreg->raw_value[0], hreg->raw_value[1], hreg->raw_value[2], hreg->raw_value[3]);
-	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE end\r\n") );
-	return;
 
 }
 //------------------------------------------------------------------------------------
@@ -812,8 +1024,8 @@ float pvalue;
 		} else if (mbus_cb->type == i32 ) {
 			pvalue = 1.0 * ( hreg->i32_value ) / pow(10, mbus_cb->divisor_p10 );
 			xprintf_PD( f_debug, PSTR("MODBUS: VALUE %ld (i32), %.03f\r\n"), hreg->i32_value, pvalue );
-
 		}
+
 
 	}
 }

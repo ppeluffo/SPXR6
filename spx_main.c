@@ -96,6 +96,7 @@ int main( void )
 	sem_WDGS = xSemaphoreCreateMutexStatic( &WDGS_xMutexBuffer );
 	sem_AINPUTS = xSemaphoreCreateMutexStatic( &AINPUTS_xMutexBuffer );
 	sem_RXBUFF = xSemaphoreCreateMutexStatic( &RXBUFF_xMutexBuffer );
+	sem_MBUS = xSemaphoreCreateMutexStatic( &MBUS_xMutexBuffer );
 
 	xprintf_init();
 	FAT_init();

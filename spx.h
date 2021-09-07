@@ -73,7 +73,7 @@
 // DEFINES
 //------------------------------------------------------------------------------------
 #define SPX_FW_REV "4.0.0c"
-#define SPX_FW_DATE "@ 20210903"
+#define SPX_FW_DATE "@ 20210907"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -159,6 +159,11 @@ StaticSemaphore_t WDGS_xMutexBuffer;
 xSemaphoreHandle sem_RXBUFF;
 StaticSemaphore_t RXBUFF_xMutexBuffer;
 #define MSTOTAKERXBUFFSEMPH ((  TickType_t ) 10 )
+
+xSemaphoreHandle sem_MBUS;
+StaticSemaphore_t MBUS_xMutexBuffer;
+#define MSTOTAKEMBUSSEMPH ((  TickType_t ) 10 )
+
 
 void tkCtl(void * pvParameters);
 void tkCmd(void * pvParameters);

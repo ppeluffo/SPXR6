@@ -787,7 +787,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  steppertest {fw|rev} {pulses} {pwidth_ms}\r\n"));
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
-		xprintf_P( PSTR("  mbustest genpoll {type(F|I} sla fcode addr nro_recds\r\n"));
+		xprintf_P( PSTR("  mbustest genpoll {i16,u16,i32,u32,float} sla fcode addr nro_recds\r\n"));
 		xprintf_P( PSTR("           chpoll {ch}\r\n"));
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n"));
@@ -852,6 +852,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  modbus slave {addr}\r\n\0"));
 		xprintf_P( PSTR("         channel {0..%d} name addr nro_recds rcode(3,4) type(u16,i16,u32,i32,float), div_p10\r\n\0"), ( MODBUS_CHANNELS - 1));
 		xprintf_P( PSTR("         waittime {ms}\r\n\0"));
+		xprintf_P( PSTR("         format {kinco,shinco,tao}\r\n\0"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
@@ -1339,18 +1340,23 @@ static bool pv_cmd_configMODBUS(void)
 {
 
 	// config modbus slave {hex_addr}
-	if ( strcmp_P( strupr(argv[2]), PSTR("SLAVE\0")) == 0 ) {
+	if ( strcmp_P( strupr(argv[2]), PSTR("SLAVE")) == 0 ) {
 		return ( modbus_config_slave(argv[3]) );
 	}
 
 	// config modbus channel {0..%d} name addr length rcode(3,4), divisor_p10.
-	if ( strcmp_P( strupr(argv[2]), PSTR("CHANNEL\0")) == 0 ) {
+	if ( strcmp_P( strupr(argv[2]), PSTR("CHANNEL")) == 0 ) {
 		return (modbus_config_channel(atoi(argv[3]) ,argv[4],argv[5],argv[6],argv[7], argv[8], argv[9]) );
 	}
 
 	// config modbus waittime
-	if ( strcmp_P( strupr(argv[2]), PSTR("WAITTIME\0")) == 0 ) {
+	if ( strcmp_P( strupr(argv[2]), PSTR("WAITTIME")) == 0 ) {
 		return (modbus_config_waiting_poll_time( argv[3] ) );
+	}
+
+	// config modbus endian {big,little}
+	if ( strcmp_P( strupr(argv[2]), PSTR("FORMAT")) == 0 ) {
+		return (modbus_config_data_format( argv[3] ) );
 	}
 
 	return(false);
