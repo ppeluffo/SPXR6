@@ -76,35 +76,31 @@ modbus_conf_t modbus_conf;
  * De acuerdo a lo que lea es como queda interpretado
  */
 typedef union {
+	uint8_t raw_value[4];
+	// Interpretaciones
 	uint16_t u16_value;
 	int16_t i16_value;
 	uint32_t u32_value;
 	int32_t i32_value;
 	float float_value;
-	uint8_t raw_value[4];
-	uint8_t rcvd_bytes[4];
 	char str_value[4];		// Almaceno NaN cuando hay un error.
 } modbus_hold_t; // (4)
 
-typedef union {
-	float value;
-	uint8_t raw[4];	// Almaceno NaN (FF FF FF FF ) cuando hay un error.
-} modbus_value_t;
 
 typedef struct {
-	uint8_t sla_address;
-	uint8_t function_code;
-	uint16_t address;
-	uint8_t nro_recds;
-	char type;
-	uint8_t divisor_p10;
+	uint8_t sla_address;	// Direccion MBUS del dispositivo SLAVE
+	uint8_t function_code;	// Formato ( byteorder) para decodificar
+	uint16_t address;		// Direccion de memoria a leer/escribir
+	uint8_t nro_recds;		// Cantidad de registros (words) que se procesan
+	char type;				// tipo (i16,u16,i32,u32,float)
+	uint8_t divisor_p10;	// Potencia de 10 a dividir un entero para convertir a float en algunos equipos
 	uint8_t tx_buffer[MBUS_TXMSG_LENGTH];
 	uint8_t rx_buffer[MBUS_RXMSG_LENGTH];
-	uint8_t tx_size;
-	uint8_t rx_size;
-	uint8_t length;
-	modbus_hold_t write_value;
-	bool io_status;
+	uint8_t tx_size;		// Cantidad de bytes en el txbuffer para transmitir
+	uint8_t rx_size;		// Cantidad de bytes leidos en el rxbufer.
+	uint8_t payload_ptr;	// Indice al primer byte del payload.
+	modbus_hold_t udata;	// estructura para interpretar los distintos formatos de los datos.
+	bool io_status;			// Flag que indica si la operacion de lectura fue correcta o no
 } mbus_CONTROL_BLOCK_t;
 
 
@@ -117,16 +113,16 @@ bool modbus_config_data_format( char *s_format);
 
 uint8_t modbus_hash(void);
 
-void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 void modbus_read( float mbus_data[] );
 float modbus_read_channel ( uint8_t ch );
 
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_rcvd_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
-void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 
-void modbus_print( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void modbus_print( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 void modbus_data_print( file_descriptor_t fd, float mbus_data[] );
 char * modbus_sprintf( char *sbuffer, float src[] );
 

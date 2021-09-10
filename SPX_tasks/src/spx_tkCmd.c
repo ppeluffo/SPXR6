@@ -788,7 +788,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
 		xprintf_P( PSTR("  mbustest genpoll {i16,u16,i32,u32,float} sla fcode addr nro_recds\r\n"));
-		xprintf_P( PSTR("           output {addr} {type I/F value\r\n"));
+		xprintf_P( PSTR("           output {addr} {type I/F} {value}\r\n"));
 		xprintf_P( PSTR("           chpoll {ch}\r\n"));
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n"));
