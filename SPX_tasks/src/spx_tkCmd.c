@@ -788,6 +788,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
 		xprintf_P( PSTR("  mbustest genpoll {i16,u16,i32,u32,float} sla fcode addr nro_recds\r\n"));
+		xprintf_P( PSTR("           output {addr} {type I/F value\r\n"));
 		xprintf_P( PSTR("           chpoll {ch}\r\n"));
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n"));
@@ -852,9 +853,9 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  modbus slave {addr}\r\n\0"));
 		xprintf_P( PSTR("         channel {0..%d} name addr nro_recds rcode(3,4) type(u16,i16,u32,i32,float), div_p10\r\n\0"), ( MODBUS_CHANNELS - 1));
 		xprintf_P( PSTR("         waittime {ms}\r\n\0"));
-		xprintf_P( PSTR("         format {kinco,shinco,tao}\r\n\0"));
+		xprintf_P( PSTR("         format {kinco,shinco,tao,mbsim}\r\n\0"));
 
-		xprintf_P( PSTR("  default {SPY|OSE|CLARO}\r\n\0"));
+		xprintf_P( PSTR("  default {SPY|OSE|CLARO|TEST}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
 	}
 
@@ -1440,6 +1441,12 @@ static bool pv_cmd_modbus(void)
 	// modbus chpoll {ch}
 	if ( strcmp_P( strupr(argv[2]), PSTR("CHPOLL")) == 0 ) {
 		modbus_test_chpoll(argv[3]);
+		return(true);
+	}
+
+	// modbus output {addr} {type I/F value\r\n"));
+	if ( strcmp_P( strupr(argv[2]), PSTR("OUTPUT")) == 0 ) {
+		modbus_write_output_register( argv[3], argv[4], argv[5] );
 		return(true);
 	}
 

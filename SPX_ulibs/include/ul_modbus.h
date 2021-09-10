@@ -38,7 +38,7 @@
 #define MODBUS_CHANNELS 20
 
 typedef enum { u16=0,i16,u32,i32,FLOAT } t_modbus_types;
-typedef enum { KINCO=0, SHINCO, TAO  } t_modbus_format;
+typedef enum { KINCO=0, SHINCO, TAO, MBSIM  } t_modbus_format;
 
 /*
  * En modbus leemos de a 1 canal, no bloques !!
@@ -82,6 +82,7 @@ typedef union {
 	int32_t i32_value;
 	float float_value;
 	uint8_t raw_value[4];
+	uint8_t rcvd_bytes[4];
 	char str_value[4];		// Almaceno NaN cuando hay un error.
 } modbus_hold_t; // (4)
 

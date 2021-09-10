@@ -12,6 +12,7 @@
 #define PRINTF_BUFFER_SIZE        256U
 
 static uint8_t stdout_buff[PRINTF_BUFFER_SIZE];
+
 xSemaphoreHandle sem_STDOUT;
 StaticSemaphore_t STDOUT_xMutexBuffer;
 

@@ -62,6 +62,14 @@ modbus_hold_t hold_reg;
 void pv_modbus_decoder_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
 void pv_modbus_decoder_shinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
 
+void pv_modbus_make_ADU_code3( mbus_CONTROL_BLOCK_t *mbus_cb );
+void pv_modbus_make_ADU_code6( mbus_CONTROL_BLOCK_t *mbus_cb );
+void pv_modbus_make_ADU_code10( mbus_CONTROL_BLOCK_t *mbus_cb );
+
+void pv_modbus_decode_rsp3( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void pv_modbus_decode_rsp6( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+void pv_modbus_decode_rsp10( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg );
+
 //------------------------------------------------------------------------------------
 // READ
 //------------------------------------------------------------------------------------
@@ -119,8 +127,6 @@ float pvalue = 0.0;
 	//
 	modbus_io( DF_MBUS, &mbus_cb, &hold_reg );
 	//
-	modbus_print( DF_MBUS, &mbus_cb, &hold_reg );
-
 	// Siempre retorno un float
 	// La operacion de io es exitosa.
 	if ( mbus_cb.type == FLOAT) {
@@ -142,6 +148,8 @@ float pvalue = 0.0;
 	}
 
 	xSemaphoreGive( sem_MBUS );
+
+	modbus_print( DF_MBUS, &mbus_cb, &hold_reg );
 
 	xprintf_PD(DF_MBUS, PSTR("MODBUS: CHPOLL END (%.3f s.)\r\n"), ELAPSED_TIME_SECS(init_ticks) );
 
@@ -195,23 +203,26 @@ uint8_t i;
 	case TAO:
 		xprintf_P( PSTR("   format=tao\r\n"));
 		break;
+	case MBSIM:
+		xprintf_P( PSTR("   format=mbsim\r\n"));
+		break;
 	default:
 		xprintf_P( PSTR("   format=ERROR\r\n"));
 		break;
 	}
 
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
-		if ( (i % 2) == 0 ) {
-			xprintf_P(PSTR("   "));
-		}
 
 		if ( strcmp ( modbus_conf.channel[i].name, "X" ) == 0 ) {
 			xprintf_P(PSTR("\r\n"));
 			return;
 		}
 
-		xprintf_P( PSTR("MB%02d:[%s,0x%04X,"), i, modbus_conf.channel[i].name, modbus_conf.channel[i].address );
+		if ( (i % 2) == 0 ) {
+			xprintf_P(PSTR("   "));
+		}
 
+		xprintf_P( PSTR("MB%02d:[%s,0x%04X,"), i, modbus_conf.channel[i].name, modbus_conf.channel[i].address );
 		xprintf_P( PSTR("0x%X,0x%X,"), modbus_conf.channel[i].nro_regs, modbus_conf.channel[i].rcode );
 
 		switch(	modbus_conf.channel[i].type ) {
@@ -254,8 +265,7 @@ bool modbus_config_channel( uint8_t channel, char *s_name, char *s_addr, char *s
 {
 	// Todos los datos vienen en decimal !!!
 
-	xprintf_P(PSTR("DEBUG MBCH%02d: name:[%s],addr:[%s],nrecs:[%s],rcode:[%s],type:[%s],pow10:[%s]\r\n"),
-			channel, s_name, s_addr, s_nro_recds, s_rcode, s_type, s_divisor_p10 );
+	//xprintf_P(PSTR("DEBUG MBCH%02d: name:[%s],addr:[%s],nrecs:[%s],rcode:[%s],type:[%s],pow10:[%s]\r\n"), channel, s_name, s_addr, s_nro_recds, s_rcode, s_type, s_divisor_p10 );
 
 	if (( s_name == NULL ) || ( s_addr == NULL) || (s_nro_recds == NULL) || ( s_rcode == NULL) || ( s_divisor_p10 == NULL)  ) {
 		return(false);
@@ -307,6 +317,8 @@ bool modbus_config_data_format( char *s_format)
 		modbus_conf.data_format = SHINCO;
 	} else if ( !strcmp_P( strupr(s_format), PSTR("TAO"))) {
 		modbus_conf.data_format = TAO;
+	} else if ( !strcmp_P( strupr(s_format), PSTR("MBSIM"))) {
+		modbus_conf.data_format = MBSIM;
 	}
 	return(true);
 
@@ -326,7 +338,21 @@ int16_t free_size = sizeof(hash_buffer);
 	memset(hash_buffer,'\0', sizeof(hash_buffer));
 
 	j = 0;
-	j += snprintf_P( &hash_buffer[j], free_size, PSTR("MODBUS;SLA:%04d;MBWT:%03d;FORMAT:%d"), modbus_conf.slave_address,modbus_conf.waiting_poll_time, modbus_conf.data_format );
+	j += snprintf_P( &hash_buffer[j], free_size, PSTR("MODBUS;SLA:%04d;MBWT:%03d;"), modbus_conf.slave_address,modbus_conf.waiting_poll_time );
+	switch( modbus_conf.data_format) {
+	case KINCO:
+		j += snprintf_P( &hash_buffer[j], free_size, PSTR("FORMAT:KINCO;"));
+		break;
+	case SHINCO:
+		j += snprintf_P( &hash_buffer[j], free_size, PSTR("FORMAT:SHINCO;"));
+		break;
+	case TAO:
+		j += snprintf_P( &hash_buffer[j], free_size, PSTR("FORMAT:TAO;"));
+		break;
+	default:
+		return(0x00);
+	}
+
 	//xprintf_P( PSTR("DEBUG_MBHASH = [%s]\r\n\0"), hash_buffer );
 	free_size = (  sizeof(hash_buffer) - j );
 	if ( free_size < 0 ) goto exit_error;
@@ -449,10 +475,9 @@ void modbus_test_genpoll(char *arg_ptr[16] )
 	//
 	modbus_io( true, &mbus_cb, &hold_reg );
 	//
-	modbus_print( true, &mbus_cb, &hold_reg );
-
 	xSemaphoreGive( sem_MBUS );
-
+	//
+	modbus_print( true, &mbus_cb, &hold_reg );
 	xprintf_P(PSTR("MODBUS: GENPOLL END\r\n"));
 
 }
@@ -491,18 +516,32 @@ void modbus_write_output_register( char *s_address, char *s_type, char *s_value 
 
 	// Preparo el registro con los datos del canal
 	mbus_cb.sla_address = modbus_conf.slave_address;
-	mbus_cb.function_code = 6;		// Write por ahora 2 bytes u16.
-	mbus_cb.address = atoi(s_address);
 	mbus_cb.divisor_p10 = 1;
-	mbus_cb.type = u16;
-	mbus_cb.nro_recds = 1;
-	mbus_cb.write_value.u16_value = atoi(s_value);
+
+	mbus_cb.address = atoi(s_address);
+	// FCODE
+	if ( *s_type == 'F') {
+		// Escribo un FLOAT ( 4 bytes )
+		mbus_cb.function_code = 0x10;
+		mbus_cb.type = FLOAT;
+		mbus_cb.nro_recds = 2;
+		mbus_cb.write_value.float_value = atof(s_value);
+
+	} else if ( *s_type == 'I') {
+		// Escribo un U16 ( 2 bytes )
+		mbus_cb.function_code = 0x06;
+		mbus_cb.type = u16;
+		mbus_cb.nro_recds = 1;
+		mbus_cb.write_value.u16_value = atoi(s_value);
+
+	} else {
+		return;
+	}
 	//
 	modbus_io( true, &mbus_cb, &hold_reg );
-	modbus_print( true, &mbus_cb, &hold_reg );
-
 	xSemaphoreGive( sem_MBUS );
 
+	modbus_print( true, &mbus_cb, &hold_reg );
 	xprintf_P(PSTR("MODBUS: OUTREG END\r\n"));
 
 }
@@ -560,32 +599,105 @@ void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb )
 	// Prepara el ADU ( raw frame ) con los datos de la variable global mbus_cb.
 	// Calcula el CRC de modo que el frame queda pronto a transmitirse por el serial
 
+	switch ( mbus_cb->function_code ) {
+	case 0x03:
+		pv_modbus_make_ADU_code3( mbus_cb );
+		break;
+	case 0x06:
+		pv_modbus_make_ADU_code6( mbus_cb );
+		break;
+	case 0x10:
+		pv_modbus_make_ADU_code10( mbus_cb );
+		break;
+	default:
+		return;
+	}
+}
+//------------------------------------------------------------------------------------
+void pv_modbus_make_ADU_code3( mbus_CONTROL_BLOCK_t *mbus_cb )
+{
+	// Hago el ADU de un frame tipo 0x03 ( Read Holding Register )
+
 uint8_t size = 0;
 uint16_t crc;
 
 	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
-	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;		// SLA
-	mbus_cb->tx_buffer[1] = mbus_cb->function_code;		// FCODE
-	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);		// DST_ADDR_H
-	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );				// DST_ADDR_L
-
-	// WRITE ?
-	if ( mbus_cb->function_code == 6 ) {
-		mbus_cb->tx_buffer[4] = mbus_cb->write_value.raw_value[1];		// WRITE_DATA_HIGH
-		mbus_cb->tx_buffer[5] = mbus_cb->write_value.raw_value[0];		// WRITE_DATA_LOW
-	} else {
-		// READ:
-		mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);	// NRO_REG_HI
-		mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
-	}
+	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
+	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
+	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
+	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
+	//
+	mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);	// NRO_REG_HI
+	mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
+	size = 6;
 
 	// CRC
-	size = 6;
 	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
+	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
+	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
+	mbus_cb->tx_size = size;
+	return;
 
-	mbus_cb->tx_buffer[6] = (uint8_t)( crc & 0x00FF );			// CRC Low
-	mbus_cb->tx_buffer[7] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
-	mbus_cb->tx_size = 8;
+}
+//------------------------------------------------------------------------------------
+void pv_modbus_make_ADU_code6( mbus_CONTROL_BLOCK_t *mbus_cb )
+{
+	// Hago el ADU de un frame tipo 0x06 ( WRITE Single Register ( 2 bytes ) )
+
+uint8_t size = 0;
+uint16_t crc;
+
+	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
+	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
+	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
+	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
+	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
+	// WRITE I16
+	mbus_cb->tx_buffer[4] = mbus_cb->write_value.raw_value[1];				// WR_VALUE_HIGH
+	mbus_cb->tx_buffer[5] = mbus_cb->write_value.raw_value[0];				// WR_VALUE_LOW
+	size = 6;
+
+	// CRC
+	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
+	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
+	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
+	mbus_cb->tx_size = size;
+	return;
+
+}
+//------------------------------------------------------------------------------------
+void pv_modbus_make_ADU_code10( mbus_CONTROL_BLOCK_t *mbus_cb )
+{
+	// Hago el ADU de un frame tipo 0x10 ( WRITE Multiple Register (  Lo usamos para escribir floats 4 bytes. ) )
+
+uint8_t size = 0;
+uint16_t crc;
+
+	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
+	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
+	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
+	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
+	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
+	//
+	// Cantidad de registros a escribir ( 1 registro o variable de largo 4  )
+	mbus_cb->tx_buffer[4] = 1;
+	//
+	// Cantidad de bytes a escribir ( 1 float = 4 bytes , 2 x N => N=2)
+	mbus_cb->tx_buffer[5] = 1;
+	//
+	// Valores
+	mbus_cb->tx_buffer[6] = mbus_cb->write_value.raw_value[0];
+	mbus_cb->tx_buffer[7] = mbus_cb->write_value.raw_value[1];
+	mbus_cb->tx_buffer[8] = mbus_cb->write_value.raw_value[2];
+	mbus_cb->tx_buffer[9] = mbus_cb->write_value.raw_value[3];
+	size = 10;
+
+	// CRC
+	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
+	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
+	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
+	mbus_cb->tx_size = size;
+	return;
 
 }
 //------------------------------------------------------------------------------------
@@ -724,33 +836,6 @@ quit:
 //------------------------------------------------------------------------------------
 void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
 {
-	/*
-	 *
-	 * https://betterexplained.com/articles/understanding-big-and-little-endian-byte-order/
-	 *
-	 * En la decodificacion de los enteros no hay problema porque los flowmeters y los PLC
-	 * mandan el MSB primero.
-	 * En el caso de los float, solo los mandan los PLC y ahi hay un swap de los bytes por
-	 * lo que para decodificarlo necesito saber que los 4 bytes corresponden a un float!!
-	 *
-	 * MODBUS es BIG_ENDIAN: Cuando se manda un nro de varios bytes, el MSB se manda primero
-	 * MSB ..... LSB
-	 * Big Endian: El MSB se pone en el byte de la direccion mas baja:
-	 * Little Endian: El LSB se pone en el byte de la direccion mas baja.
-     *
-	 * Decodifica el frame recibido que se encuentra en mbus_data.rx_buffer
-	 * Debo copiar los bytes a hreg->bytes_raw para luego interpretarlo como int o float.
-	 * La interpretacion la da el codigo F o I y se hace con la funcion pv_modbus_print_value
-     *
-	 * Lo que hacemos es escribir y leer registros del PLC.
-	 * (0x03) Read Holding Registers
-	 * (0x04) Read Input Registers
-	 * (0x06) Write Single Register
-	 * MBUS_RX_FRAME: SLA FCODE ..............
-	 *
-	 * Determino cuantos bytes recibi ( 2 o 4 ) y luego los interpreto como 'F' o 'I'
-	 *
-	 */
 
 	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE start\r\n"));
 
@@ -762,7 +847,56 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		goto quit;
 	}
 
-	// De acuerdo al function_code, determino del string recibido cuantos bytes recibí.
+	switch ( mbus_cb->function_code ) {
+	case 0x03:
+		pv_modbus_decode_rsp3( f_debug, mbus_cb, hreg );
+		break;
+	case 0x06:
+		pv_modbus_decode_rsp6( f_debug, mbus_cb, hreg );
+		break;
+	case 0x10:
+		pv_modbus_decode_rsp10( f_debug, mbus_cb, hreg );
+		break;
+	default:
+		return;
+	}
+
+quit:
+
+	xprintf_PD(f_debug, PSTR("MODBUS: DECODE b0[0x%02X] b1[0x%02X] b2[0x%02X] b3[0x%02X]\r\n"), hreg->raw_value[0], hreg->raw_value[1], hreg->raw_value[2], hreg->raw_value[3]);
+	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE end\r\n") );
+	return;
+
+}
+//------------------------------------------------------------------------------------
+// DECODERS
+/*
+ *
+ * https://betterexplained.com/articles/understanding-big-and-little-endian-byte-order/
+ *
+ * En la decodificacion de los enteros no hay problema porque los flowmeters y los PLC
+ * mandan el MSB primero.
+ * En el caso de los float, solo los mandan los PLC y ahi hay un swap de los bytes por
+ * lo que para decodificarlo necesito saber que los 4 bytes corresponden a un float!!
+ *
+ * MODBUS es BIG_ENDIAN: Cuando se manda un nro de varios bytes, el MSB se manda primero
+ * MSB ..... LSB
+ * Big Endian: El MSB se pone en el byte de la direccion mas baja:
+ * Little Endian: El LSB se pone en el byte de la direccion mas baja.
+ *
+ * Decodifica el frame recibido que se encuentra en mbus_data.rx_buffer
+ * Debo copiar los bytes a hreg->bytes_raw para luego interpretarlo como int o float.
+ * La interpretacion la da el codigo F o I y se hace con la funcion pv_modbus_print_value
+ *
+ * Lo que hacemos es escribir y leer registros del PLC.
+ * (0x03) Read Holding Registers
+ * (0x04) Read Input Registers
+ * (0x06) Write Single Register
+ * MBUS_RX_FRAME: SLA FCODE ..............
+ *
+ * Determino cuantos bytes recibi ( 2 o 4 ) y luego los interpreto como 'F' o 'I'
+ *
+ *	// De acuerdo al function_code, determino del string recibido cuantos bytes recibí.
 	if ( mbus_cb->function_code == 3 ) {
 		// (0x03) Read Holding Register
 		// La cantida de bytes leidos esta en la posicion 2
@@ -799,16 +933,34 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_
 		goto quit;
 	}
 
+ *
+ *
+ */
 
-quit:
+//------------------------------------------------------------------------------------
+void pv_modbus_decode_rsp3( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+{
+	/*
+	 *  Decoder de un frame tipo 3( Read Holding Register )
+	 *  Pueden ser 2 o 4 bytes ( ints, longints o float )
+	 *
+	 *  La cantidad de bytes leidos esta en la posicion 2
+	 *  Los copio al area de rcvd_bytes
+	 */
+	mbus_cb->length = mbus_cb->rx_buffer[2];
 
-	xprintf_PD(f_debug, PSTR("MODBUS: DECODE b0[0x%02X] b1[0x%02X] b2[0x%02X] b3[0x%02X]\r\n"), hreg->raw_value[0], hreg->raw_value[1], hreg->raw_value[2], hreg->raw_value[3]);
-	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE end\r\n") );
-	return;
 
 }
 //------------------------------------------------------------------------------------
-// DECODERS
+void pv_modbus_decode_rsp6( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+{
+
+}
+//------------------------------------------------------------------------------------
+void pv_modbus_decode_rsp10( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
+{
+
+}
 //------------------------------------------------------------------------------------
 void pv_modbus_decoder_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbus_hold_t *hreg )
 {
@@ -855,6 +1007,12 @@ void pv_modbus_decoder_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, modbu
 		hreg->raw_value[1] = mbus_cb->rx_buffer[3];
 		hreg->raw_value[2] = mbus_cb->rx_buffer[6];
 		hreg->raw_value[3] = mbus_cb->rx_buffer[5];
+
+		// Contol de valores:
+		if ( fabs(hreg->float_value) > 100000 ) {
+			// Anulo el valor
+			mbus_cb->io_status = false;
+		}
 
 	} else if ( mbus_cb->type == i16) {
 		/*
