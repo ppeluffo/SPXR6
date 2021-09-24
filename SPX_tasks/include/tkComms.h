@@ -68,6 +68,8 @@ struct {
 
 #define MAX_DATA_WINDOW_SIZE	 10
 
+#define MAX_TRYES_SOCKET_CLOSE	1
+
 //------------------------------------------------------------------------------------
 
 #define AUX_TXBUFFER_LEN	16

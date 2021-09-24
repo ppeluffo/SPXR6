@@ -62,6 +62,7 @@ static bool process_rsp_data(void);
 uint16_t datos_pendientes_transmitir(void);
 void data_resync_clock(void);
 void data_process_response_MBUS(void);
+void data_process_response_PILOTO(void);
 
 bool f_send_init_frame_base;
 bool f_send_init_frame_analog;
@@ -507,13 +508,6 @@ uint32_t init_ticks = sysTicks;
 
 	reset_datalogger = false;
 
-	// No quiero ECHO en los comandos
-	// Sacamos el ECHO porque sino c/frame que mandamos lo repite y llena el rxbuffer al pedo.
-	if ( FSM_sendATcmd( 3, "ATE0\r" ) != ATRSP_OK ) {
-		xprintf_PD( DF_COMMS,  PSTR("COMMS: apagado:ATE0 ERROR\r\n"));
-	}
-
-
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:ENTRY out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 	return(true);
 }
@@ -753,7 +747,8 @@ uint32_t init_ticks = sysTicks;
 int8_t socket_close(void)
 {
 	// Cierra el socket
-	// Reintenta hasta 3 veces controlando que ya no este cerrado
+	// Reintenta hasta MAX_TRYES_SOCKET_CLOSE veces controlando que ya no este cerrado
+	//
 
 int8_t tryes;
 int8_t cmd_rsp;
@@ -763,7 +758,7 @@ int8_t cmd_rsp;
 
 	// Envio el comando hasta 3 veces.
 	// Si no responde mando un AT.
-	for ( tryes = 0; tryes < 3; tryes++ ) {
+	for ( tryes = 0; tryes < MAX_TRYES_SOCKET_CLOSE; tryes++ ) {
 
 		cmd_rsp = FSM_sendATcmd( 10, "AT+CIPCLOSE=0\r" );
 
@@ -1161,6 +1156,10 @@ FAT_t fat;
 st_dataRecord_t dataRecord;
 bool ret_code = false;
 uint8_t registros_trasmitidos = 0;
+
+	// Para que no se resetee x wdg si hay muchos datos pendientes.
+
+	u_wdg_kick(WDG_COMMS, 120);
 
 	// Header
 	prepare_header(FRM_DATA);
@@ -1712,7 +1711,7 @@ char *tk_hhmm = NULL;
 char *tk_pres = NULL;
 char *delim = ",;:=><";
 bool save_flag = false;
-char id[2];
+char id[4];
 char str_base[8];
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_app in\r\n\0"));
@@ -1776,8 +1775,12 @@ char str_base[8];
 				tk_hhmm = strsep(&stringp,delim);		//SLOTx
 				tk_hhmm = strsep(&stringp,delim);		//1230
 				tk_pres = strsep(&stringp,delim);		//1.34
-				id[0] = '0' + slot;
-				id[1] = '\0';
+				memset(&id, '\0', sizeof(id));
+				itoa(slot, id, 10);
+				//id[0] = '0' + slot;
+				//id[1] = '\0';
+
+				xprintf_P(PSTR("DEBUG: slot=%s, hhmm=%s, pres=%s\r\n"), id, tk_hhmm, tk_pres);
 				piloto_config_slot( id, tk_hhmm, tk_pres );
 			}
 		}
@@ -1801,9 +1804,8 @@ static bool process_rsp_data(void)
 uint8_t recds_borrados = 0;
 FAT_t fat;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_data in\r\n\0"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_data in\r\n"));
 	gprs_print_RX_buffer();
-
 
 	if ( gprs_check_response( 0, "CLOCK") ) {
 		// Ajusto la hora local.
@@ -1815,6 +1817,13 @@ FAT_t fat;
 		// rsp = rsp_OK;
 		// return(rsp);
 	}
+
+	if ( gprs_check_response (0, "PILOTO") ) {
+		data_process_response_PILOTO();
+		// rsp = rsp_OK;
+		// return(rsp);
+	}
+
 	/*
 	 * Lo ultimo que debo procesar es el OK !!!
 	 * Borro los registros transmitidos
@@ -1956,6 +1965,44 @@ char *delim = ",;:=><[]";
 	}
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out\r\n\0"));
+}
+//------------------------------------------------------------------------------------
+void data_process_response_PILOTO(void)
+{
+	/*
+	 * Recibo una respuesta que me dice que presion debe setear el piloto ahora.
+	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;PILOTO=3.45</h1></body></html>
+	 *
+	 * Testing desde el server:
+	 * Se abre una consola redis: >redis-cli
+	 * Comandos:
+	 *    hset PTEST01 PILOTO "3.45"
+	 *    hgetall PTEST01
+	 *    hset PTEST01 MODBUS "NUL"
+	 *
+	 *
+	 */
+
+char *ts = NULL;
+char localStr[48] = { 0 };
+char *stringp = NULL;
+char *tk_presion = NULL;
+float presion = 0.0;
+char *delim = ",;:=><";
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_piloto in\r\n\0"));
+	//gprs_print_RX_buffer();
+
+	memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( gprs_rxbuffer.buffer, "PILOTO");
+	strncpy(localStr, ts, sizeof(localStr));
+	stringp = localStr;
+	tk_presion = strsep(&stringp,delim);			// PILOTO
+	tk_presion = strsep(&stringp,delim);			// 3.45
+	presion = atof(tk_presion);
+	piloto_set_presion_momentanea(presion);
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_piloto out\r\n\0"));
 }
 //------------------------------------------------------------------------------------
 

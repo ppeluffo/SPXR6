@@ -24,7 +24,7 @@
 
 // LAS PRESIONES SE MIDEN EN GRS. !!!
 
-#define MAX_PILOTO_PSLOTS	5
+#define MAX_PILOTO_PSLOTS	12
 
 typedef struct {		// Elemento de piloto: presion, hora.
 	st_time_t pTime;
@@ -83,6 +83,8 @@ void piloto_config_defaults(void);
 bool piloto_init_service(void);
 void piloto_app_service( uint8_t app_wdt );
 uint8_t piloto_hash(void);
+void piloto_set_presion_momentanea( float presion);
+
 
 
 #endif /* SRC_SPX_ULIBS_UL_PILOTOS_H_ */

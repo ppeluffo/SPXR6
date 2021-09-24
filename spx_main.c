@@ -36,6 +36,17 @@
  *  SPY_init_conf_digital.py
  *  spy_utils.py
  *
+ *  R4.0.0d @ 2021-09-24:
+ *  - Cuando tiene muchos datos para transmitir, se restea por wdg de comms.
+ *    Se soluciona limpiando el wdg luego que transmite c/ventana.
+ *  - Los reintentos de cerrar el socket no funcionan por lo que solo se demora mas.
+ *    Pasamos los reintentos ( MAX_TRYES_SOCKET_CLOSE ) a 1.
+ *  - Aumentamos los slots de pilotos a 12
+ *  - Agregamos que remotamente se pueda fijar una presion momentaneamente.
+ *  - Al arrancar el modem le doy ATE0 para evitar el echo.
+ *
+ *
+ *
  *  R4.0.0c @ 2021-08-31:
  *  - Modbus: Polea e imprime todos los canales.
  *    NO TRANSMITE los canales modbus !!

@@ -46,8 +46,15 @@ int8_t slot;
 
 	xprintf_P( PSTR("  modo: PILOTO\r\n"));
 	xprintf_P( PSTR("    PulsosXrev=%d, pWidth=%d(ms)\r\n"), piloto_conf.pulsesXrev, piloto_conf.pWidth  );
-	xprintf_P( PSTR("    Slots: "));
-	for (slot=0; slot < MAX_PILOTO_PSLOTS ;slot++) {
+	xprintf_P( PSTR("    Slots:\r\n"));
+	xprintf_P( PSTR("    "));
+	for (slot=0; slot < (MAX_PILOTO_PSLOTS / 2);slot++) {
+		xprintf_P( PSTR("[%02d]%02d:%02d->%0.2f "), slot, piloto_conf.pltSlots[slot].pTime.hour, piloto_conf.pltSlots[slot].pTime.min,piloto_conf.pltSlots[slot].presion  );
+	}
+	xprintf_P( PSTR("\r\n"));
+
+	xprintf_P( PSTR("    "));
+	for (slot=(MAX_PILOTO_PSLOTS / 2); slot < MAX_PILOTO_PSLOTS;slot++) {
 		xprintf_P( PSTR("[%02d]%02d:%02d->%0.2f "), slot, piloto_conf.pltSlots[slot].pTime.hour, piloto_conf.pltSlots[slot].pTime.min,piloto_conf.pltSlots[slot].presion  );
 	}
 	xprintf_P( PSTR("\r\n"));
@@ -99,7 +106,8 @@ uint8_t slot;
 //------------------------------------------------------------------------------------
 uint8_t piloto_hash(void)
 {
-	// PLT;SLOT0:0630,1.20;SLOT1:0745,2.40;SLOT2:1230,3.60;SLOT3:2245,4.80;SLOT4:2345,5.00;
+	// PLT;PXR:5000;PWIDTH:20;SLOT0:0630,1.20;SLOT1:0745,2.40;SLOT2:1230,3.60;SLOT3:2245,4.80;SLOT4:2345,5.00;
+
 uint8_t hash = 0;
 char *p;
 uint8_t slot = 0;
@@ -110,7 +118,9 @@ int16_t free_size = sizeof(hash_buffer);
 	// Vacio el buffer temporal
 	memset(hash_buffer,'\0', sizeof(hash_buffer));
 
-	i += snprintf_P( &hash_buffer[i], free_size, PSTR("PLT;"));
+	i += snprintf_P( &hash_buffer[i], free_size, PSTR("PLT;PXR:%d;PWIDTH:%d;"), piloto_conf.pulsesXrev, piloto_conf.pWidth);
+	//xprintf_P(PSTR("HASH: [%s]\r\n"), hash_buffer);
+
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
 	p = hash_buffer;
@@ -129,6 +139,7 @@ int16_t free_size = sizeof(hash_buffer);
 				piloto_conf.pltSlots[slot].pTime.hour,
 				piloto_conf.pltSlots[slot].pTime.min,
 				piloto_conf.pltSlots[slot].presion );
+		//xprintf_P(PSTR("HASH: [%s]\r\n"), hash_buffer);
 		free_size = (  sizeof(hash_buffer) - j );
 		if ( free_size < 0 ) goto exit_error;
 
@@ -217,6 +228,8 @@ uint8_t slot;
 
 	slot = atoi(s_slot);
 
+	//xprintf_P(PSTR("DEBUG: slot=%d\r\n"), slot);
+
 	if ( slot < MAX_PILOTO_PSLOTS ) {
 		if ( s_hhmm != NULL ) {
 			u_convert_int_to_time_t( atoi(s_hhmm), &piloto_conf.pltSlots[slot].pTime.hour, &piloto_conf.pltSlots[slot].pTime.min  );
@@ -224,11 +237,15 @@ uint8_t slot;
 			return(false);
 		}
 
+		//xprintf_P(PSTR("DEBUG: %d:%d\r\n"), piloto_conf.pltSlots[slot].pTime.hour, piloto_conf.pltSlots[slot].pTime.min );
+
 		if ( s_presion != NULL ) {
 			piloto_conf.pltSlots[slot].presion = atof(s_presion);
 		} else {
 			return(false);
 		}
+
+		//xprintf_P(PSTR("DEBUG: %.02f\r\n"), piloto_conf.pltSlots[slot].presion );
 		return(true);
 	}
 
@@ -243,6 +260,18 @@ void piloto_config_ppr( char *s_pulseXrev )
 void piloto_config_pwidth( char *s_pwidth )
 {
 	piloto_conf.pWidth = atoi(s_pwidth);
+}
+//------------------------------------------------------------------------------------
+void piloto_set_presion_momentanea( float presion)
+{
+	// Funcion invocada online para fijar una nueva presion hasta que finalize
+	// el slot
+
+	xprintf_P(PSTR("PILOTO: Set presion from Server.\r\n"));
+	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), presion);
+	PLTCB.start_test = true;
+	PLTCB.pRef = presion;
+
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES PRIVADAS

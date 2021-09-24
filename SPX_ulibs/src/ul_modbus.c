@@ -58,25 +58,13 @@ const uint8_t auchCRCLo[] PROGMEM = {
 
 mbus_CONTROL_BLOCK_t mbus_cb;
 
-
 void pv_modbus_make_ADU_code3( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_make_ADU_code6( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_make_ADU_code16_mbsim( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_make_ADU_code16_kinco( mbus_CONTROL_BLOCK_t *mbus_cb );
 
-void pv_modbus_decode_rsp3( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
-void pv_modbus_decode_rsp6( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
-void pv_modbus_decode_rsp16( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
-
-void pv_modbus_decode_rsp3_i16_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-void pv_modbus_decode_rsp3_u16_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-void pv_modbus_decode_rsp3_i32_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-void pv_modbus_decode_rsp3_u32_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-void pv_modbus_decode_rsp3_float_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-
-void pv_modbus_decode_rsp3_i16_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-void pv_modbus_decode_rsp3_u16_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
-void pv_modbus_decode_rsp3_float_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr);
+void pv_modbus_codec_mbsim(bool f_debug, int8_t codec, mbus_CONTROL_BLOCK_t *mbus_cb );
+void pv_modbus_codec_kinco(bool f_debug, int8_t codec, mbus_CONTROL_BLOCK_t *mbus_cb );
 
 //------------------------------------------------------------------------------------
 // READ
@@ -602,157 +590,14 @@ void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb )
 	// Prepara el ADU ( raw frame ) con los datos de la variable global mbus_cb.
 	// Calcula el CRC de modo que el frame queda pronto a transmitirse por el serial
 
-	switch ( mbus_cb->function_code ) {
-	case 0x03:
-		pv_modbus_make_ADU_code3( mbus_cb );
-		break;
-	case 0x06:
-		pv_modbus_make_ADU_code6( mbus_cb );
-		break;
-	case 0x10:
-		if ( modbus_conf.data_format == MBSIM ) {
-			pv_modbus_make_ADU_code16_mbsim( mbus_cb );
-		} else if ( modbus_conf.data_format == KINCO ) {
-			pv_modbus_make_ADU_code16_kinco( mbus_cb );
-		}
-		break;
-	default:
-		return;
+	if ( modbus_conf.data_format == MBSIM ) {
+		pv_modbus_codec_mbsim (false, ENCODER, mbus_cb );
+
+	} else if ( modbus_conf.data_format == KINCO ) {
+		pv_modbus_codec_kinco (false, ENCODER, mbus_cb );
+
 	}
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_make_ADU_code16_kinco( mbus_CONTROL_BLOCK_t *mbus_cb )
-{
-	// Hago el ADU de un frame tipo 0x10 (16) ( Write Multitple Register )
-	// El valor a escribir esta en mbus_cb.udata(float)
-	// Escribo 4 bytes.
-	// El PCL recibe los bytes en diferente orden !!!.
-
-uint8_t size = 0;
-uint16_t crc;
-
-	xprintf_P(PSTR("MODBUS: DEBUG ADU code 16\r\n"));
-
-	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
-	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
-	//
-	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
-	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
-	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
-	//
-	// Quantity of Registers: 2 bytes, ( 1 registro o 1 variable de largo 4  )
-	mbus_cb->tx_buffer[4] = 0;
-	mbus_cb->tx_buffer[5] = 2;
-	//
-	// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
-	mbus_cb->tx_buffer[6] = 4;
-
-	mbus_cb->tx_buffer[7] = mbus_cb->udata.raw_value[1];	// DATA
-	mbus_cb->tx_buffer[8] = mbus_cb->udata.raw_value[0];
-	mbus_cb->tx_buffer[9] = mbus_cb->udata.raw_value[3];
-	mbus_cb->tx_buffer[10] = mbus_cb->udata.raw_value[2];
-	size = 11;
-
-	// CRC
-	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
-	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
-	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
-	mbus_cb->tx_size = size;
 	return;
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_make_ADU_code16_mbsim( mbus_CONTROL_BLOCK_t *mbus_cb )
-{
-	// Hago el ADU de un frame tipo 0x10 (16) ( Write Multitple Register )
-	// El valor a escribir esta en mbus_cb.udata(float)
-	// Escribo 4 bytes.
-	// El simulador recibe los bytes en orden.
-
-uint8_t size = 0;
-uint16_t crc;
-
-	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
-	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
-	//
-	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
-	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
-	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
-	//
-	// Quantity of Registers: 2 bytes, ( 1 registro o 1 variable de largo 4  )
-	mbus_cb->tx_buffer[4] = 0;
-	mbus_cb->tx_buffer[5] = 2;
-	//
-	// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
-	mbus_cb->tx_buffer[6] = 4;
-
-	mbus_cb->tx_buffer[7] = mbus_cb->udata.raw_value[3];	// DATA
-	mbus_cb->tx_buffer[8] = mbus_cb->udata.raw_value[2];
-	mbus_cb->tx_buffer[9] = mbus_cb->udata.raw_value[1];
-	mbus_cb->tx_buffer[10] = mbus_cb->udata.raw_value[0];
-	size = 11;
-
-	// CRC
-	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
-	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
-	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
-	mbus_cb->tx_size = size;
-	return;
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_make_ADU_code6( mbus_CONTROL_BLOCK_t *mbus_cb )
-{
-	// Hago el ADU de un frame tipo 0x06 ( Write Single Register )
-	// El valor a escribir esta en mbus_cb.udata.
-	// Escribo solo 2 bytes con esta funcion.
-
-uint8_t size = 0;
-uint16_t crc;
-
-	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
-	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
-	//
-	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
-	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
-	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
-	//
-	mbus_cb->tx_buffer[4] = mbus_cb->udata.raw_value[1];	// DATA_VAL_HI
-	mbus_cb->tx_buffer[5] = mbus_cb->udata.raw_value[0];	// DATA_VAL_LO
-	size = 6;
-
-	// CRC
-	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
-	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
-	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
-	mbus_cb->tx_size = size;
-	return;
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_make_ADU_code3( mbus_CONTROL_BLOCK_t *mbus_cb )
-{
-	// Hago el ADU de un frame tipo 0x03 ( Read Holding Register )
-
-uint8_t size = 0;
-uint16_t crc;
-
-	memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
-	mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
-	mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
-	mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
-	mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
-	//
-	mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);	// NRO_REG_HI
-	mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
-	size = 6;
-
-	// CRC
-	crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
-	mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
-	mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
-	mbus_cb->tx_size = size;
-	return;
-
 }
 //------------------------------------------------------------------------------------
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
@@ -897,7 +742,6 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
 	 *
 	 */
 
-
 	//xprintf_PD( f_debug, PSTR("MODBUS: DECODE start\r\n"));
 
 	// Proceso los errores escribiendo un NaN
@@ -909,18 +753,11 @@ void pv_modbus_decode_ADU ( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
 		goto quit;
 	}
 
-	switch ( mbus_cb->function_code ) {
-	case 0x03:
-		pv_modbus_decode_rsp3( f_debug, mbus_cb );
-		break;
-	case 0x06:
-		pv_modbus_decode_rsp6( f_debug, mbus_cb );
-		break;
-	case 0x10:
-		pv_modbus_decode_rsp16( f_debug, mbus_cb );
-		break;
-	default:
-		return;
+	if ( modbus_conf.data_format == MBSIM ) {
+		pv_modbus_codec_mbsim (f_debug, DECODER, mbus_cb );
+
+	} else 	if ( modbus_conf.data_format == KINCO ) {
+		pv_modbus_codec_kinco (f_debug, DECODER, mbus_cb );
 	}
 
 quit:
@@ -1064,240 +901,275 @@ union {
  *
  */
 //------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp16( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
+void pv_modbus_codec_kinco(bool f_debug, int8_t codec, mbus_CONTROL_BLOCK_t *mbus_cb )
 {
-	/*
-	 *  Decoder de un frame tipo 16( Write Multiple Register )
-	 *  La respuesta es igual a lo transmitido.
-	 *  NO LA ANALIZO.
-	 */
-	return;
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp6( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
-{
-	/*
-	 *  Decoder de un frame tipo 6( Write Single Register )
-	 *  Son 2 bytes que los identificamos como i16 o u16
-	 *  El byteorder depende del dispositivo que envia
-	 *
-	 *  La cantidad de bytes leidos esta en la posicion 2
-	 *  Los copio al area de rcvd_bytes
-	 *
-	 *  La respuesta es igual a lo transmitido.
-	 *  NO LA ANALIZO.
-	 */
-	return;
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
-{
-	/*
-	 *  Decoder de un frame tipo 3( Read Holding Register )
-	 *  Pueden ser 2 o 4 bytes  y los puedo interpretar como ints, longints o float.
-	 *  El byteorder depende del dispositivo que envia
-	 *
-	 *  La cantidad de bytes leidos esta en la posicion 2
-	 *  Los copio al area de rcvd_bytes
-	 */
-
-uint8_t byte_count;		// Bytes leidos 2*N. En nuestro caso son 2 o 4
+uint8_t size = 0;
+uint16_t crc;
 uint8_t payload_ptr;	// Posicion en el rxbuffer donde empieza el payload
 
-	byte_count = mbus_cb->rx_buffer[2];
-	payload_ptr = 3;
+	if (codec == DECODER ) {
 
-	xprintf_P(PSTR("DEBUG DECODER 3\r\n"));
+		payload_ptr = 3;
 
-	switch ( mbus_cb->type ) {
-	case i16:
-		if ( modbus_conf.data_format == MBSIM ) {
-			pv_modbus_decode_rsp3_i16_mbsim(f_debug, mbus_cb, byte_count, payload_ptr);
-		} else if ( modbus_conf.data_format == KINCO ) {
-			pv_modbus_decode_rsp3_i16_kinco(f_debug, mbus_cb, byte_count, payload_ptr);
+		if ( mbus_cb->function_code == 0x03 ) {
+			switch (mbus_cb->type ) {
+			case i16:
+				xprintf_PD(f_debug, PSTR("MODBUS: kDECODER F3 int16\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
+				mbus_cb->udata.raw_value[2] = 0x00;
+				mbus_cb->udata.raw_value[3] = 0x00;
+				break;
+			case u16:
+				xprintf_PD(f_debug, PSTR("MODBUS: kDECODER F3 uint16\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
+				mbus_cb->udata.raw_value[2] = 0x00;
+				mbus_cb->udata.raw_value[3] = 0x00;
+				break;
+			case i32:
+				break;
+			case u32:
+				break;
+			case FLOAT:
+				/*
+				 * 3.15 => 0x4049999A
+				 * 0x 40 49 99 9A
+				 *     3  2  1  0
+				 *  payload_ptr ==> 40
+				 */
+				xprintf_PD(f_debug, PSTR("MODBUS: kDECODER F3 float\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 3];
+				mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr + 2];
+				break;
+			default:
+				xprintf_P("MODBUS: DECODER R3 ERROR\r\n");
+			}
+
+		} else if ( mbus_cb->function_code == 0x06 ) {
+			// No se analiza
+			return;
+
+		} else if ( mbus_cb->function_code == 0x10 ) {
+			// No se analiza
+			return;
+		} else {
+			// Caso no implementado
+			return;
 		}
-		break;
-	case u16:
-		if ( modbus_conf.data_format == MBSIM ) {
-			pv_modbus_decode_rsp3_u16_mbsim(f_debug, mbus_cb, byte_count, payload_ptr);
-		} else if ( modbus_conf.data_format == KINCO ) {
-			pv_modbus_decode_rsp3_u16_kinco(f_debug, mbus_cb, byte_count, payload_ptr);
-		}
-		break;
-	case i32:
-		if ( modbus_conf.data_format == MBSIM ) {
-			pv_modbus_decode_rsp3_i32_mbsim(f_debug, mbus_cb, byte_count, payload_ptr);
-		} else if ( modbus_conf.data_format == KINCO ) {
-			xprintf_P(PSTR("DECODE I32:KINCO no implementado\r\n"));
-		}
-		break;
-	case u32:
-		if ( modbus_conf.data_format == MBSIM ) {
-			pv_modbus_decode_rsp3_u32_mbsim(f_debug, mbus_cb, byte_count, payload_ptr);
-		}  else if ( modbus_conf.data_format == KINCO ) {
-			xprintf_P(PSTR("DECODE U32:KINCO no implementado\r\n"));
-		}
-		break;
-	case FLOAT:
-		if ( modbus_conf.data_format == MBSIM ) {
-			pv_modbus_decode_rsp3_float_mbsim(f_debug, mbus_cb, byte_count, payload_ptr);
-		} else if ( modbus_conf.data_format == KINCO ) {
-			pv_modbus_decode_rsp3_float_kinco(f_debug, mbus_cb, byte_count, payload_ptr);
-		}
-		break;
-	default:
-		xprintf_P("MODBUS: DECODER R3 ERROR\r\n");
+		return;
 	}
 
+
+	if ( codec == ENCODER ) {
+
+		// Header
+		memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
+		mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
+		mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
+		mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
+		mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
+
+		// Payload
+		if ( mbus_cb->function_code == 0x03 ) {
+			// Hago el ADU de un frame tipo 0x03 ( Read Holding Register )
+			mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);	// NRO_REG_HI
+			mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
+			size = 6;
+
+		} else if ( mbus_cb->function_code == 0x06 ) {
+
+			// Hago el ADU de un frame tipo 0x06 ( Write Single Register )
+			// El valor a escribir esta en mbus_cb.udata.
+			// Escribo solo 2 bytes con esta funcion.
+			mbus_cb->tx_buffer[4] = mbus_cb->udata.raw_value[1];	// DATA_VAL_HI
+			mbus_cb->tx_buffer[5] = mbus_cb->udata.raw_value[0];	// DATA_VAL_LO
+			size = 6;
+
+		} else if ( mbus_cb->function_code == 0x10 ) {
+
+			// Hago el ADU de un frame tipo 0x10 (16) ( Write Multitple Register )
+			// El valor a escribir esta en mbus_cb.udata(float)
+			// Escribo 4 bytes.
+			// El simulador recibe los bytes en orden.
+			// Quantity of Registers: 2 bytes, ( 1 registro o 1 variable de largo 4  )
+			mbus_cb->tx_buffer[4] = 0;
+			mbus_cb->tx_buffer[5] = 2;
+			//
+			// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
+			mbus_cb->tx_buffer[6] = 4;
+
+			// El PCL recibe los bytes en diferente orden !!!.
+			mbus_cb->tx_buffer[7] = mbus_cb->udata.raw_value[1];	// DATA
+			mbus_cb->tx_buffer[8] = mbus_cb->udata.raw_value[0];
+			mbus_cb->tx_buffer[9] = mbus_cb->udata.raw_value[3];
+			mbus_cb->tx_buffer[10] = mbus_cb->udata.raw_value[2];
+			size = 11;
+
+		} else {
+			// Codigo no implementado
+			return;
+		}
+
+		// CRC
+		crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
+		mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
+		mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
+		mbus_cb->tx_size = size;
+		return;
+	}
 }
 //------------------------------------------------------------------------------------
-// PLC KINCO
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_float_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-	/*
-	 * 3.15 => 0x4049999A
-	 *
-	 * 0x 40 49 99 9A
-	 *     3  2  1  0
-	 *  payload_ptr ==> 40
-	 *
-	 */
-	xprintf_PD(f_debug, PSTR("MODBUS: kDECODER F3 float\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 3];
-	mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr + 2];
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_u16_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-
-	// 45678 => 0x 00 00 B2 63
-
-	xprintf_PD(f_debug, PSTR("MODBUS: kDECODER F3 uint16\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
-	mbus_cb->udata.raw_value[2] = 0x00;
-	mbus_cb->udata.raw_value[3] = 0x00;
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_i16_kinco( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-	/* Decodifico un i16 de acuerdo a lo que manda el simulador pyModSimulator.py
-	 *
-	 */
-
-	xprintf_PD(f_debug, PSTR("MODBUS: kDECODER F3 int16\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
-	mbus_cb->udata.raw_value[2] = 0x00;
-	mbus_cb->udata.raw_value[3] = 0x00;
-
-}
-//------------------------------------------------------------------------------------
-// SIMULADOR PYMODSLAVE
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_float_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-	/*
-	 * 8492.21 => 0x460BB8D7
-	 *
-	 * 0x 46 0B B8 D7
-	 *     3  2  1  0
-	 *  payload_ptr ==> 46
-	 *
-	 */
-	xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 float\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 3];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 2];
-	mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr];
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_u32_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
+void pv_modbus_codec_mbsim(bool f_debug, int8_t codec, mbus_CONTROL_BLOCK_t *mbus_cb )
 {
 
-	xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 uint32\r\n"));
+uint8_t size = 0;
+uint16_t crc;
+uint8_t payload_ptr;	// Posicion en el rxbuffer donde empieza el payload
 
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 3];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 2];
-	mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr];
+	if (codec == DECODER ) {
 
+		payload_ptr = 3;
+
+		if ( mbus_cb->function_code == 0x03 ) {
+			switch (mbus_cb->type ) {
+			case i16:
+				/* Decodifico un i16 de acuerdo a lo que manda el simulador pyModSimulator.py
+				 *
+				 *  1134 = 0x046E
+				 * -1134 = 0xFB92
+				 *  0x 00 00 04 6E
+				 *      3  2  1  0
+				 *  payload_ptr ==> 04
+				 *  0x 00 00 FB 92
+				 *      3  2  1  0
+				 *  payload_ptr ==> FB
+				 */
+				xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 int16\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
+				mbus_cb->udata.raw_value[2] = 0x00;
+				mbus_cb->udata.raw_value[3] = 0x00;
+				break;
+			case u16:
+				// 45678 => 0x 00 00 B2 63
+				xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 uint16\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
+				mbus_cb->udata.raw_value[2] = 0x00;
+				mbus_cb->udata.raw_value[3] = 0x00;
+				break;
+			case i32:
+				/* Decodifico un i32 ( 4 bytes ) de acuerdo a lo que manda el simulador pyModSimulator.py
+				 *
+				 *  84675 = 0x00014AC3
+				 *  0x 00 01 4A C3
+				 *      3  2  1  0
+				 *  payload_ptr ==> 00
+				 */
+				xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 int32\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 3];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 2];
+				mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr];
+
+				break;
+			case u32:
+				xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 uint32\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 3];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 2];
+				mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr];
+				break;
+			case FLOAT:
+				/*
+				 * 8492.21 => 0x460BB8D7
+				 * 0x 46 0B B8 D7
+				 *     3  2  1  0
+				 *  payload_ptr ==> 46
+				 */
+				xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 float\r\n"));
+				mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 3];
+				mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 2];
+				mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 1];
+				mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr];
+				break;
+			default:
+				xprintf_P("MODBUS: DECODER R3 ERROR\r\n");
+			}
+
+		} else if ( mbus_cb->function_code == 0x06 ) {
+			// No se analiza
+			return;
+
+		} else if ( mbus_cb->function_code == 0x10 ) {
+			// No se analiza
+			return;
+		} else {
+			// Caso no implementado
+			return;
+		}
+		return;
+	}
+
+
+	if ( codec == ENCODER ) {
+
+		// Header
+		memset( mbus_cb->tx_buffer, '\0', MBUS_TXMSG_LENGTH );
+		mbus_cb->tx_buffer[0] = mbus_cb->sla_address;								// SLA
+		mbus_cb->tx_buffer[1] = mbus_cb->function_code;								// FCODE
+		mbus_cb->tx_buffer[2] = (uint8_t) (( mbus_cb->address & 0xFF00  ) >> 8);	// DST_ADDR_H
+		mbus_cb->tx_buffer[3] = (uint8_t) ( mbus_cb->address & 0x00FF );			// DST_ADDR_L
+
+		// Payload
+		if ( mbus_cb->function_code == 0x03 ) {
+			// Hago el ADU de un frame tipo 0x03 ( Read Holding Register )
+			mbus_cb->tx_buffer[4] = (uint8_t) ((mbus_cb->nro_recds & 0xFF00 ) >> 8);	// NRO_REG_HI
+			mbus_cb->tx_buffer[5] = (uint8_t) ( mbus_cb->nro_recds & 0x00FF );			// NRO_REG_LO
+			size = 6;
+
+		} else if ( mbus_cb->function_code == 0x06 ) {
+
+			// Hago el ADU de un frame tipo 0x06 ( Write Single Register )
+			// El valor a escribir esta en mbus_cb.udata.
+			// Escribo solo 2 bytes con esta funcion.
+			mbus_cb->tx_buffer[4] = mbus_cb->udata.raw_value[1];	// DATA_VAL_HI
+			mbus_cb->tx_buffer[5] = mbus_cb->udata.raw_value[0];	// DATA_VAL_LO
+			size = 6;
+
+		} else if ( mbus_cb->function_code == 0x10 ) {
+
+			// Hago el ADU de un frame tipo 0x10 (16) ( Write Multitple Register )
+			// El valor a escribir esta en mbus_cb.udata(float)
+			// Escribo 4 bytes.
+			// El simulador recibe los bytes en orden.
+			// Quantity of Registers: 2 bytes, ( 1 registro o 1 variable de largo 4  )
+			mbus_cb->tx_buffer[4] = 0;
+			mbus_cb->tx_buffer[5] = 2;
+			//
+			// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
+			mbus_cb->tx_buffer[6] = 4;
+
+			mbus_cb->tx_buffer[7] = mbus_cb->udata.raw_value[3];	// DATA
+			mbus_cb->tx_buffer[8] = mbus_cb->udata.raw_value[2];
+			mbus_cb->tx_buffer[9] = mbus_cb->udata.raw_value[1];
+			mbus_cb->tx_buffer[10] = mbus_cb->udata.raw_value[0];
+			size = 11;
+
+		} else {
+			// Codigo no implementado
+			return;
+		}
+
+		// CRC
+		crc = pv_modbus_CRC16( mbus_cb->tx_buffer, size );
+		mbus_cb->tx_buffer[size++] = (uint8_t)( crc & 0x00FF );			// CRC Low
+		mbus_cb->tx_buffer[size++] = (uint8_t)( (crc & 0xFF00) >> 8 );	// CRC High
+		mbus_cb->tx_size = size;
+		return;
+	}
 }
 //------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_i32_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-	/* Decodifico un i32 ( 4 bytes ) de acuerdo a lo que manda el simulador pyModSimulator.py
-	 *
-	 *  84675 = 0x00014AC3
-	 *
-	 *  0x 00 01 4A C3
-	 *      3  2  1  0
-	 *
-	 *  payload_ptr ==> 00
-	 *
-	 */
-
-	xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 int32\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 3];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr + 2];
-	mbus_cb->udata.raw_value[2] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[3] = mbus_cb->rx_buffer[payload_ptr];
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_u16_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-
-	// 45678 => 0x 00 00 B2 63
-
-	xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 uint16\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
-	mbus_cb->udata.raw_value[2] = 0x00;
-	mbus_cb->udata.raw_value[3] = 0x00;
-
-}
-//------------------------------------------------------------------------------------
-void pv_modbus_decode_rsp3_i16_mbsim( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb, uint8_t byte_count, uint8_t payload_ptr)
-{
-	/* Decodifico un i16 de acuerdo a lo que manda el simulador pyModSimulator.py
-	 *
-	 *  1134 = 0x046E
-	 * -1134 = 0xFB92
-	 *
-	 *  0x 00 00 04 6E
-	 *      3  2  1  0
-	 *
-	 *  payload_ptr ==> 04
-	 *
-	 *  0x 00 00 FB 92
-	 *      3  2  1  0
-	 *  payload_ptr ==> FB
-	 *
-	 */
-
-	xprintf_PD(f_debug, PSTR("MODBUS: simDECODER F3 int16\r\n"));
-
-	mbus_cb->udata.raw_value[0] = mbus_cb->rx_buffer[payload_ptr + 1];
-	mbus_cb->udata.raw_value[1] = mbus_cb->rx_buffer[payload_ptr];
-	mbus_cb->udata.raw_value[2] = 0x00;
-	mbus_cb->udata.raw_value[3] = 0x00;
-
-}
-//------------------------------------------------------------------------------------
-
-

@@ -7,6 +7,7 @@
 
 #include <tkComms.h>
 
+static bool cmd_set_ATE(int8_t modo);
 static bool cmd_read_ATI(void);
 static bool cmd_set_CIPMODE(void);
 static bool cmd_set_CSUART(void);
@@ -28,6 +29,9 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 	u_wdg_kick(WDG_COMMS, 300);
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoOFFLINE.\r\n\0"));
+
+	// Quito el Echo para no desperdiciar buffers
+	cmd_set_ATE(0);
 
 	// Leo el IMEI. Si da error no importa.
 	cmd_read_ATI();
@@ -61,6 +65,20 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 	state_MONSQE();		// Monitoreo la SQE
 
 	return(PRENDIDO_ONLINE);
+
+}
+//------------------------------------------------------------------------------------
+static bool cmd_set_ATE(int8_t modo)
+{
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE: ATE%d: OK\r\n"), modo );
+	if (modo == 0) {
+		// Apago el echo
+		FSM_sendATcmd( 1, "ATE0\r" );
+	} else {
+		// Prendo el echo
+		FSM_sendATcmd( 1, "ATE1\r" );
+	}
+	return(true);
 
 }
 //------------------------------------------------------------------------------------
@@ -427,6 +445,8 @@ int8_t cmd_rsp;
 int8_t tryes;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CIPHEAD\r\n"));
+
+	//FSM_sendATcmd( 5, "AT+CIPSRIP=0\r" );
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
 	for ( tryes = 0; tryes < 3; tryes++ ) {

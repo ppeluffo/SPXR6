@@ -39,7 +39,7 @@
 
 typedef enum { u16=0,i16,u32,i32,FLOAT } t_modbus_types;
 typedef enum { KINCO=0, SHINCO, TAO, MBSIM  } t_modbus_format;
-
+typedef enum { ENCODER=0, DECODER  } t_modbus_codec;
 /*
  * En modbus leemos de a 1 canal, no bloques !!
  * Los canales pueden ser holding_registers ( 0x03 ) o input_registers (0x04).
