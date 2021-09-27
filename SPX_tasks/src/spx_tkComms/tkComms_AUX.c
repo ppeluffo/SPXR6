@@ -33,7 +33,8 @@ uint32_t ulNotifiedValue;
 
 		u_wdg_kick(WDG_AUXRX, 60);
 
-		if ( systemVars.modbus_conf.slave_address != 0x00 ) {
+		// Verifico que al menos 1 canal este configurado
+		if ( systemVars.modbus_conf.channel[0].slave_address != 0x00 ) {
 			// Leo el UART de AUX1
 			if ( frtos_read( fdAUX1, &c, 1 ) == 1 ) {
 				aux_rxbuffer_put2(c);
@@ -56,7 +57,7 @@ void aux_init(void)
 	IO_clr_AUX_PWR();
 	IO_clr_AUX_RTS();
 
-	if ( systemVars.modbus_conf.slave_address != 0x00 ) {
+	if ( systemVars.modbus_conf.channel[0].slave_address != 0x00 ) {
 		xprintf_P( PSTR("AUX1: power on..\r\n"));
 		aux_prender();
 	}

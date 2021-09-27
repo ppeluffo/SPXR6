@@ -1592,7 +1592,7 @@ static bool process_rsp_modbus(void)
 {
 
 	/*
-	 * TYPE=INIT&PLOAD=CLASS:MODBUS;SLA:0;MBWT:10;FORMAT:0;MB00:T0,2069,2,3,FLOAT,0;MB01:T1,2069,2,3,FLOAT,0;MB02:T2,2062,2,3,FLOAT,0;
+	 * TYPE=INIT&PLOAD=CLASS:MODBUS;MBWT:10;MB00:T0,2069,2,3,FLOAT,0;MB01:T1,2069,2,3,FLOAT,0;MB02:T2,2062,2,3,FLOAT,0;
 	 * MB03:T3,2063,2,3,FLOAT,0;MB04:T4,2064,2,3,FLOAT,0;MB05:X,0,1,3,U16,0;MB06:X,0,1,3,U16,0;MB07:X,0,1,3,U16,0;
 	 * MB08:X,0,1,3,U16,0;MB09:X,0,1,3,U16,0;MB10:X,0,1,3,U16,0;MB11:X,0,1,3,U16,0;MB12:X,0,1,3,U16,0;MB13:X,0,1,3,U16,0;
 	 * MB14:X,0,1,3,U16,0;MB15:X,0,1,3,U16,0;MB16:X,0,1,3,U16,0;MB17:X,0,1,3,U16,0;MB18:X,0,1,3,U16,0;MB19:X,0,1,3,U16,0;
@@ -1601,16 +1601,16 @@ static bool process_rsp_modbus(void)
 
 
 char *ts = NULL;
-char localStr[32] = { 0 };
+char localStr[64] = { 0 };
 char *stringp = NULL;
 char *tk_sla= NULL;
 char *tk_mbwt= NULL;
-char *tk_format= NULL;
 char *tk_name= NULL;
 char *tk_address= NULL;
 char *tk_size = NULL;
 char *tk_fcode = NULL;
 char *tk_type = NULL;
+char *tk_codec = NULL;
 char *tk_pow10 = NULL;
 char *delim = ",;:=><";
 bool save_flag = false;
@@ -1619,20 +1619,6 @@ char str_base[8];
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus in\r\n\0"));
 	gprs_print_RX_buffer();
-
-	// SLA
-	if ( gprs_check_response( 0, "SLA") ) {
-		memset(localStr,'\0',sizeof(localStr));
-		ts = strstr( gprs_rxbuffer.buffer, "SLA");
-		strncpy(localStr, ts, sizeof(localStr));
-		//xprintf_P(PSTR("DEBUG_SLA: [%s]\r\n"), localStr);
-		stringp = localStr;
-		tk_sla = strsep(&stringp,delim);		// SLA
-		tk_sla = strsep(&stringp,delim);		// Value
-		modbus_config_slave(tk_sla);
-		save_flag = true;
-		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus SLA[%s]\r\n"), tk_sla);
-	}
 
 	// MBWT
 	if ( gprs_check_response( 0, "MBWT") ) {
@@ -1646,20 +1632,6 @@ char str_base[8];
 		modbus_config_waiting_poll_time(tk_mbwt);
 		save_flag = true;
 		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus MBWT[%s]\r\n"), tk_mbwt);
-	}
-
-	// FORMAT
-	if ( gprs_check_response( 0, "FORMAT") ) {
-		memset(localStr,'\0',sizeof(localStr));
-		ts = strstr( gprs_rxbuffer.buffer, "FORMAT");
-		strncpy(localStr, ts, sizeof(localStr));
-		//xprintf_P(PSTR("DEBUG_MBWT: [%s]\r\n"), localStr);
-		stringp = localStr;
-		tk_format = strsep(&stringp,delim);		// FORMAT
-		tk_format = strsep(&stringp,delim);		// Value
-		modbus_config_data_format(tk_format);
-		save_flag = true;
-		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus FORMAT[%s]\r\n"), tk_format);
 	}
 
 
@@ -1676,15 +1648,17 @@ char str_base[8];
 			stringp = localStr;
 			tk_name = strsep(&stringp,delim);		//MB00
 			tk_name = strsep(&stringp,delim);		//name
+			tk_sla = strsep(&stringp,delim);		//sla
 			tk_address = strsep(&stringp,delim);	//Address
 			tk_size = strsep(&stringp,delim);		//size
 			tk_fcode = strsep(&stringp,delim);		//fcode
 			tk_type = strsep(&stringp,delim);		//type
+			tk_codec = strsep(&stringp,delim);		//codec
 			tk_pow10 = strsep(&stringp,delim);		//pow10
 
-			modbus_config_channel( ch, tk_name, tk_address, tk_size, tk_fcode, tk_type, tk_pow10 );
-
 			xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig MB%02d\r\n"), ch );
+			//xprintf_PD( DF_COMMS, PSTR("COMMS: %s,%s,%s,%s,%s,%s,%s,%s\r\n"), tk_name, tk_sla, tk_address, tk_size, tk_fcode, tk_type, tk_codec, tk_pow10 );
+			modbus_config_channel( ch, tk_name, tk_sla, tk_address, tk_size, tk_fcode, tk_type, tk_codec, tk_pow10 );
 			save_flag = true;
 		}
 	}
@@ -1780,7 +1754,7 @@ char str_base[8];
 				//id[0] = '0' + slot;
 				//id[1] = '\0';
 
-				xprintf_P(PSTR("DEBUG: slot=%s, hhmm=%s, pres=%s\r\n"), id, tk_hhmm, tk_pres);
+				//xprintf_P(PSTR("DEBUG: slot=%s, hhmm=%s, pres=%s\r\n"), id, tk_hhmm, tk_pres);
 				piloto_config_slot( id, tk_hhmm, tk_pres );
 			}
 		}
@@ -1957,7 +1931,7 @@ char *delim = ",;:=><[]";
 			tk_value = strsep(&stringp,delim);
 			xprintf_PD( DF_COMMS, PSTR("MBUS output addr[%s] val[%s] type[%s]\r\n"), tk_address, tk_value, tk_type);
 
-			modbus_write_output_register (tk_address, tk_type, tk_value );
+			//modbus_write_output_register_PLC (tk_address, tk_type, tk_value );
 
 			start = strchr(stringp,'[');
 			end = strchr(stringp,']');

@@ -778,24 +778,25 @@ static void cmdHelpFunction(void)
 	if (!strcmp_P( strupr(argv[1]), PSTR("WRITE\0"))) {
 		xprintf_P( PSTR("-write\r\n\0"));
 		xprintf_P( PSTR("  rtc YYMMDDhhmm\r\n\0"));
-		xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {string}\r\n\0"));
+		xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos string}\r\n\0"));
 		xprintf_P( PSTR("  ina {id} {rconfValue}, sens12V {on|off}\r\n\0"));
 		xprintf_P( PSTR("  analog (wakeup | sleep )\r\n\0"));
 
-		xprintf_P( PSTR("  drv8814 {pA|pB} {00,01,10,11}, sleep, awake\r\n"));
+		xprintf_P( PSTR("  drv8814 {pA|pB 00,01,10,11}, sleep, awake\r\n"));
 		xprintf_P( PSTR("  consigna (diurna|nocturna)\r\n\0"));
-		xprintf_P( PSTR("  steppertest {fw|rev} {pulses} {pwidth_ms}\r\n"));
+		xprintf_P( PSTR("  steppertest {fw|rev pulses pwidth_ms}\r\n"));
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
-		xprintf_P( PSTR("  mbustest genpoll {i16,u16,i32,u32,float} sla fcode addr nro_recds\r\n"));
-		xprintf_P( PSTR("           output {addr} {type I/F} {value}\r\n"));
+		xprintf_P( PSTR("  mbustest genpoll {slaaddr,regaddr,nro_regs,fcode,type,codec}\r\n"));
 		xprintf_P( PSTR("           chpoll {ch}\r\n"));
+		xprintf_P( PSTR("           output {slaaddr,regaddr,nro_regs,fcode,type,codec,value}\r\n"));
+
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n"));
 		xprintf_P( PSTR("       cmd {atcmd}, redial, monsqe\r\n"));
 		//xprintf_P( PSTR("       sms,qsms,fsms {nbr,msg}\r\n"));
 
-		xprintf_P( PSTR("  aux {pwr,rts} {on|off}\r\n"));
+		xprintf_P( PSTR("  aux { (pwr,rts) (on|off)}\r\n"));
 		xprintf_P( PSTR("      cmd {acmd}\r\n"));
 
 		return;
@@ -850,10 +851,11 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  piloto slot {idx} {hhmm} {pout}\r\n\0"));
 		xprintf_P( PSTR("         ppr, pwidth \r\n\0"));
 
-		xprintf_P( PSTR("  modbus slave {addr}\r\n\0"));
-		xprintf_P( PSTR("         channel {0..%d} name addr nro_recds rcode(3,4) type(u16,i16,u32,i32,float), div_p10\r\n\0"), ( MODBUS_CHANNELS - 1));
-		xprintf_P( PSTR("         waittime {ms}\r\n\0"));
-		xprintf_P( PSTR("         format {kinco,shinco,tao,mbsim}\r\n\0"));
+		xprintf_P( PSTR("  modbus waittime {ms}\r\n\0"));
+		xprintf_P( PSTR("  modbus channel {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10\r\n"), ( MODBUS_CHANNELS - 1));
+		xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
+		xprintf_P( PSTR("         type=>{i16,u16,i32,u32,float}\r\n"));
+		xprintf_P( PSTR("         codec=>{c12,c21,c1234,c2143,c4321,c3412}\r\n"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO|TEST}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
@@ -1340,14 +1342,10 @@ RtcTimeType_t rtc_new;
 static bool pv_cmd_configMODBUS(void)
 {
 
-	// config modbus slave {hex_addr}
-	if ( strcmp_P( strupr(argv[2]), PSTR("SLAVE")) == 0 ) {
-		return ( modbus_config_slave(argv[3]) );
-	}
-
 	// config modbus channel {0..%d} name addr length rcode(3,4), divisor_p10.
+
 	if ( strcmp_P( strupr(argv[2]), PSTR("CHANNEL")) == 0 ) {
-		return (modbus_config_channel(atoi(argv[3]) ,argv[4],argv[5],argv[6],argv[7], argv[8], argv[9]) );
+		return (modbus_config_channel(atoi(argv[3]),argv[4],argv[5],argv[6],argv[7], argv[8], argv[9],argv[10],argv[11] ) );
 	}
 
 	// config modbus waittime
@@ -1355,10 +1353,6 @@ static bool pv_cmd_configMODBUS(void)
 		return (modbus_config_waiting_poll_time( argv[3] ) );
 	}
 
-	// config modbus endian {big,little}
-	if ( strcmp_P( strupr(argv[2]), PSTR("FORMAT")) == 0 ) {
-		return (modbus_config_data_format( argv[3] ) );
-	}
 
 	return(false);
 
@@ -1444,9 +1438,9 @@ static bool pv_cmd_modbus(void)
 		return(true);
 	}
 
-	// modbus output {addr} {type I/F value\r\n"));
+	// modbus output {slaaddr,regaddr,nro_regs,fcode,type,codec,value}
 	if ( strcmp_P( strupr(argv[2]), PSTR("OUTPUT")) == 0 ) {
-		modbus_write_output_register( argv[3], argv[4], argv[5] );
+		modbus_write_output_register( argv[3],argv[4],argv[5],argv[6],argv[7],argv[8],argv[9] );
 		return(true);
 	}
 

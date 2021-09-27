@@ -36,6 +36,12 @@
  *  SPY_init_conf_digital.py
  *  spy_utils.py
  *
+ *  R4.0.0e @ 2021-09-24:
+ *  - Modificaciones al modbus:
+ *  Cada registro debe contener la dirección del dispositivo remoto.
+ *  De este modo podemos polear a varios dispositivos en el mismo bus.
+ *
+ *
  *  R4.0.0d @ 2021-09-24:
  *  - Cuando tiene muchos datos para transmitir, se restea por wdg de comms.
  *    Se soluciona limpiando el wdg luego que transmite c/ventana.
