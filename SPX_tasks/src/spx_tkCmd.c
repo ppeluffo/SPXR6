@@ -418,6 +418,8 @@ uint8_t cks;
 		xprintf_P( PSTR("Counters hash = [0x%02x]\r\n\0"), cks );
 		cks = piloto_hash();
 		xprintf_P( PSTR("Piloto hash = [0x%02x]\r\n\0"), cks );
+		cks = modbus_hash();
+		xprintf_P( PSTR("Modbus hash = [0x%02x]\r\n\0"), cks );
 		return;
 	}
 
@@ -790,7 +792,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  mbustest genpoll {slaaddr,regaddr,nro_regs,fcode,type,codec}\r\n"));
 		xprintf_P( PSTR("           chpoll {ch}\r\n"));
 		xprintf_P( PSTR("           output {slaaddr,regaddr,nro_regs,fcode,type,codec,value}\r\n"));
-
+		xprintf_P( PSTR("           int{i},long{l},float{f}\r\n\0"));
 
 		xprintf_P( PSTR("  gprs (pwr|sw|rts|dtr) {on|off}\r\n"));
 		xprintf_P( PSTR("       cmd {atcmd}, redial, monsqe\r\n"));
@@ -855,7 +857,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  modbus channel {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10\r\n"), ( MODBUS_CHANNELS - 1));
 		xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
 		xprintf_P( PSTR("         type=>{i16,u16,i32,u32,float}\r\n"));
-		xprintf_P( PSTR("         codec=>{c12,c21,c1234,c2143,c4321,c3412}\r\n"));
+		xprintf_P( PSTR("         codec=>{c0123,c1032,c3210,c2301}\r\n"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO|TEST}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
@@ -1441,6 +1443,22 @@ static bool pv_cmd_modbus(void)
 	// modbus output {slaaddr,regaddr,nro_regs,fcode,type,codec,value}
 	if ( strcmp_P( strupr(argv[2]), PSTR("OUTPUT")) == 0 ) {
 		modbus_write_output_register( argv[3],argv[4],argv[5],argv[6],argv[7],argv[8],argv[9] );
+		return(true);
+	}
+
+	// modbus test int{i},long{l},float{f}
+	if ( strcmp_P( strupr(argv[2]), PSTR("INT")) == 0 ) {
+		modbus_test_int(argv[3]);
+		return(true);
+	}
+
+	if ( strcmp_P( strupr(argv[2]), PSTR("LONG")) == 0 ) {
+		modbus_test_long(argv[3]);
+		return(true);
+	}
+
+	if ( strcmp_P( strupr(argv[2]), PSTR("FLOAT")) == 0 ) {
+		modbus_test_float(argv[3]);
 		return(true);
 	}
 

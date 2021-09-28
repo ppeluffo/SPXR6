@@ -246,7 +246,6 @@ void u_load_defaults( char *opt )
 	systemVars.debug = DEBUG_NONE;
 
 	systemVars.timerPoll = 300;
-	//modbus_config_defaults();
 
 	// pwrsave se configura en gprs_utils
 	// timepwrsensor se configura en ul_ainputs

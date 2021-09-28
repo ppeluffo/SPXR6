@@ -38,7 +38,7 @@
 #define MODBUS_CHANNELS 20
 
 typedef enum { u16=0,i16,u32,i32,FLOAT } t_modbus_types;
-typedef enum { CODEC1234, CODEC2143, CODEC4321, CODEC3412 } t_modbus_codec;
+typedef enum { CODEC0123, CODEC1032, CODEC3210, CODEC2301 } t_modbus_codec;
 
 /*
  * En modbus leemos de a 1 canal, no bloques !!
@@ -123,6 +123,9 @@ char * modbus_sprintf( char *sbuffer, float src[] );
 
 void modbus_test_genpoll(char *arg_ptr[16] );
 void modbus_test_chpoll(char *s_channel);
+void modbus_test_int( char *s_nbr );
+void modbus_test_long( char *s_nbr );
+void modbus_test_float( char *s_nbr );
 
 void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value );
 

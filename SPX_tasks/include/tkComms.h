@@ -145,6 +145,7 @@ void gprs_read_BANDS(void);
 
 void aux_init(void);
 void aux_prender(void);
+bool is_aux_prendido(void);
 void aux_apagar(void);
 void aux_rts_on(void);
 void aux_rts_off(void);

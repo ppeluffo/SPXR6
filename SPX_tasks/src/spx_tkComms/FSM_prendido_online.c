@@ -1889,7 +1889,7 @@ void data_process_response_MBUS(void)
 	/*
 	 * Recibo una respuesta que me dice que valores enviar por modbus
 	 * para escribir un holding register
-	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;MBUS=[2091,I,435][2093,F,12.45]</h1></body></html>
+	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;MBUS=[1,2091,2,16,FLOAT,c3210,435.92]</h1></body></html>
 	 *
 	 * Testing desde el server:
 	 * Se abre una consola redis: >redis-cli
@@ -1903,10 +1903,14 @@ void data_process_response_MBUS(void)
 
 char *ts = NULL;
 char *start, *end;
-char localStr[48] = { 0 };
+char localStr[64] = { 0 };
 char *stringp = NULL;
-char *tk_address = NULL;
+char *tk_slaaddr = NULL;
+char *tk_regaddr = NULL;
+char *tk_nro_regs = NULL;
+char *tk_fcode = NULL;
 char *tk_type = NULL;
+char *tk_codec = NULL;
 char *tk_value = NULL;
 char *delim = ",;:=><[]";
 
@@ -1920,21 +1924,27 @@ char *delim = ",;:=><[]";
 		strncpy(localStr, ts, sizeof(localStr));
 		//xprintf_P(PSTR("DEBUG_MBUS: [%s]\r\n"), localStr);
 
-		start = strchr(localStr,'[');
+		start = strchr(ts,'[');
 		end = strchr(localStr,']');
 
 		while ( ( start != NULL) && ( end != NULL ) ) {
 			stringp = start;
-			tk_address = strsep(&stringp,delim);
-			tk_address = strsep(&stringp,delim);
-			tk_type = strsep(&stringp,delim);
+			tk_slaaddr = strsep(&stringp,delim);
+			tk_slaaddr = strsep(&stringp,delim);	// sla_address
+			tk_regaddr = strsep(&stringp,delim);	// reg_address
+			tk_nro_regs = strsep(&stringp,delim);	// nro_regs
+			tk_fcode = strsep(&stringp,delim);		// f_code
+			tk_type = strsep(&stringp,delim);		// type
+			tk_codec = strsep(&stringp,delim);		// codec
 			tk_value = strsep(&stringp,delim);
-			xprintf_PD( DF_COMMS, PSTR("MBUS output addr[%s] val[%s] type[%s]\r\n"), tk_address, tk_value, tk_type);
 
-			//modbus_write_output_register_PLC (tk_address, tk_type, tk_value );
+			modbus_write_output_register( tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type,tk_codec,tk_value );
 
-			start = strchr(stringp,'[');
-			end = strchr(stringp,']');
+			// Copio el segundo bloque al temporal
+			strncpy(localStr, end, sizeof(localStr));
+
+			start = strchr(localStr,'[');
+			end = strchr(localStr,']');
 		}
 	}
 

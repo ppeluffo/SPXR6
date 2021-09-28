@@ -9,6 +9,8 @@
 #include "tkComms.h"
 #include "ul_modbus.h"
 
+bool aux_prendido = false;
+
 //------------------------------------------------------------------------------------
 void tkAuxRX(void * pvParameters)
 {
@@ -34,7 +36,7 @@ uint32_t ulNotifiedValue;
 		u_wdg_kick(WDG_AUXRX, 60);
 
 		// Verifico que al menos 1 canal este configurado
-		if ( systemVars.modbus_conf.channel[0].slave_address != 0x00 ) {
+		if ( aux_prendido ) {
 			// Leo el UART de AUX1
 			if ( frtos_read( fdAUX1, &c, 1 ) == 1 ) {
 				aux_rxbuffer_put2(c);
@@ -69,11 +71,13 @@ void aux_prender(void)
 	// Prendo la fuente del aux.
 	IO_set_AUX_PWR();
 	vTaskDelay( 1000 / portTICK_RATE_MS );
+	aux_prendido = true;
 }
 //------------------------------------------------------------------------------------
 void aux_apagar(void)
 {
 	IO_clr_AUX_PWR();
+	aux_prendido = false;
 }
 //------------------------------------------------------------------------------------
 void aux_rts_on(void)
@@ -216,4 +220,8 @@ uint8_t aux_get_RX_buffer_ptr(void)
 	return(aux_rxbuffer.ptr);
 }
 //------------------------------------------------------------------------------------
-
+bool is_aux_prendido(void)
+{
+	return (aux_prendido);
+}
+//------------------------------------------------------------------------------------
