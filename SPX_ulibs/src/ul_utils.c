@@ -469,7 +469,6 @@ uint8_t u_base_hash(void)
 	 *
 	 */
 uint8_t hash = 0;
-//char dst[38];
 char *p;
 uint8_t i = 0;
 int16_t free_size = sizeof(hash_buffer);
@@ -506,6 +505,12 @@ int16_t free_size = sizeof(hash_buffer);
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
 	//xprintf_P( PSTR("DEBUG: BASEHASH = [%s]\r\n\0"), hash_buffer );
+
+	// Modbus control
+	i += snprintf_P( &hash_buffer[i], free_size, PSTR("%d,%d,"), modbus_conf.control_channel.slave_address, modbus_conf.control_channel.reg_address );
+	free_size = (  sizeof(hash_buffer) - i );
+	if ( free_size < 0 ) goto exit_error;
+
 
 	// Apunto al comienzo para recorrer el buffer
 	p = hash_buffer;

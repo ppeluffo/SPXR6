@@ -94,6 +94,7 @@ typedef enum { ATRSP_NONE, ATRSP_OK, ATRSP_ERROR, ATRSP_TIMEOUT, ATRSP_OUT_INMED
 #define MAXHWTRYESPRENDER		3
 #define MAXSWTRYESPRENDER		3
 #define MAXCPASTRYES			3
+#define MAX_TRYES_SUBSTATE_ONLINE	4
 
 //------------------------------------------------------------------------------------
 

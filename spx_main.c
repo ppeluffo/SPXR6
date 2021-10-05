@@ -36,6 +36,12 @@
  *  SPY_init_conf_digital.py
  *  spy_utils.py
  *
+ *  R4.0.1a @ 2021-10-05:
+ *  - Modificaciones al modbus:
+ *  Agrego 2 parametros para indicar el dispositivo remoto modbus al que mandarle
+ *  el status del datalogger.
+ *  La configuracion se hace en BASE.(hash, online)
+ *
  *  R4.0.0e @ 2021-09-24:
  *  - Modificaciones al modbus:
  *  Cada registro debe contener la dirección del dispositivo remoto.

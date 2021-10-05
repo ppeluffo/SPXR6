@@ -80,10 +80,12 @@ int8_t tkXComms_PRENDIDO_ONLINE(void)
 {
 
 int8_t state;
+int8_t tryes_substate;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: state prendidoONLINE.\r\n"));
 
 	state = ONLINE_ENTRY;
+	tryes_substate = 0;
 
 	// loop
 	for( ;; )
@@ -91,10 +93,16 @@ int8_t state;
 		u_wdg_kick(WDG_COMMS, 300);
 		vTaskDelay( ( TickType_t)( 10 / portTICK_RATE_MS ) );
 
+		// Verifico no entrar mas de N veces al mismo subestado
+		if ( tryes_substate++ == MAX_TRYES_SUBSTATE_ONLINE ) {
+			state = ONLINE_EXIT;
+		}
+
 		switch ( state ) {
 		case ONLINE_ENTRY:
 			if ( state_online_entry() ) {
 				state = ONLINE_AUTH;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -103,6 +111,7 @@ int8_t state;
 		case ONLINE_AUTH:
 			if ( state_online_auth() ) {
 				state = ONLINE_GLOBAL;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -111,6 +120,7 @@ int8_t state;
 		case ONLINE_GLOBAL:
 			if ( state_online_global() ) {
 				state = ONLINE_BASE;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -119,8 +129,10 @@ int8_t state;
 		case ONLINE_BASE:
 			if ( ! f_send_init_frame_base ) {
 				state = ONLINE_ANALOG;
+				tryes_substate = 0;
 			} else	if ( state_online_base() ) {
 				state = ONLINE_ANALOG;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -129,8 +141,10 @@ int8_t state;
 		case ONLINE_ANALOG:
 			if ( ! f_send_init_frame_analog ) {
 				state = ONLINE_DIGITAL;
+				tryes_substate = 0;
 			} else if ( state_online_analog() ) {
 				state = ONLINE_DIGITAL;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -139,8 +153,10 @@ int8_t state;
 		case ONLINE_DIGITAL:
 			if ( ! f_send_init_frame_digital ) {
 				state = ONLINE_COUNTER;
+				tryes_substate = 0;
 			} else if ( state_online_digital() ) {
 				state = ONLINE_COUNTER;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -149,8 +165,10 @@ int8_t state;
 		case ONLINE_COUNTER:
 			if ( ! f_send_init_frame_counters ) {
 				state = ONLINE_MODBUS_LOW;
+				tryes_substate = 0;
 			} else if ( state_online_counter() ) {
 				state = ONLINE_MODBUS_LOW;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -159,8 +177,10 @@ int8_t state;
 		case ONLINE_MODBUS_LOW:
 			if ( ! f_send_init_frame_modbus_low ) {
 				state = ONLINE_MODBUS_MED;
+				tryes_substate = 0;
 			} else if ( state_online_modbus_low() ) {
 				state = ONLINE_MODBUS_MED;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -169,8 +189,10 @@ int8_t state;
 		case ONLINE_MODBUS_MED:
 			if ( ! f_send_init_frame_modbus_med ) {
 				state = ONLINE_MODBUS_HIGH;
+				tryes_substate = 0;
 			} else if ( state_online_modbus_med() ) {
 				state = ONLINE_MODBUS_HIGH;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -179,8 +201,10 @@ int8_t state;
 		case ONLINE_MODBUS_HIGH:
 			if ( ! f_send_init_frame_modbus_high ) {
 				state = ONLINE_APP;
+				tryes_substate = 0;
 			} else if ( state_online_modbus_high() ) {
 				state = ONLINE_APP;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -189,8 +213,13 @@ int8_t state;
 		case ONLINE_APP:
 			if ( ! f_send_init_frame_app ) {
 				state = ONLINE_DATA;
+				tryes_substate = 0;
+				// Cuando entro en el modo DATA indico el estado
+				modbus_report_status(BIT_POS_MODEMSTATUS, BIT_VAL_MODEM_ONLINE );
 			} else if ( state_online_app() ) {
 				state = ONLINE_DATA;
+				tryes_substate = 0;
+				modbus_report_status(BIT_POS_MODEMSTATUS, BIT_VAL_MODEM_ONLINE );
 			} else {
 				state = ONLINE_EXIT;
 			}
@@ -199,6 +228,7 @@ int8_t state;
 		case ONLINE_DATA:
 			if ( state_online_data() ) {
 				state = ONLINE_ESPERA;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			};
@@ -208,12 +238,14 @@ int8_t state;
 			u_wdg_kick(WDG_COMMS, 300);
 			if ( state_online_espera() ) {
 				state = ONLINE_DATA;
+				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			};
 			break;
 
 		case ONLINE_EXIT:
+			modbus_report_status(BIT_POS_MODEMSTATUS, BIT_VAL_MODEM_OFFLINE );
 			state = state_online_exit();
 			// Cambio de estado.
 			// Del modo ONLINE siempre salgo a APAGADO.
@@ -1365,12 +1397,16 @@ static bool process_rsp_global(void)
 //------------------------------------------------------------------------------------
 static bool process_rsp_base(void)
 {
+	// V401a: TYPE=INIT&PLOAD=CLASS:BASE;TDIAL:0;TPOLL:60;PWST:5;HW_CNT:OPTO;CTRL_SLA:1;CTRL_ADDR:0;
+	//
 	//	TYPE=INIT&PLOAD=CLASS:BASE;TPOLL:60;TDIAL:60;PWST:5;HW_CNT:OPTO
 
 char *ts = NULL;
-char localStr[32] = { 0 };
+char localStr[64] = { 0 };
 char *stringp = NULL;
 char *token = NULL;
+char *tk_ctl_sla = NULL;
+char *tk_clt_addr = NULL;
 char *delim = ",;:=><";
 bool save_flag = false;
 
@@ -1431,6 +1467,24 @@ bool save_flag = false;
 		reset_datalogger = true;
 		xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig COUNTERS_HW\r\n"));
 	}
+
+	// CTL_SLAVE
+	if ( gprs_check_response( 0, "CTRL_SLA") ) {
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "CTRL_SLA");
+		strncpy(localStr, ts, sizeof(localStr));
+		//xprintf_P(PSTR("DEBUG_CTL_SLA: [%s]\r\n"), localStr);
+		stringp = localStr;
+		tk_ctl_sla = strsep(&stringp,delim);		// CTL_SLA
+		tk_ctl_sla = strsep(&stringp,delim);		// Value
+		tk_clt_addr = strsep(&stringp,delim);		// CTRL_ADDR
+		tk_clt_addr = strsep(&stringp,delim);		// Value
+		//
+		modbus_config_chcontrol(tk_ctl_sla,tk_clt_addr );
+		save_flag = true;
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus CTL[%s][%s]\r\n"), tk_ctl_sla,tk_clt_addr );
+	}
+
 
 	if ( save_flag ) {
 		u_save_params_in_NVMEE();
@@ -1633,7 +1687,6 @@ char str_base[8];
 		save_flag = true;
 		xprintf_PD( DF_COMMS, PSTR("COMMS: Modbus MBWT[%s]\r\n"), tk_mbwt);
 	}
-
 
 	// MBxx?
 	for (ch=0; ch < MODBUS_CHANNELS; ch++ ) {

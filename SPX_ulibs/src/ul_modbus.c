@@ -231,6 +231,60 @@ void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_r
 	xprintf_P(PSTR("MODBUS: OUTREG END\r\n"));
 }
 //------------------------------------------------------------------------------------
+void modbus_report_status(uint8_t bit_pos, uint8_t bit_value )
+{
+	/*
+	 * Transmite el status al canal de control del PLC.
+	 * Cada funcion que la invoque debe prender un bit diferente para que el PLC
+	 * sepa cual fue.
+	 * comms_link: bit 0.
+	 *
+	 * Cuando se invoca, se tranmite todo el status_word.
+	 *
+	 */
+
+static uint16_t status_word = 0x00;
+
+	xprintf_P(PSTR("MODBUS: REPORT STATUS START\r\n"));
+
+	if (  modbus_conf.control_channel.slave_address == 0 ) {
+		return;
+	}
+
+	if ( ! is_aux_prendido()) {
+		aux_prender();
+	}
+
+
+	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
+		taskYIELD();
+
+	mbus_cb.channel.slave_address = modbus_conf.control_channel.slave_address;
+	mbus_cb.channel.reg_address = modbus_conf.control_channel.reg_address;
+	mbus_cb.channel.nro_regs = 1;	// 1 registro = 2 bytes
+	mbus_cb.channel.fcode = 6;		// Escribimos
+	// TYPE
+	mbus_cb.channel.type = u16;
+	// CODEC
+	mbus_cb.channel.codec = CODEC3210;
+	mbus_cb.channel.divisor_p10 = 0;
+
+	// Prendo o apago el bit de status.
+	if ( bit_value == 0 ) {
+		status_word &= ~(1 << bit_pos);
+	} else {
+		status_word |= (1 << bit_pos);
+	}
+	mbus_cb.udata.u16_value = status_word;
+
+	// Transmito
+	modbus_io( true, &mbus_cb );
+	xSemaphoreGive( sem_MBUS );
+
+	modbus_print( true, &mbus_cb );
+
+	xprintf_P(PSTR("MODBUS: REPORT STATUS END\r\n"));
+}
 // CONFIGURACION
 //------------------------------------------------------------------------------------
 void modbus_config_defaults(void)
@@ -250,6 +304,8 @@ uint8_t i;
 	}
 
 	modbus_conf.waiting_poll_time = 1;
+	modbus_conf.control_channel.slave_address = 0;
+	modbus_conf.control_channel.reg_address = 0;
 
 }
 //------------------------------------------------------------------------------------
@@ -261,6 +317,7 @@ uint8_t i;
 	xprintf_P( PSTR(">Modbus: ( name,address,nro_regs,rcode,type,factor_p10 )\r\n"));
 
 	xprintf_P( PSTR("   wpTime=%d\r\n"), modbus_conf.waiting_poll_time );
+	xprintf_P( PSTR("   controlSlave=0x%02x, controlAddress=0x%02x\r\n"), modbus_conf.control_channel.slave_address,modbus_conf.control_channel.reg_address  );
 
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
 
@@ -329,7 +386,18 @@ bool modbus_config_channel( uint8_t channel,char *s_name,char *s_sla,char *s_add
 {
 	// Todos los datos vienen en decimal !!!
 
-	//xprintf_P(PSTR("DEBUG MBCH (%02d): name:[%s],addr:[%s],nrecs:[%s],rcode:[%s],type:[%s],pow10:[%s]\r\n"), channel, s_name, s_addr, s_nro_recds, s_fcode, s_type, s_divisor_p10 );
+	/*
+	 *
+	 xprintf_P(PSTR("DEBUG MBCH (%02d): name:[%s],saddr:[%s],nrecs:[%s],fcode:[%s],type:[%s],codec:[%s],pow10:[%s]\r\n"),
+			channel,
+			s_name,
+			s_addr,
+			s_nro_recds,
+			s_fcode,
+			s_type,
+			s_codec,
+			s_divisor_p10 );
+	*/
 
 	if (( s_name == NULL ) || ( s_addr == NULL) || (s_sla == NULL) || (s_nro_recds == NULL) || ( s_fcode == NULL) || ( s_divisor_p10 == NULL)  ) {
 		return(false);
@@ -352,6 +420,7 @@ bool modbus_config_channel( uint8_t channel,char *s_name,char *s_sla,char *s_add
 		modbus_conf.channel[channel].type = FLOAT;
 
 	} else {
+		xprintf_P(PSTR("MODBUS CONFIG ERROR: type [%s]\r\n"), s_type );
 		return(false);
 	}
 
@@ -369,6 +438,7 @@ bool modbus_config_channel( uint8_t channel,char *s_name,char *s_sla,char *s_add
 		modbus_conf.channel[channel].codec = CODEC2301;
 
 	} else {
+		xprintf_P(PSTR("MODBUS CONFIG ERROR: codec [%s]\r\n"), s_codec );
 		return(false);
 	}
 
@@ -389,6 +459,14 @@ bool modbus_config_waiting_poll_time( char *s_waiting_poll_time)
 	modbus_conf.waiting_poll_time = atoi(s_waiting_poll_time);
 	//xprintf_P(PSTR("DEBUG MBWT: [%s][%d]\r\n"), s_waiting_poll_time, modbus_conf.waiting_poll_time );
 	return(true);
+}
+//------------------------------------------------------------------------------------
+bool modbus_config_chcontrol ( char *sla_addr, char *reg_addr)
+{
+	modbus_conf.control_channel.slave_address = atoi(sla_addr);
+	modbus_conf.control_channel.reg_address = atoi(reg_addr);
+	return(true);
+
 }
 //------------------------------------------------------------------------------------
 // AUXILIARES

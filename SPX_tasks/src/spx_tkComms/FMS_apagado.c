@@ -44,6 +44,8 @@ int8_t tkXComms_APAGADO(void)
 
 	state = APAGADO_ENTRY;
 
+	modbus_report_status(BIT_POS_MODEMSTATUS, BIT_VAL_MODEM_OFFLINE );
+
 	// loop
 	for( ;; )
 	{

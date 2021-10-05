@@ -853,7 +853,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  piloto slot {idx} {hhmm} {pout}\r\n\0"));
 		xprintf_P( PSTR("         ppr, pwidth \r\n\0"));
 
-		xprintf_P( PSTR("  modbus waittime {ms}\r\n\0"));
+		xprintf_P( PSTR("  modbus waittime {ms}, chcontrol {sla,reg_addr}\r\n\0"));
 		xprintf_P( PSTR("  modbus channel {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10\r\n"), ( MODBUS_CHANNELS - 1));
 		xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
 		xprintf_P( PSTR("         type=>{i16,u16,i32,u32,float}\r\n"));
@@ -1355,6 +1355,10 @@ static bool pv_cmd_configMODBUS(void)
 		return (modbus_config_waiting_poll_time( argv[3] ) );
 	}
 
+	//config modbus chcontrol {sla,reg_addr}
+	if ( strcmp_P( strupr(argv[2]), PSTR("CHCONTROL")) == 0 ) {
+		return (modbus_config_chcontrol( argv[3], argv[4] ) );
+	}
 
 	return(false);
 

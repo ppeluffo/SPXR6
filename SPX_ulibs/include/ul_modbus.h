@@ -60,9 +60,19 @@ typedef struct {
 	uint8_t fcode;				// Codigo de la funcion con que se accede al registro.
 } modbus_channel_t;
 
+/*
+ * Definimos un dispositivo al cual le reportamos el status del datalogger.
+ * En particular las comunicaciones.
+ */
+typedef struct {
+	uint8_t slave_address;		// Direccion del dispositivo en el bus.
+	uint16_t reg_address;		// Direccion de la posicion de memoria donde leer.
+} modbus_control_channel_t;
+
 typedef struct {
 	uint16_t waiting_poll_time;
 	modbus_channel_t channel[MODBUS_CHANNELS];
+	modbus_control_channel_t control_channel;
 } modbus_conf_t;
 
 modbus_conf_t modbus_conf;
@@ -105,12 +115,14 @@ void modbus_config_defaults(void);
 void modbus_config_status(void);
 bool modbus_config_channel( uint8_t channel,char *s_name,char *s_sla,char *s_addr,char *s_nro_recds,char *s_fcode,char *s_type,char *s_codec,char *s_divisor_p10 );
 bool modbus_config_waiting_poll_time( char *s_waiting_poll_time);
+bool modbus_config_chcontrol ( char *sla_addr, char *reg_addr);
 
 uint8_t modbus_hash(void);
 
 void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 void modbus_read( float mbus_data[] );
 float modbus_read_channel ( uint8_t ch );
+void modbus_report_status(uint8_t bit_pos, uint8_t bit_value );
 
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );

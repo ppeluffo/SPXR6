@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.0e"
-#define SPX_FW_DATE "@ 2021090928"
+#define SPX_FW_REV "4.0.1a"
+#define SPX_FW_DATE "@ 2021091005"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
@@ -272,6 +272,9 @@ uint16_t watchdog_timers[NRO_WDGS];
 #define WDG_TO600		600
 #define WDG_TO900		900
 
+#define BIT_POS_MODEMSTATUS		0
+#define BIT_VAL_MODEM_OFFLINE	0
+#define BIT_VAL_MODEM_ONLINE	1
 //------------------------------------------------------------------------
 
 
