@@ -31,7 +31,7 @@
 #include <stdbool.h>
 
 
-#define FOSC_RTC32		1024
+#define FOSC_RTC		1024
 
 // Para usar en los SPX !!!
 #define __XMEGA256A3__
@@ -632,6 +632,9 @@ eSleepModeStatus eSleepStatus;
     //portEXIT_CRITICAL();
 }
 //-------------------------------------------------------------------------------------
+
+//#if XMEGA253A3BU == 1
+
 static void prvSleepExactTime( portTickType xExpectedIdleTime )
 {
 
@@ -666,7 +669,7 @@ uint32_t rtc_counter;
 //	if ( tick_to_sleep > max_idle_time ) {
 //		tick_to_sleep = max_idle_time;
 //	}
-	rtc_counter = tick_to_sleep * FOSC_RTC32 / configTICK_RATE_HZ - 1;
+	rtc_counter = tick_to_sleep * FOSC_RTC / configTICK_RATE_HZ - 1;
 
 	// Disable RTC32 module before setting counter values
 	RTC32.CTRL = 0;
@@ -703,7 +706,7 @@ uint32_t rtc_counter;
 		// Algo lo desperto. Durmio de menos.
 		// Como la ISR no borro el contador, vemos cuanto durmio y lo convierto a ticks.
 		// Agrego 1 para redondear.
-		completedTicks = ( RTC32.CNT * configTICK_RATE_HZ / FOSC_RTC32 ) +1;
+		completedTicks = ( RTC32.CNT * configTICK_RATE_HZ / FOSC_RTC ) +1;
 	}
 
 	vTaskStepTick(completedTicks);
@@ -717,6 +720,8 @@ ISR(RTC32_OVF_vect)
 	countingCompleted = true;
 }
 //-------------------------------------------------------------------------------------
+
+
 #endif /* configUSE_TICKLESS_IDLE == 2 */
 
 

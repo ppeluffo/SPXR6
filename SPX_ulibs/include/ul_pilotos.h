@@ -42,6 +42,11 @@ piloto_conf_t piloto_conf;
 
 typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
 
+typedef enum { PLT_ENTRY = 0, PLT_CHECK_INPUTS, PLT_READ_INPUTS, PLT_CHECK_CONDITIONS, PLT_AJUSTE, PLT_OUTPUT_STATUS, PLT_EXIT } t_plt_states;
+
+typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, ADJUST_ERR, UNKNOWN	} t_exit_conditions;
+
+
 #define MAX_INTENTOS			5
 #define MAX_P_SAMPLES			10
 #define P_SAMPLES				5
@@ -54,10 +59,12 @@ typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
 #define DELTA_PA_PB				0.3
 #define DELTA_PA_PREF			0.3
 
+
 struct {
 	bool start_test;
 	float pulsos_calculados;
 	float pulsos_a_aplicar;
+	float pulsos_rollback;
 	uint16_t pulse_counts;
 	uint16_t pwidth;
 	t_stepper_dir dir;
@@ -66,8 +73,13 @@ struct {
 	float pRef;
 	float pA;
 	float pB;
+	float pB0;
 	float pError;
 	bool motor_running;
+	uint8_t loops;
+	float dync_pB0;
+	float dync_pulsos;
+	t_exit_conditions exit_code;
 } PLTCB;	// Piloto Control Block
 
 uint16_t piloto_wdg;

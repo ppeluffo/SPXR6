@@ -72,11 +72,15 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.1a"
-#define SPX_FW_DATE "@ 2021091005"
+#define SPX_FW_REV "4.0.2a"
+#define SPX_FW_DATE "@ 20211013"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
+#if configUSE_TICKLESS_IDLE == 2
 #define SPX_FTROS_VERSION "FW:FRTOS10 TICKLESS"
+#else
+#define SPX_FTROS_VERSION "FW:FRTOS10"
+#endif
 
 //#define F_CPU (32000000UL)
 //#define SYSMAINCLK 2

@@ -23,7 +23,7 @@ static void pv_RTC_drift_test(void);
 static bool pv_cmd_configMODBUS(void);
 static bool pv_cmd_rwAUX(uint8_t cmd_mode );
 static bool pv_cmd_modbus(void);
-
+static void pv_cmd_status_ids(void);
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
 //----------------------------------------------------------------------------------------
@@ -111,11 +111,11 @@ st_dataRecord_t dr;
 
 	memset( &l_fat, '\0', sizeof(FAT_t));
 
-	xprintf_P( PSTR("\r\nSpymovilA %s %s %s %s \r\n"), SPX_HW_MODELO, SPX_FTROS_VERSION, SPX_FW_REV, SPX_FW_DATE);
+	xprintf_P( PSTR("\r\nSpymovil %s %s %s %s \r\n"), SPX_HW_MODELO, SPX_FTROS_VERSION, SPX_FW_REV, SPX_FW_DATE);
 	xprintf_P( PSTR("Clock %d Mhz, Tick %d Hz\r\n"),SYSMAINCLK, configTICK_RATE_HZ );
 
 	// SIGNATURE ID
-	xprintf_P( PSTR("uID=%s\r\n"), NVMEE_readID() );
+	pv_cmd_status_ids();
 
 	// Last reset cause
 	xprintf_P( PSTR("WRST=0x%02X\r\n") ,wdg_resetCause );
@@ -154,6 +154,9 @@ st_dataRecord_t dr;
 		break;
 	case DEBUG_MODBUS:
 		xprintf_P( PSTR("  debug: modbus\r\n") );
+		break;
+	case DEBUG_APP:
+		xprintf_P( PSTR("  debug: app\r\n") );
 		break;
 	default:
 		xprintf_P( PSTR("  debug: ???\r\n") );
@@ -722,6 +725,9 @@ bool retS = false;
 		} else if (!strcmp_P( strupr(argv[2]), PSTR("MODBUS\0"))) {
 			systemVars.debug = DEBUG_MODBUS;
 			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("APP\0"))) {
+			systemVars.debug = DEBUG_APP;
+			retS = true;
 		} else {
 			retS = false;
 		}
@@ -839,7 +845,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("       bands {bandslist}\r\n\0"));
 		xprintf_P( PSTR("  timerpoll {val}, timerdial {val}, timepwrsensor {val}\r\n\0"));
 
-		xprintf_P( PSTR("  debug {none,counter,data,comms,modbus}\r\n\0"));
+		xprintf_P( PSTR("  debug {none,counter,data,comms,modbus,app}\r\n\0"));
 
 		xprintf_P( PSTR("  digital {0..%d} {dname}\r\n\0"), ( DINPUTS_CHANNELS - 1 ) );
 
@@ -1467,6 +1473,24 @@ static bool pv_cmd_modbus(void)
 	}
 
 	return(false);
+
+}
+//------------------------------------------------------------------------------------
+static void pv_cmd_status_ids(void)
+{
+	/*
+	 * Muestra en pantalla los ID del micro y el tipo de micro.
+	 */
+
+	xprintf_P( PSTR("uID=%s\r\n"), NVMEE_readID() );
+	xprintf_P( PSTR("devID=%s "), NVMEE_read_device_ID() );
+	if ( strstr( NVMEE_read_device_ID(), "1e9843") ) {
+		xprintf_P(PSTR("(AVR XMEGA256 A3BU)\r\n"));
+	} else 	if ( strstr( NVMEE_read_device_ID(), "1e9842") ) {
+		xprintf_P(PSTR("(AVR XMEGA256 A3U)\r\n"));
+	} else {
+		xprintf_P(PSTR("(AVR)\r\n"));
+	}
 
 }
 //------------------------------------------------------------------------------------

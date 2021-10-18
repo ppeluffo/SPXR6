@@ -140,7 +140,7 @@ to exclude the API function. */
 /* Dimensions a buffer used by the command interpreter. */
 #define configCOMMAND_INT_MAX_OUTPUT_SIZE		1
 
-#define configUSE_TICKLESS_IDLE	2
+//#define configUSE_TICKLESS_IDLE	2
 
 void vApplicationSleep( uint16_t xExpectedIdleTime );
 #define portSUPPRESS_TICKS_AND_SLEEP( xIdleTime ) vApplicationSleep( xIdleTime )

@@ -36,6 +36,36 @@
  *  SPY_init_conf_digital.py
  *  spy_utils.py
  *
+ * -------------------------------------------------------------------------------------------
+ * Ajustes al SPX
+ *
+ * A) El cálculo del caudal genera mucho ruido.
+ *    1- Medir el tiempo entre pulsos
+ *    2- Medir el intervalo entre el primer y ultimo pulso en el timerpoll
+ * B) Generar el pwrsave a partir del RTC
+ * C) Luego de ajustar el piloto, esperar 30s o 1 minuto que la presion se
+ *    estabilize antes de volver a medir. En particular en las valvulas grandes
+ *    les lleva mas tiempo.
+ * D) Usar una cola FIFO para setear las presiones.
+ * E) Rediseñar el sistema de estados
+ * F) Luego de hacer un ajuste, chequear si cambio el slot y en caso afirmativo
+ *    encolar la nueva peticion.
+ * G) Considerar el Caudal para el proceso.
+ *    - Nombres: q0, CAU, CAUDAL
+ *    - Como leerlo
+ * -------------------------------------------------------------------------------------------
+ *  R4.0.2a @ 2021-10-12:
+ *  - Modificado para soportar los micros A3U. Estos no tienen el RTC32 que se
+ *    usa en modo tickeless por lo que ahora elimino dicha funcion desde
+ *    FRTOSCOnfig ( configUSE_TICKLESS_IDLE )
+ *  - Agrego en cmd::status que lea e indique los device ID.
+ *  - Para programarlo se debe hacer desde cmd.mode ya que el tipo de micro cambia
+ *  - Con fuses:
+ *  avrdude -px256a3u -cavrispmkII -Pusb -V -u -e -Uflash:w:spxR6.hex:a -Ufuse0:w:0xff:m -Ufuse1:w:0xaa:m -Ufuse2:w:0xbd:m -Ufuse4:w:0xf5:m -Ufuse5:w:0xd6:m
+ *  - Sin fuses
+ *  avrdude -px256a3u -cavrispmkII -Pusb -V -u -e -Uflash:w:spxR6.hex:a
+ *
+ *
  *  R4.0.1a @ 2021-10-05:
  *  - Modificaciones al modbus:
  *  Agrego 2 parametros para indicar el dispositivo remoto modbus al que mandarle
@@ -97,7 +127,10 @@ int main( void )
 
 	// Clock principal del sistema
 	u_configure_systemMainClock();
+#if configUSE_TICKLESS_IDLE == 2
 	u_configure_RTC32();
+#endif
+
 	sysTicks = 0;
 
 	// Configuramos y habilitamos el watchdog a 8s.

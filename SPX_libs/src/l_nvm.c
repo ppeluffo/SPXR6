@@ -9,7 +9,9 @@
 #include "l_printf.h"
 
 bool signature_ok = false;
+bool device_id_ok = false;
 char nvmid_str[32] = { 0 };
+char nvm_device_id_str[24] = { 0 };
 
 //------------------------------------------------------------------------------------
 char *NVMEE_readID( void )
@@ -26,6 +28,20 @@ char *NVMEE_readID( void )
 	return( nvmid_str );
 }
 //------------------------------------------------------------------------------------
+char *NVMEE_read_device_ID( void )
+{
+	// El signature lo leo una sola vez.
+	// Luego, como lo tengo en la memoria, no lo leo mas.
+
+	if ( ! device_id_ok ) {
+		nvm_read_device_id(&xmega_device_id);
+		device_id_ok = true;
+		snprintf( nvm_device_id_str, 24 ,"%02x%02x%02x",xmega_device_id.devid0,xmega_device_id.devid1,xmega_device_id.devid2);
+	}
+	return( nvm_device_id_str );
+}
+//------------------------------------------------------------------------------------
+
 void NVMEE_test_read( char *addr, char *size )
 {
 	// Funcion de testing de la EEPROM interna del micro xmega

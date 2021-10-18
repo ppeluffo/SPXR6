@@ -159,7 +159,7 @@ void u_configure_systemMainClock(void)
 //------------------------------------------------------------------------------------
 void u_configure_RTC32(void)
 {
-	// El RTC32 lo utilizo para desperarme en el modo tickless.
+	// El RTC32 lo utilizo para despertarme en el modo tickless.
 	// V-bat needs to be reset, and activated
 	VBAT.CTRL |= VBAT_ACCEN_bm;
 	// Este registro esta protegido de escritura con CCP.
@@ -482,18 +482,21 @@ int16_t free_size = sizeof(hash_buffer);
 	i = snprintf_P( &hash_buffer[i], free_size, PSTR("%d,"), comms_conf.timerDial );
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
+	//xprintf_P( PSTR("DEBUG: BASEHASH = [%s]\r\n\0"), hash_buffer );
 
 	// TimerPoll
 	//xprintf_P( PSTR("DEBUG2: base_free_size[%d]\r\n\0"), free_size);
 	i += snprintf_P( &hash_buffer[i], free_size, PSTR("%d,"), systemVars.timerPoll );
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
+	//xprintf_P( PSTR("DEBUG: BASEHASH = [%s]\r\n\0"), hash_buffer );
 
 	// TimepwrSensor
 	//xprintf_P( PSTR("DEBUG3: base_free_size[%d]\r\n\0"), free_size);
 	i += snprintf_P( &hash_buffer[i], free_size, PSTR("%d,"), systemVars.ainputs_conf.pwr_settle_time );
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
+	//xprintf_P( PSTR("DEBUG: BASEHASH = [%s]\r\n\0"), hash_buffer );
 
 	// Counters_hw ( 0: simple, 1 opto )
 	//xprintf_P( PSTR("DEBUG5: base_free_size[%d]\r\n\0"), free_size);
@@ -510,7 +513,7 @@ int16_t free_size = sizeof(hash_buffer);
 	i += snprintf_P( &hash_buffer[i], free_size, PSTR("%d,%d,"), modbus_conf.control_channel.slave_address, modbus_conf.control_channel.reg_address );
 	free_size = (  sizeof(hash_buffer) - i );
 	if ( free_size < 0 ) goto exit_error;
-
+	//xprintf_P( PSTR("DEBUG: BASEHASH = [%s]\r\n\0"), hash_buffer );
 
 	// Apunto al comienzo para recorrer el buffer
 	p = hash_buffer;
