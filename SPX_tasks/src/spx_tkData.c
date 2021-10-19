@@ -21,6 +21,7 @@
 
 st_dataRecord_t dataRecd;
 float battery;
+float caudal;
 
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
@@ -107,6 +108,25 @@ int8_t xBytes = 0;
 	xBytes = RTC_read_dtime( &dst->rtc );
 	if ( xBytes == -1 )
 		xprintf_P(PSTR("ERROR: I2C:RTC:data_read_inputs\r\n\0"));
+
+	// Guardo el valor del caudal en forma persistente porque lo puedo requierir por
+	// la aplicacion PILOTO.
+	switch ( qChannel.tipo ) {
+	case NONE:
+		caudal = -1.0;
+		break;
+	case MODBUS:
+		caudal = dst->modbus[qChannel.pos];
+		break;
+	case ANALOG:
+		caudal = dst->ainputs[qChannel.pos];
+		break;
+	case COUNTER:
+		caudal = dst->counters[qChannel.pos];
+		break;
+	default:
+		caudal = -1.0;
+	}
 
 }
 //------------------------------------------------------------------------------------

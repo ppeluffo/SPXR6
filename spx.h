@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.2a"
-#define SPX_FW_DATE "@ 20211013"
+#define SPX_FW_REV "4.0.2b"
+#define SPX_FW_DATE "@ 20211019"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2
@@ -144,6 +144,7 @@ struct {
 } system_signals;
 
 typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP, DEBUG_MODBUS } t_debug;
+typedef enum { NONE = 0, MODBUS, ANALOG, COUNTER, DIGITAL } t_channel_type;
 
 #define DF_DATA ( systemVars.debug == DEBUG_DATA )
 
@@ -195,6 +196,13 @@ typedef struct {
 	float modbus[MODBUS_CHANNELS];			// 4 * 20 = 80
 	RtcTimeType_t  rtc;						//   7
 } st_dataRecord_t;							// 121
+
+typedef struct {
+	int8_t tipo;
+	int8_t pos;
+} s_Qchannel_t;
+
+s_Qchannel_t qChannel;
 
 typedef struct {
 	char dlgId[DLGID_LENGTH];

@@ -15,6 +15,7 @@
 
 #include "l_steppers.h"
 #include "l_rtc79410.h"
+#include "l_float_ringBuffer.h"
 
 #include "ul_utils.h"
 #include "ul_ainputs.h"
@@ -42,7 +43,8 @@ piloto_conf_t piloto_conf;
 
 typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
 
-typedef enum { PLT_ENTRY = 0, PLT_CHECK_INPUTS, PLT_READ_INPUTS, PLT_CHECK_CONDITIONS, PLT_AJUSTE, PLT_OUTPUT_STATUS, PLT_EXIT } t_plt_states;
+typedef enum { PLT_ENTRY = 0, PLT_READ_INPUTS, PLT_CHECK_CONDITIONS, PLT_AJUSTE, PLT_OUTPUT_STATUS, PLT_EXIT } t_plt_states;
+typedef enum { ST_CHECK_FIFO = 0, ST_CHECK_SLOT, ST_AWAIT } t_fsm_pilotos;
 
 typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, ADJUST_ERR, UNKNOWN	} t_exit_conditions;
 
@@ -61,7 +63,6 @@ typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, 
 
 
 struct {
-	bool start_test;
 	float pulsos_calculados;
 	float pulsos_a_aplicar;
 	float pulsos_rollback;
@@ -84,6 +85,10 @@ struct {
 
 uint16_t piloto_wdg;
 
+#define PFIFO_STORAGE_SIZE 5
+float pFifo_storage[PFIFO_STORAGE_SIZE];
+float_ringBuffer_s pFIFO;
+
 void piloto_setup_outofrtos(void );
 void piloto_run_presion_test(char *s_pRef );
 void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth );
@@ -92,7 +97,6 @@ void piloto_config_ppr( char *s_pulseXrev );
 void piloto_config_pwidth( char *s_pwidth );
 void piloto_config_status(void);
 void piloto_config_defaults(void);
-bool piloto_init_service(void);
 void piloto_app_service( uint8_t app_wdt );
 uint8_t piloto_hash(void);
 void piloto_set_presion_momentanea( float presion);

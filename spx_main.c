@@ -5,6 +5,8 @@
  *      Author: pablo
  *
  *  avrdude -v -Pusb -c avrispmkII -p x256a3 -F -e -U flash:w:spxR4.hex
+ *  avrdude -v -Pusb -P /dev/ttyUSB0 -b 9600 -c avr109 -v -v -p x256a3 -F -e -U flash:w:spxR4.hex
+ *
  *  avrdude -v -Pusb -c avrispmkII -p x256a3 -F -e
  *
  *  REFERENCIA: /usr/lib/avr/include/avr/iox256a3b.h
@@ -39,21 +41,29 @@
  * -------------------------------------------------------------------------------------------
  * Ajustes al SPX
  *
- * A) El cálculo del caudal genera mucho ruido.
- *    1- Medir el tiempo entre pulsos
- *    2- Medir el intervalo entre el primer y ultimo pulso en el timerpoll
- * B) Generar el pwrsave a partir del RTC
- * C) Luego de ajustar el piloto, esperar 30s o 1 minuto que la presion se
+ * G) Considerar el Caudal para el proceso.
+ *    - Como leerlo
+ * Bug1:
+ * DATA: CTL:0;DATE:211019;TIME:145901;pA:2.49;pB:1.14;q0:nan;bt:12.22;
+ * Porque el caudalimetro ( contador ) da nan si deberia dar 0 cuando no hay pulsos ?
+ *
+ * -------------------------------------------------------------------------------------------
+ *
+ *  R4.0.2b @ 2021-10-18:
+ *  - Uso una cola FIFO para setear las presiones.
+ *  - Rediseño el sistema de estados
+ *  - Luego de hacer un ajuste, chequear si cambio el slot y en caso afirmativo
+ *    encolo la nueva peticion.
+ *  - Luego de ajustar el piloto, esperar 30s o 1 minuto que la presion se
  *    estabilize antes de volver a medir. En particular en las valvulas grandes
  *    les lleva mas tiempo.
- * D) Usar una cola FIFO para setear las presiones.
- * E) Rediseñar el sistema de estados
- * F) Luego de hacer un ajuste, chequear si cambio el slot y en caso afirmativo
- *    encolar la nueva peticion.
- * G) Considerar el Caudal para el proceso.
- *    - Nombres: q0, CAU, CAUDAL
- *    - Como leerlo
- * -------------------------------------------------------------------------------------------
+ *    Esto lo hago en el estado de LEER_INPUTS
+ * - El cálculo del caudal genera mucho ruido.
+ *    Determino si el equipo mide caudal y entonces medimos el intervalo entre el primer
+ *    y ultimo pulso en el timerpoll
+ *
+ * B) Generar el pwrsave a partir del RTC
+ *
  *  R4.0.2a @ 2021-10-12:
  *  - Modificado para soportar los micros A3U. Estos no tienen el RTC32 que se
  *    usa en modo tickeless por lo que ahora elimino dicha funcion desde

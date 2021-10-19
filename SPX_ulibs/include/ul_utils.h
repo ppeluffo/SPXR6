@@ -52,6 +52,9 @@ void u_convert_int_to_time_t ( int int16time, uint8_t *hour, uint8_t *min );
 
 void u_wdg_kick( uint8_t wdg_id, uint16_t timeout_in_secs );
 
+uint32_t getSysTicks(void);
+void u_search_canal_caudal(void);
+
 typedef struct {
 	uint8_t hour;
 	uint8_t min;

@@ -29,14 +29,14 @@ TimerHandle_t plt_pulse_xTimer;
 StaticTimer_t plt_pulse_xTimerBuffer;
 
 void pv_piloto_pulse_TimerCallback( TimerHandle_t xTimer );
-bool pv_piloto_leer_slot_actual( uint8_t *slot_id );
+bool pv_piloto_leer_slot_actual( int8_t *slot_id );
 void FSM_piloto_ajustar_presion( uint8_t app_wdt );
 bool pv_piloto_check_inputs_conf(void);
 void pv_piloto_read_inputs( int8_t samples, uint16_t intervalo_secs );
 bool pv_piloto_conditions4adjust( void );
-void pv_piloto_ajustar(bool rollback, uint8_t app_wdt );
+void pv_piloto_ajustar( uint8_t app_wdt );
 void pv_piloto_calcular_parametros_ajuste( void );
-void pv_piloto_print_parametros(bool rollback);
+void pv_piloto_print_parametros( void );
 void pv_piloto_process_output(void);
 
 void pv_dyn_control_init(void);
@@ -150,48 +150,181 @@ void piloto_config_pwidth( char *s_pwidth )
 //------------------------------------------------------------------------------------
 // SERVICE
 //------------------------------------------------------------------------------------
-bool piloto_init_service(void)
+void piloto_app_service( uint8_t app_wdt )
 {
+	/*
+	 * Implemento una maquina de estados que lee una FIFO donde guardamos las
+	 * presiones a fijar. Si hay datos los saca y los ejecuta.
+	 *
+	 */
 
-	PLTCB.start_test = false;
-	return(true);
+int8_t state;
+int8_t slot_actual = -1;
+int8_t slot;
+
+	u_wdg_kick( app_wdt,  240 );
+	vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
+	xprintf_P(PSTR("PILOTO\r\n"));
+
+	// Vemos si tengo una configuracion que permita trabajar ( definidos canales de presiones )
+	if ( ! pv_piloto_check_inputs_conf() ) {
+		xprintf_P(PSTR("PILOTOS: No tengo canales pA/pB configurados. EXIT !!\r\n"));
+		return;
+	}
+
+	// Buscamos en la configuracion si hay algun canal que mida caudal y lo dejamos registrado
+	u_search_canal_caudal();
+
+	// Creo la cola fifo (ringbuffer) de presiones
+	rbf_CreateStatic( &pFIFO, &pFifo_storage[0], PFIFO_STORAGE_SIZE );
+
+	state = ST_CHECK_FIFO;
+
+	for(;;) {
+
+		u_wdg_kick( app_wdt,  240 );
+
+		switch(state) {
+
+		case ST_CHECK_FIFO:
+			/*
+			 * Si hay algun dato en la fifo, lo saco y ejecuto la accion
+			 */
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: state ST_CHECK_FIFO\r\n"));
+			if ( rbf_GetCount(&pFIFO) != 0 ) {
+				rbf_Pop(&pFIFO, &PLTCB.pRef );
+				FSM_piloto_ajustar_presion( app_wdt );
+			}
+			state = ST_CHECK_SLOT;
+			break;
+
+		case ST_CHECK_SLOT:
+			/*
+			 * Chequea si cambio el slot o no. Si cambio, pone la nueva presion en
+			 * la cola FIFO.
+			 */
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: state ST_CHECK_SLOT\r\n"));
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: SLOTS_A: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
+			if ( pv_piloto_leer_slot_actual( &slot ) ) {
+				xprintf_PD( DF_APP, PSTR("\r\nPILOTO: SLOTS_B: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
+				if ( slot_actual != slot ) {
+					// Cambio el slot.
+					slot_actual = slot;
+					xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
+					xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
+					// Guardo la presion en la cola FIFO.
+					rbf_Poke(&pFIFO, &piloto_conf.pltSlots[slot_actual].presion );
+				}
+			}
+			state = ST_AWAIT;
+			break;
+
+		case ST_AWAIT:
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: state ST_AWAIT\r\n"));
+			vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
+			state = ST_CHECK_FIFO;
+			break;
+
+		default:
+			// Error: No deberiamos estar aqui
+			rbf_Flush(&pFIFO);
+			xprintf_P(PSTR("PILOTO: ERROR. FSM State Default !! (Reset)\r\n"));
+			state = ST_CHECK_FIFO;
+			break;
+
+		}
+
+	}
+}
+//------------------------------------------------------------------------------------
+void piloto_set_presion_momentanea( float presion)
+{
+	/*
+	 *
+	 * Funcion invocada online para fijar una nueva presion hasta que finalize
+	 * el slot.
+	 * Solo debo ponerla en la FIFO.
+	 */
+
+	xprintf_P(PSTR("PILOTO: Set presion from Server.\r\n"));
+	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), presion);
+	// Guardo la presion en la cola FIFO.
+	rbf_Poke(&pFIFO, &presion );
 
 }
 //------------------------------------------------------------------------------------
-void piloto_app_service( uint8_t app_wdt )
+void pv_piloto_pulse_TimerCallback( TimerHandle_t xTimer )
 {
+	// Genera un pulso.
+	// Cuando la cuenta de pulsos llega a 0, se desactiva.
 
-uint8_t slot_actual = -1;
-uint8_t slot;
+	stepper_pulse( PLTCB.dir, PLTCB.pwidth );
 
-	xprintf_P(PSTR("PILOTO\r\n"));
-
-	if ( !piloto_init_service() )
-		return;
-
-	for( ;; )
-	{
-		u_wdg_kick( app_wdt,  240 );
-		vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
-
-		// Callback para arrancar el test
-		if ( PLTCB.start_test) {
-			PLTCB.start_test = false;
-			FSM_piloto_ajustar_presion( app_wdt );
-			continue;
-		}
-
-		if ( pv_piloto_leer_slot_actual( &slot ) ) {
-			if ( slot_actual != slot ) {
-				slot_actual = slot;
-				xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
-				xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
-				PLTCB.pRef = piloto_conf.pltSlots[slot_actual].presion;
-				FSM_piloto_ajustar_presion( app_wdt );
-			}
-		}
+	if ( (PLTCB.pulse_counts % 100) == 0 ) {
+		xprintf_P(PSTR("."));
 	}
+
+	if ( PLTCB.pulse_counts-- == 0 ) {
+		xprintf_P(PSTR("\r\n"));
+		xprintf_P(PSTR("PILOTO: stop\r\n"));
+		PLTCB.motor_running = false;
+		// Detengo el timer.
+		xTimerStop( plt_pulse_xTimer, 10 );
+		stepper_sleep();
+		stepper_pwr_off();
+	}
+
 }
+//------------------------------------------------------------------------------------
+// TESTS
+//------------------------------------------------------------------------------------
+void piloto_run_presion_test(char *s_pRef )
+{
+	/*
+	 * Guardo la presion en la FIFO.
+	 */
+
+float pRef = atof(s_pRef);
+
+	rbf_Poke(&pFIFO, &pRef );
+
+}
+//------------------------------------------------------------------------------------
+void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth )
+{
+	// Funcion invocada desde cmdline.
+	// Inicializa la estructura de control para hacer el test.
+
+	if ( strcmp_P( strupr(s_dir), PSTR("FW")) == 0 ) {
+		PLTCB.dir = STEPPER_FWD;
+	} else if ( strcmp_P( strupr(s_dir), PSTR("REV")) == 0) {
+		PLTCB.dir = STEPPER_REV;
+	} else {
+		xprintf_P(PSTR("Error en direccion\r\n"));
+		return;
+	}
+
+	PLTCB.pulsos_a_aplicar = atoi(s_npulses);
+	PLTCB.pwidth = atoi(s_pwidth);
+	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
+
+	// Activo el driver
+	xprintf_P(PSTR("STEPPER driver pwr on\r\n"));
+	stepper_pwr_on();
+	vTaskDelay( ( TickType_t)( 20000 / portTICK_RATE_MS ) );
+
+	// Arranca el timer que por callbacks va a generar los pulsos
+	PLTCB.motor_running = true;
+	xprintf_P(PSTR("STEPPER driver pulses start..\r\n"));
+	stepper_awake();
+	stepper_start();
+
+	xTimerChangePeriod(plt_pulse_xTimer, ( PLTCB.pwidth * 2) / portTICK_PERIOD_MS , 10 );
+	xTimerStart( plt_pulse_xTimer, 10 );
+
+}
+//------------------------------------------------------------------------------------
+// FUNCIONES GENERALES
 //------------------------------------------------------------------------------------
 uint8_t piloto_hash(void)
 {
@@ -248,90 +381,7 @@ exit_error:
 
 }
 //------------------------------------------------------------------------------------
-void piloto_set_presion_momentanea( float presion)
-{
-	// Funcion invocada online para fijar una nueva presion hasta que finalize
-	// el slot
-
-	xprintf_P(PSTR("PILOTO: Set presion from Server.\r\n"));
-	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), presion);
-	PLTCB.start_test = true;
-	PLTCB.pRef = presion;
-
-}
-//------------------------------------------------------------------------------------
-void pv_piloto_pulse_TimerCallback( TimerHandle_t xTimer )
-{
-	// Genera un pulso.
-	// Cuando la cuenta de pulsos llega a 0, se desactiva.
-
-	stepper_pulse( PLTCB.dir, PLTCB.pwidth );
-
-	if ( (PLTCB.pulse_counts % 100) == 0 ) {
-		xprintf_P(PSTR("."));
-	}
-
-	if ( PLTCB.pulse_counts-- == 0 ) {
-		xprintf_P(PSTR("\r\n"));
-		xprintf_P(PSTR("PILOTO: stop\r\n"));
-		PLTCB.motor_running = false;
-		// Detengo el timer.
-		xTimerStop( plt_pulse_xTimer, 10 );
-		stepper_sleep();
-		stepper_pwr_off();
-	}
-
-}
-//------------------------------------------------------------------------------------
-// TESTS
-//------------------------------------------------------------------------------------
-void piloto_run_presion_test(char *s_pRef )
-{
-	// Inicializa la estructura de control con una flag para iniciar el test
-	// y la presion de referencia a la cual llevar el piloto.
-
-	PLTCB.start_test = true;
-	PLTCB.pRef = atof(s_pRef);
-
-}
-//------------------------------------------------------------------------------------
-void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth )
-{
-	// Funcion invocada desde cmdline.
-	// Inicializa la estructura de control para hacer el test.
-
-	if ( strcmp_P( strupr(s_dir), PSTR("FW")) == 0 ) {
-		PLTCB.dir = STEPPER_FWD;
-	} else if ( strcmp_P( strupr(s_dir), PSTR("REV")) == 0) {
-		PLTCB.dir = STEPPER_REV;
-	} else {
-		xprintf_P(PSTR("Error en direccion\r\n"));
-		return;
-	}
-
-	PLTCB.pulsos_a_aplicar = atoi(s_npulses);
-	PLTCB.pwidth = atoi(s_pwidth);
-	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
-
-	// Activo el driver
-	xprintf_P(PSTR("STEPPER driver pwr on\r\n"));
-	stepper_pwr_on();
-	vTaskDelay( ( TickType_t)( 20000 / portTICK_RATE_MS ) );
-
-	// Arranca el timer que por callbacks va a generar los pulsos
-	PLTCB.motor_running = true;
-	xprintf_P(PSTR("STEPPER driver pulses start..\r\n"));
-	stepper_awake();
-	stepper_start();
-
-	xTimerChangePeriod(plt_pulse_xTimer, ( PLTCB.pwidth * 2) / portTICK_PERIOD_MS , 10 );
-	xTimerStart( plt_pulse_xTimer, 10 );
-
-}
-//-------------------------------------u_wdg_kick-----------------------------------------------
-// FUNCIONES PRIVADAS
-//------------------------------------------------------------------------------------
-bool pv_piloto_leer_slot_actual( uint8_t *slot_id )
+bool pv_piloto_leer_slot_actual( int8_t *slot_id )
 {
 	// Determina el id del slot en que estoy.
 	// Los slots deben tener presion > 0.1
@@ -419,22 +469,17 @@ uint8_t state = PLT_ENTRY;
 			PLTCB.loops = 0;
 			PLTCB.exit_code = UNKNOWN;
 			PLTCB.pulsos_rollback = 0.0;
-			state = PLT_CHECK_INPUTS;
-			break;
-
-		case PLT_CHECK_INPUTS:
-			// Veo si tengo entradas configuradas
-			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: state CHECK_INPUTS\r\n"));
-			if ( pv_piloto_check_inputs_conf()) {
-				state = PLT_READ_INPUTS;
-			} else {
-				state = PLT_EXIT;
-			}
+			state = PLT_READ_INPUTS;
 			break;
 
 		case PLT_READ_INPUTS:
 			// Leo las entradas
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: state READ_INPUTS\r\n"));
+			// Espero siempre 30s antes para que se estabilizen. Sobre todo en valvulas grandes
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: await 30s\r\n"));
+			u_wdg_kick( app_wdt,  240 );
+			vTaskDelay( ( TickType_t) (30000 / portTICK_RATE_MS ) );
+			//
 			pv_piloto_read_inputs(5, INTERVALO_PB_SECS );
 			state = PLT_CHECK_CONDITIONS;
 			break;
@@ -452,7 +497,7 @@ uint8_t state = PLT_ENTRY;
 		case PLT_AJUSTE:
 			// Ajusto
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: state AJUSTE\r\n"));
-			pv_piloto_ajustar(false, app_wdt );
+			pv_piloto_ajustar( app_wdt );
 			state = PLT_READ_INPUTS;
 			break;
 
@@ -476,7 +521,7 @@ uint8_t state = PLT_ENTRY;
 bool pv_piloto_check_inputs_conf(void)
 {
 	/*
-	 *  Se fija si en la configuracion del eqipo hay algun canal con el
+	 *  Se fija si en la configuracion del equipo hay algun canal con el
 	 *  nombre pA y pB.
 	 *  Si no los hay entonces retorna FALSE
 	 */
@@ -620,41 +665,19 @@ void pv_piloto_process_output(void)
 
 }
 //------------------------------------------------------------------------------------
-void pv_piloto_ajustar( bool rollback, uint8_t app_wdt )
+void pv_piloto_ajustar( uint8_t app_wdt )
 {
 	/*
 	 * Calculo los parametros para el ajuste, los muestro en pantalla
 	 * y arranco el motor
 	 */
 
-	if ( rollback ) {
-		/*
-		 *  Aplico los pulsos que aplique en el ciclo pero en sentido contrario
-		 *  para volver al servo a la posicion inicial
-		 */
-		xprintf_P(PSTR("PILOTO: ROLLBACK: pulses_rollback=%.01f\r\n"), PLTCB.pulsos_rollback );
-
-		PLTCB.pulse_counts = (uint16_t) fabs(PLTCB.pulsos_rollback);
-		// Controlo errores ( horrores ) de calculo
-		if ( PLTCB.pulse_counts > 15000 ) {
-			xprintf_P(PSTR("PILOTO: ROLLBACK ERROR\r\n"));
-			return;
-		}
-		// Direccion
-		if ( PLTCB.pulsos_rollback < 0 ) {
-			PLTCB.dir = STEPPER_FWD;
-		} else {
-			PLTCB.dir = STEPPER_REV;
-		}
-
-	} else {
-		// Ajuste Normal
-		// Calculo la direccion y los pulsos a aplicar
-		pv_piloto_calcular_parametros_ajuste();
-	}
+	// Ajuste Normal
+	// Calculo la direccion y los pulsos a aplicar
+	pv_piloto_calcular_parametros_ajuste();
 
 	// Muestro el resumen de datos
-	pv_piloto_print_parametros( rollback );
+	pv_piloto_print_parametros();
 
 	u_wdg_kick( app_wdt,  240 );
 
@@ -734,7 +757,7 @@ float delta_pres = 0.0;
 	if ( PLTCB.pulsos_calculados > 500 ) {
 		PLTCB.pulsos_a_aplicar = (0.7 * PLTCB.pulsos_calculados);
 	} else {
-		PLTCB.pulsos_a_aplicar = PLTCB.pulsos_calculados;
+		PLTCB.pulsos_a_aplicar = (0.9 * PLTCB.pulsos_calculados);
 	}
 
 	//xprintf_P(PSTR("DEBUG: pulsos_a_aplicar_1: %d\r\n"), PLTCB.pulsos_a_aplicar );
@@ -758,21 +781,19 @@ float delta_pres = 0.0;
 	//xprintf_P(PSTR("DEBUG: pulsoe_counts: %d\r\n"), PLTCB.pulse_counts );
 }
 //------------------------------------------------------------------------------------
-void pv_piloto_print_parametros( bool rollback )
+void pv_piloto_print_parametros( void )
 {
 	// Muestro en pantalla los parametros calculados de ajuste de presion.
 
 	xprintf_P(PSTR("-----------------------------\r\n"));
 
-	if ( !rollback ) {
-		xprintf_P(PSTR("PILOTO: loops=%d\r\n"), PLTCB.loops );
-		xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), PLTCB.pA );
-		xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
-		xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"),   PLTCB.pRef );
-		xprintf_P(PSTR("PILOTO: deltaP=%.03f\r\n"), ( PLTCB.pB - PLTCB.pRef));
-		xprintf_P(PSTR("PILOTO: pulses calc=%.01f\r\n"), PLTCB.pulsos_calculados );
-		xprintf_P(PSTR("PILOTO: pulses apply=%.01f\r\n"), PLTCB.pulsos_a_aplicar );
-	}
+	xprintf_P(PSTR("PILOTO: loops=%d\r\n"), PLTCB.loops );
+	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), PLTCB.pA );
+	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
+	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"),   PLTCB.pRef );
+	xprintf_P(PSTR("PILOTO: deltaP=%.03f\r\n"), ( PLTCB.pB - PLTCB.pRef));
+	xprintf_P(PSTR("PILOTO: pulses calc=%.01f\r\n"), PLTCB.pulsos_calculados );
+	xprintf_P(PSTR("PILOTO: pulses apply=%.01f\r\n"), PLTCB.pulsos_a_aplicar );
 
 	xprintf_P(PSTR("PILOTO: pulses rollback=%.01f\r\n"), PLTCB.pulsos_rollback );
 	xprintf_P(PSTR("PILOTO: pwidth=%d\r\n"), PLTCB.pwidth );
@@ -929,7 +950,6 @@ void pv_dyn_control_init(void)
 	PLTCB.dync_pB0 = 0;
 	PLTCB.dync_pulsos = 0;
 }
-
 //------------------------------------------------------------------------------------
 void pv_dyn_control_update(void)
 {
