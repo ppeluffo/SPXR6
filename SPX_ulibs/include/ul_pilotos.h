@@ -5,6 +5,7 @@
  *      Author: pablo
  */
 
+
 #include "stdlib.h"
 #include "stdio.h"
 #include "stdbool.h"
@@ -17,6 +18,7 @@
 #include "l_rtc79410.h"
 #include "l_float_ringBuffer.h"
 
+#include "spx.h"
 #include "ul_utils.h"
 #include "ul_ainputs.h"
 
@@ -44,9 +46,9 @@ piloto_conf_t piloto_conf;
 typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
 
 typedef enum { PLT_ENTRY = 0, PLT_READ_INPUTS, PLT_CHECK_CONDITIONS, PLT_AJUSTE, PLT_OUTPUT_STATUS, PLT_EXIT } t_plt_states;
-typedef enum { ST_CHECK_FIFO = 0, ST_CHECK_SLOT, ST_AWAIT } t_fsm_pilotos;
+typedef enum { ST_CHECK_FIFO = 0, ST_CHECK_SLOT, ST_PENDIENTES, ST_AWAIT } t_fsm_pilotos;
 
-typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, ADJUST_ERR, UNKNOWN	} t_exit_conditions;
+typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, ADJUST_ERR, CAUDAL_ERR, UNKNOWN	} t_exit_conditions;
 
 
 #define MAX_INTENTOS			5
@@ -60,7 +62,6 @@ typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, 
 #define MIN_PA_PB				0.5
 #define DELTA_PA_PB				0.3
 #define DELTA_PA_PREF			0.3
-
 
 struct {
 	float pulsos_calculados;
@@ -84,6 +85,8 @@ struct {
 } PLTCB;	// Piloto Control Block
 
 uint16_t piloto_wdg;
+
+bool ajuste_pendiente;
 
 #define PFIFO_STORAGE_SIZE 5
 float pFifo_storage[PFIFO_STORAGE_SIZE];

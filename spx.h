@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.2b"
-#define SPX_FW_DATE "@ 20211019"
+#define SPX_FW_REV "4.0.2c"
+#define SPX_FW_DATE "@ 20211022"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2
@@ -198,13 +198,6 @@ typedef struct {
 } st_dataRecord_t;							// 121
 
 typedef struct {
-	int8_t tipo;
-	int8_t pos;
-} s_Qchannel_t;
-
-s_Qchannel_t qChannel;
-
-typedef struct {
 	char dlgId[DLGID_LENGTH];
 	char apn[APN_LENGTH];
 	char server_tcp_port[PORT_LENGTH];
@@ -235,6 +228,18 @@ typedef struct {
 
 systemVarsType systemVars;
 
+// Estructura de datos de caudal para los pilotos
+typedef struct {
+	int8_t pA_channel;
+	int8_t pB_channel;
+	int8_t Q_channel;
+	int8_t Q_module;
+	float pA;
+	float pB;
+	float caudal;
+} plt_vars_t;
+
+plt_vars_t plt_ctl_vars;
 
 // UTILS
 void xCOMMS_config_defaults( char *opt );

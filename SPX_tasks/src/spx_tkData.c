@@ -21,7 +21,6 @@
 
 st_dataRecord_t dataRecd;
 float battery;
-float caudal;
 
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
@@ -41,6 +40,12 @@ uint32_t waiting_ticks = 0;
 	ainputs_init();
 	dinputs_init();
 	counters_init();
+
+	// Inicializo las variables del piloto
+	plt_ctl_vars.pA_channel = -1;
+	plt_ctl_vars.pB_channel = -1;
+	plt_ctl_vars.Q_channel = -1;
+	plt_ctl_vars.Q_module = -1;
 
 	xprintf_P( PSTR("starting tkData..\r\n\0"));
 
@@ -109,23 +114,25 @@ int8_t xBytes = 0;
 	if ( xBytes == -1 )
 		xprintf_P(PSTR("ERROR: I2C:RTC:data_read_inputs\r\n\0"));
 
-	// Guardo el valor del caudal en forma persistente porque lo puedo requierir por
-	// la aplicacion PILOTO.
-	switch ( qChannel.tipo ) {
+	// Guardo pA,pB,Q forma persistente porque lo puedo requierir por la aplicacion PILOTO.
+	plt_ctl_vars.pA = dst->ainputs[plt_ctl_vars.pA_channel];
+	plt_ctl_vars.pB = dst->ainputs[plt_ctl_vars.pB_channel];
+
+	switch ( plt_ctl_vars.Q_module ) {
 	case NONE:
-		caudal = -1.0;
+		plt_ctl_vars.caudal = -1.0;
 		break;
 	case MODBUS:
-		caudal = dst->modbus[qChannel.pos];
+		plt_ctl_vars.caudal = dst->modbus[plt_ctl_vars.Q_channel];
 		break;
 	case ANALOG:
-		caudal = dst->ainputs[qChannel.pos];
+		plt_ctl_vars.caudal = dst->ainputs[plt_ctl_vars.Q_channel];
 		break;
 	case COUNTER:
-		caudal = dst->counters[qChannel.pos];
+		plt_ctl_vars.caudal = dst->counters[plt_ctl_vars.Q_channel];
 		break;
 	default:
-		caudal = -1.0;
+		plt_ctl_vars.caudal = -1.0;
 	}
 
 }

@@ -635,6 +635,9 @@ eSleepModeStatus eSleepStatus;
 
 //#if XMEGA253A3BU == 1
 
+#define USE_RTC32
+
+#ifdef USE_RTC32
 static void prvSleepExactTime( portTickType xExpectedIdleTime )
 {
 
@@ -713,13 +716,96 @@ uint32_t rtc_counter;
 
 }
 //-------------------------------------------------------------------------------------
-// interrupt routine RTC32 overflow */
+#else
+
+static void prvSleepExactTime( portTickType xExpectedIdleTime )
+{
+
+portTickType tick_to_sleep, completedTicks;
+uint32_t rtc_counter;
+//uint16_t max_idle_time;
+
+	// En esta funcion debo:
+	// 1- Configurar el RTC16 para interrumpir luego de xExpectedIdleTime
+	// 2- Sleep
+	// 3- Al despertar, ajustar el tick a los ticks dormidos reales.
+
+	// El RTC lo debo programar para dormir TICKS ( 10ms ) o sea que este va a ser el error
+	// al despertar ( +/- 1 tick).
+	// Por otro lado, el kernel determina cuanto puede dormir y este es el valor que pasa en xExpectedIdleTime.
+	// Nosotros no queremos dormir mas de 1s por lo tanto calculo el valor del RTC y si supera 1s, lo limito.
+
+	// Paso 1:
+	// En MAIN ya configure el RTC con el osc externo a 32Khz sin prescaler.
+	// El periodo son 0.03 ms por lo que para contar 10ms debo contar hasta 327 y para
+	// contar 1s debo contar hasta 32768.
+	// El contador es de 16bits o sea cuenta hasta 65536
+	// Lo configuro para contar hasta xExpectedIdleTime.
+	// Nunca cuento mas de 1500 ms
+
+	// No se aplica cuando uso el RTC32.
+
+
+	tick_to_sleep = xExpectedIdleTime;
+//	max_idle_time = 1.5 * configTICK_RATE_HZ;
+
+//	if ( tick_to_sleep > max_idle_time ) {
+//		tick_to_sleep = max_idle_time;
+//	}
+	rtc_counter = tick_to_sleep * FOSC_RTC / configTICK_RATE_HZ - 1;
+
+	// Disable RTC32 module before setting counter values
+	RTC32.CTRL = 0;
+
+	RTC32.PER = rtc_counter;
+	RTC32.CNT = 0;
+	RTC32.COMP = 0;
+
+	// Enable RTC32 module
+	RTC32.CTRL = RTC32_ENABLE_bm;
+
+	/* Wait for sync */
+	do { } while ( RTC32.SYNCCTRL & RTC32_SYNCBUSY_bm );
+
+	// Paso2: habilito las interrupciones y sleep.
+	portENTER_CRITICAL();
+	countingCompleted = false;
+
+//	IO_clr_TICK();
+	prvSleep();
+//	IO_set_TICK();
+
+	// Paso3: Al despertar actualizo los ticks.
+	// Con countingComplete determino si complete el periodo de sleep o alguna
+	// interrupcion me desperto antes.
+	// Detengo el timer.
+	RTC32.CTRL = 0x00;
+	portEXIT_CRITICAL();
+
+	if (countingCompleted) {
+		// Durmio todo el periodo.
+		completedTicks = xExpectedIdleTime;
+	} else {
+		// Algo lo desperto. Durmio de menos.
+		// Como la ISR no borro el contador, vemos cuanto durmio y lo convierto a ticks.
+		// Agrego 1 para redondear.
+		completedTicks = ( RTC32.CNT * configTICK_RATE_HZ / FOSC_RTC ) +1;
+	}
+
+	vTaskStepTick(completedTicks);
+
+}
+//-------------------------------------------------------------------------------------
+#endif
+
+// interrupt routine RTC overflow */
 ISR(RTC32_OVF_vect)
 {
 //	PORTA.OUTTGL = 0x04;	// Toggle A2
 	countingCompleted = true;
 }
 //-------------------------------------------------------------------------------------
+
 
 
 #endif /* configUSE_TICKLESS_IDLE == 2 */
