@@ -267,8 +267,8 @@ static void state_apagado(void)
 
 	pv_prender_modem();
 
-	xprintf_P(PSTR("FECHA: "));
-	RTC_read_time();
+	//xprintf_P(PSTR("FECHA: "));
+	//RTC_read_time();
 
 }
 //------------------------------------------------------------------------------------

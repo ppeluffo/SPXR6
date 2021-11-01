@@ -17,6 +17,7 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+
 // Mensajes entre tareas
 #define SGN_FRAME_READY			0x01
 #define SGN_MON_SQE				0x02

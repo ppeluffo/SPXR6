@@ -27,7 +27,7 @@ void tkApp(void * pvParameters)
 		consigna_app_service( WDG_APP );
 
 	} else if ( systemVars.aplicacion_conf.aplicacion == APP_PILOTO ) {
-		piloto_app_service( WDG_APP );
+		FSM_piloto_app_service( WDG_APP );
 	}
 
 	// Default

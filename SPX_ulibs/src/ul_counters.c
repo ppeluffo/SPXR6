@@ -45,8 +45,6 @@ static void pv_counters_TimerCallback0B( TimerHandle_t xTimer );
 static void pv_counters_TimerCallback1A( TimerHandle_t xTimer );
 static void pv_counters_TimerCallback1B( TimerHandle_t xTimer );
 
-#define DF_COUNTERS ( systemVars.debug == DEBUG_COUNTER )
-
 //------------------------------------------------------------------------------------
 void counters_setup_outofrtos(void)
 {
@@ -97,6 +95,7 @@ void counters_setup_outofrtos(void)
 			&counter_xTimerBuffer1B
 			);
 
+	debug_counters = false;
 }
 //------------------------------------------------------------------------------------
 void counters_init(void)
@@ -136,8 +135,6 @@ void counters_init(void)
 	COUNTERS_init(0, counters_conf.hw_type, counters_conf.sensing_edge[0] );
 	COUNTERS_init(1, counters_conf.hw_type, counters_conf.sensing_edge[1] );
 
-	debug_counters = false;
-
 }
 //------------------------------------------------------------------------------------
 static void pv_counters_TimerCallback0A( TimerHandle_t xTimer )
@@ -163,11 +160,9 @@ uint8_t confirm_value = 0;
 		CNTCB[0].ticks_end = getSysTicks();
 
 		xTimerStart( counter_xTimer1A, 1 );
-		if ( debug_counters ) {
-			xprintf_P( PSTR("COUNTERS: DEBUG *C0=%0.3f,C1=%0.3f\r\n\0"), CNTCB[0].cnt, CNTCB[1].cnt );
-			// xprintf_P( PSTR("COUNTERS: DEBUG *C0=%0.3f start=%lu, end=%lu\r\n"), CNTCB[0].cnt, CNTCB[0].ticks_start, CNTCB[0].ticks_end );
-			//xprintf_P( PSTR("COUNTERS: DEBUG *C1=%0.3f(%lu, %lu)\r\n"), CNTCB[0].cnt, CNTCB[1].ticks_start, CNTCB[1].ticks_end );
-		}
+		xprintf_PD( debug_counters, PSTR("COUNTERS: DEBUG *C0=%0.3f,C1=%0.3f\r\n\0"), CNTCB[0].cnt, CNTCB[1].cnt );
+		// xprintf_P( PSTR("COUNTERS: DEBUG *C0=%0.3f start=%lu, end=%lu\r\n"), CNTCB[0].cnt, CNTCB[0].ticks_start, CNTCB[0].ticks_end );
+		//xprintf_P( PSTR("COUNTERS: DEBUG *C1=%0.3f(%lu, %lu)\r\n"), CNTCB[0].cnt, CNTCB[1].ticks_start, CNTCB[1].ticks_end );
 		return;
 	}
 
@@ -211,9 +206,7 @@ uint8_t confirm_value = 0;
 
 		CNTCB[1].ticks_end = getSysTicks();
 		xTimerStart( counter_xTimer1B, 1 );
-		if ( debug_counters) {
-			xprintf_P( PSTR("COUNTERS: DEBUG C0=%0.3f,*C1=%0.3f\r\n\0"), CNTCB[0].cnt, CNTCB[1].cnt );
-		}
+		xprintf_PD( debug_counters, PSTR("COUNTERS: DEBUG C0=%0.3f,*C1=%0.3f\r\n\0"), CNTCB[0].cnt, CNTCB[1].cnt );
 		return;
 	}
 
@@ -304,7 +297,11 @@ float ticks_in_seconds;
 			// Convierto los pulsos a caudal instantaneo ( en el timerpoll ).
 			// Ojo que ahora magpp debe ser el volumen real por pulso !!!
 			ticks_in_seconds = portTICK_RATE_MS * ( CNTCB[i].ticks_end - CNTCB[i].ticks_start ) / 1000;
-			cnt[i] = ( 3600 * ( CNTCB[i].cnt - 1 ) * counters_conf.magpp[i] ) / ticks_in_seconds ;
+			if ( ticks_in_seconds > 0.0 ) {
+				cnt[i] = ( 3600 * ( CNTCB[i].cnt - 1 ) * counters_conf.magpp[i] ) / ticks_in_seconds ;
+			} else {
+				cnt[i] = 0;
+			}
 
 		} else {
 			cnt[i] = CNTCB[i].cnt * counters_conf.magpp[i];

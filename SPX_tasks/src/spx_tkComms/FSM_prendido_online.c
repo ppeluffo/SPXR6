@@ -2037,7 +2037,7 @@ char *delim = ",;:=><";
 	tk_presion = strsep(&stringp,delim);			// PILOTO
 	tk_presion = strsep(&stringp,delim);			// 3.45
 	presion = atof(tk_presion);
-	piloto_set_presion_momentanea(presion);
+	plt_producer_online_handler(presion);
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_piloto out\r\n\0"));
 }

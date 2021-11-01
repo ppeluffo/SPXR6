@@ -24,6 +24,8 @@ void rbf_CreateStatic ( float_ringBuffer_s *rB, float *storage_area, uint16_t si
 bool rbf_Poke( float_ringBuffer_s *rB, float *fFloat )
 {
 
+	// Coloco una presion ( put_on_top ) en la FIFO
+
 bool ret = false;
 
 	taskENTER_CRITICAL();
@@ -49,6 +51,8 @@ bool ret = false;
 bool rbf_Pop( float_ringBuffer_s *rB, float *fFloat )
 {
 
+	// Saco un valor ( get_from_tail ) de la FIFO.
+
 bool ret = false;
 
 	taskENTER_CRITICAL();
@@ -64,6 +68,30 @@ bool ret = false;
 	--rB->count;
 	// Avanzo en modo circular
 	rB->tail = ( rB->tail  + 1 ) % ( rB->length );
+	ret = true;
+
+	taskEXIT_CRITICAL();
+	return(ret);
+}
+//------------------------------------------------------------------------------------
+bool rbf_PopRead( float_ringBuffer_s *rB, float *fFloat )
+{
+
+	// Leo un valor ( red_from_tail ) de la FIFO.
+
+bool ret = false;
+
+	taskENTER_CRITICAL();
+
+	//  Si el buffer esta vacio retorno.
+	if( rB->count == 0) {
+		rB->head = rB->tail = 0;
+		taskEXIT_CRITICAL();
+		return(ret);
+	}
+
+	// Leo pero no muevo el puntero
+	*fFloat = rB->buff[rB->tail];
 	ret = true;
 
 	taskEXIT_CRITICAL();
