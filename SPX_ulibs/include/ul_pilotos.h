@@ -45,10 +45,10 @@ piloto_conf_t piloto_conf;
 
 typedef enum { AJUSTE70x100 = 0, AJUSTE_BASICO = 1 } t_ajuste_npulses;
 
-typedef enum { PLT_READ_INPUTS = 0, PLT_CHECK_CONDITIONS, PLT_AJUSTE, PLT_OUTPUT_STATUS, PLT_EXIT } t_plt_states;
+typedef enum { PLT_READ_INPUTS = 0, PLT_CHECK_CONDITIONS4ADJUST, PLT_AJUSTE, PLT_PROCESS_OUTPUT, PLT_EXIT } t_plt_states;
 typedef enum { ST_PRODUCER = 0, ST_CONSUMER, ST_AWAIT } t_fsm_pilotos;
 
-typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, ADJUST_ERR, CAUDAL_ERR, UNKNOWN	} t_exit_conditions;
+typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, DYNC_ERR, CAUDAL_CERO, UNKNOWN	} t_exit_conditions;
 
 
 #define MAX_INTENTOS			5
@@ -59,8 +59,10 @@ typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, 
 #define PERROR					0.065
 #define INTERVALO_PB_SECS		5
 #define INTERVALO_TRYES_SECS	15
-#define MIN_PA					0.5
-#define MIN_PB					0.0
+#define PA_MIN					0.5
+#define PA_MAX					8.0
+#define PB_MIN					0.0
+#define PB_MAX					8.0
 #define DELTA_PA_PB				0.3
 #define DELTA_PA_PREF			0.3
 
@@ -83,6 +85,8 @@ struct {
 	float pB0;
 	int16_t dync_pulsos;
 	t_exit_conditions exit_code;
+	bool run_rollback;
+	bool accion_pendiente;
 } PLTCB;	// Piloto Control Block
 
 uint8_t plt_app_wdg;

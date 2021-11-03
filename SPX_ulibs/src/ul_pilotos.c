@@ -37,6 +37,15 @@
  *
  *  De este modo, cada ciclo atiende las condiciones pendientes y nuevas.
  *
+ *  Funcionamiento:
+ *  - Antes de comenzar a ajustar, controlo si tengo las condiciones.
+ *    Si no las tengo, pospongo el ajuste.
+ *  - Comienzo a ajustar:
+ *    Cada ajuste re-evaluo las condiciones.
+ *    Si termino OK, salgo y borro la accion
+ *    So no termino bien a lo sumo hago un rollback pero no dejo pendiente el ajuste.
+ *
+ *
  *  TESTING:
  *  1- Caso normal OK.
  *  2- Subir pB mas alto de pA. Debe dejarlo en pA-pband. OK
@@ -44,6 +53,20 @@
  *
  *  Considerar leer el slot c/ajuste por si cambio en medio de un cambio de slot
  *  o al final para reajustar
+ *
+ *  Casos particulares:
+ *
+ *  1- Reduccion de presion, mide caudal
+ *     pB nunca llega a 0 porque queda presurizado
+ *     La salida es por q=0
+ *
+ *  2- Reduccion de presion, NO mide caudal
+ *     pB nunca llega a 0 porque queda presurizado
+ *     La salida es por dyncontrol pero se hace un rollback y entonces se vuelve a reintentar
+ *     En este caso doy por terminado pero no dejo pendiente.
+ *
+ *  3- Ajuste al alza.
+ *
  */
 
 #include "ul_pilotos.h"
@@ -54,30 +77,27 @@ StaticTimer_t plt_pulse_xTimerBuffer;
 
 void pv_piloto_pulse_TimerCallback( TimerHandle_t xTimer );
 bool pv_piloto_leer_slot_actual( int8_t *slot_id );
-bool FSM_piloto_ajustar_presion( void );
+void FSM_piloto_ajustar_presion( void );
 
 void plt_producer_slot_handler(void);
 void plt_consumer_handler(void);
 
 bool pv_piloto_check_inputs_conf(void);
 void pv_piloto_read_inputs( int8_t samples, uint16_t intervalo_secs );
-bool pv_piloto_adjust_conditions( void );
-bool pv_piloto_pre_conditions( void );
-bool pv_piloto_pre_conditions_4increase( void );
-bool pv_piloto_pre_conditions_4reduce( void );
+bool pv_piloto_conditions4adjust( void );
+bool pv_piloto_conditions4start( void );
 
 void pv_piloto_ajustar( void );
 void pv_piloto_calcular_parametros_ajuste( void );
 void pv_piloto_print_parametros( void );
-bool pv_piloto_process_output( void );
+void pv_piloto_process_output( void );
 
 bool pv_ctl_max_reintentos_reached(void);
-bool pv_ctl_pA_es_positiva( float pA);
-bool pv_ctl_pB_es_positiva( float pB);
+bool pv_ctl_limites_pA( float pA, float pA_min, float pA_max );
+bool pv_ctl_limites_pB( float pB, float pB_min, float pB_max );
 bool pv_ctl_pA_mayor_pB( float pA, float pB);
 bool pv_ctl_pB_alcanzada(void);
 bool pv_ctl_band_gap_suficiente(float pA, float pB, float pRef );
-bool pv_ctl_caudal( float qMin, float pA, float pB, float pRef );
 
 void pv_rollback_init(void);
 void pv_rollback_update(void);
@@ -87,22 +107,25 @@ void pv_dyncontrol_init(void);
 void pv_dyncontrol_update(void);
 bool pv_dyncontrol_check(void);
 
+#define  mido_caudal ( plt_ctl_vars.Q_module != NONE )
+
 /*
  * -----------------------------------------------------------------------------------
  * FSM de ajustar la presion.
  * -----------------------------------------------------------------------------------
  */
-bool FSM_piloto_ajustar_presion( void )
+void FSM_piloto_ajustar_presion( void )
 {
 
 uint8_t state = PLT_READ_INPUTS;
-bool retS = false;
 
 	// Inicializo
 	xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste ENTRY\r\n"));
 	xprintf_P(PSTR("PILOTO: Ajuste de presion a (%.03f)\r\n"), PLTCB.pRef );
 	PLTCB.loops = 0;
 	PLTCB.exit_code = UNKNOWN;
+	PLTCB.run_rollback = false;
+	PLTCB.accion_pendiente = false;
 	pv_rollback_init();
 	state = PLT_READ_INPUTS;
 
@@ -121,16 +144,16 @@ bool retS = false;
 			vTaskDelay( ( TickType_t) (30000 / portTICK_RATE_MS ) );
 			//
 			pv_piloto_read_inputs(5, INTERVALO_PB_SECS );
-			state = PLT_CHECK_CONDITIONS;
+			state = PLT_CHECK_CONDITIONS4ADJUST;
 			break;
 
-		case PLT_CHECK_CONDITIONS:
-			// Veo si tengo condiciones para ajustar
+		case PLT_CHECK_CONDITIONS4ADJUST:
+			// Veo si tengo las condiciones para continuar el ajuste.
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state CHECK_CONDITIONS\r\n"));
-			if ( pv_piloto_adjust_conditions() ) {
+			if ( pv_piloto_conditions4adjust() ) {
 				state = PLT_AJUSTE;
 			} else {
-				state = PLT_OUTPUT_STATUS;
+				state = PLT_PROCESS_OUTPUT;
 			}
 			break;
 
@@ -151,22 +174,29 @@ bool retS = false;
 			state = PLT_READ_INPUTS;
 			break;
 
-		case PLT_OUTPUT_STATUS:
+		case PLT_PROCESS_OUTPUT:
 			// Evaluo condiciones de salida
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state OUTPUT\r\n"));
-			retS = pv_piloto_process_output();
+			pv_piloto_process_output();
 			state = PLT_EXIT;
 			break;
 
 		case PLT_EXIT:
 			// Termino y salgo.
+
+			/*
+			 * Si pude ajustar la presion, la saco de la FIFO.
+			 * Si no lo dejo y entonces queda pendiente.
+			 */
+			if ( ! PLTCB.accion_pendiente ) {
+				rbf_Pop(&pFIFO, &PLTCB.pRef );
+			}
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state EXIT\r\n"));
 			xprintf_P(PSTR("PILOTO: Fin de Ajuste\r\n"));
-			return(retS);
 			break;
 		}
 	}
-	return(retS);
+
 }
 /*
  * -----------------------------------------------------------------------------------
@@ -208,82 +238,126 @@ float presion[ANALOG_CHANNELS];
 	}
 }
 //------------------------------------------------------------------------------------
-bool pv_piloto_adjust_conditions( void )
+bool pv_piloto_conditions4adjust( void )
 {
 	/*
 	 * Chequeo todas las condiciones necesarias para activar el servo o salir
 	 */
 
-bool retS = false;
+bool retS = true;
+bool ajuste_al_alza = false;
 
-	// Debo tener algún cartucho
+	if ( PLTCB.pRef > PLTCB.pB ) {
+		ajuste_al_alza = true;
+	}
+
+	PLTCB.run_rollback = false;
+	PLTCB.accion_pendiente = false;
+
+	// Debo tener algún cartucho en el bolsillo.
 	if ( pv_ctl_max_reintentos_reached()) {
-		PLTCB.exit_code = MAX_TRYES;
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:MAX_TRYES\r\n"));
+		PLTCB.exit_code = MAX_TRYES;
+		PLTCB.run_rollback = false;
+		PLTCB.accion_pendiente = false;
+		retS = false;
+		goto quit;
+	}
+
+	// Alcance la presion buscada. Salgo.
+	if ( pv_ctl_pB_alcanzada() ) {
+		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_REACHED\r\n"));
+		PLTCB.exit_code = POUT_REACHED;
+		PLTCB.run_rollback = false;
+		PLTCB.accion_pendiente = false;
 		retS = false;
 		goto quit;
 	}
 
 	// La pA siempre debe ser positiva
-	if ( ! pv_ctl_pA_es_positiva( PLTCB.pA) ) {
-		PLTCB.exit_code = PA_ERR;
+	if ( ! pv_ctl_limites_pA( PLTCB.pA, PA_MIN, PA_MAX ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_ERR\r\n"));
+		PLTCB.exit_code = PA_ERR;
+		PLTCB.run_rollback = true;
+		PLTCB.accion_pendiente = false;
 		retS = false;
 		goto quit;
 	}
 
 	// La pB siempre debe ser positiva
-	if ( ! pv_ctl_pB_es_positiva( PLTCB.pB) ) {
+	if ( ! pv_ctl_limites_pB( PLTCB.pB, PB_MIN, PB_MAX ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PB_ERR\r\n"));
 		PLTCB.exit_code = PB_ERR;
+		PLTCB.run_rollback = true;
+		PLTCB.accion_pendiente = false;
 		retS = false;
 		goto quit;
 	}
 
 	// Si todo anda bien, pA debe ser mayor que pB
 	if ( ! pv_ctl_pA_mayor_pB( PLTCB.pA,  PLTCB.pB) ) {
-		PLTCB.exit_code = PA_LESS_PB;
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_LESS_PB\r\n"));
+		PLTCB.exit_code = PA_LESS_PB;
+		PLTCB.run_rollback = true;
+		PLTCB.accion_pendiente = false;
 		retS = false;
 		goto quit;
 	}
 
 	// Si ya movi el motor, debe haber cambiado la presion con 1 revolucion completa.
 	if ( ! pv_dyncontrol_check() ) {
-		PLTCB.exit_code = ADJUST_ERR;
+		PLTCB.exit_code = DYNC_ERR;
+		PLTCB.run_rollback = true;
+		PLTCB.accion_pendiente = false;
 		retS = false;
 		goto quit;
 	}
 
-	// En los siguentes controles hay que ver si se ajusta a la baja o al alza.
-	if ( ! pv_ctl_band_gap_suficiente( PLTCB.pA, PLTCB.pB, PLTCB.pRef) ) {
-		PLTCB.exit_code = BAND_ERR;
-		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:BAND_ERR\r\n"));
-		retS = false;
-		goto quit;
+	//-------------------------------------------------------------------------------
+	// AJUSTE AL ALZA
+	if ( ajuste_al_alza ) {
+		// Band gap:
+		if ( ! pv_ctl_band_gap_suficiente( PLTCB.pA, PLTCB.pB, PLTCB.pRef) ) {
+			xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:BAND_ERR\r\n"));
+			PLTCB.exit_code = BAND_ERR;
+			PLTCB.run_rollback = false;
+			PLTCB.accion_pendiente = true;
+			retS = false;
+			goto quit;
+		}
 	}
 
-	if ( ! pv_ctl_caudal(1.0, PLTCB.pA,  PLTCB.pB, PLTCB.pRef ) )  {
-		PLTCB.exit_code = CAUDAL_ERR;
-		retS = false;
-		goto quit;
+	//-------------------------------------------------------------------------------
+	// AJUSTE A LA BAJA:
+	if ( ! ajuste_al_alza ) {
+		// Si el caudal se fue a 0, termino.
+		if ( !mido_caudal && ( plt_ctl_vars.caudal < 0.5 ) ) {
+			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (%.03f) < 0.5\r\n"), plt_ctl_vars.caudal );
+			PLTCB.run_rollback = false;
+			PLTCB.accion_pendiente = false;
+			PLTCB.exit_code = CAUDAL_CERO;
+			retS = false;
+			goto quit;
+		}
 	}
 
-	// Ultima condicion a evaluar.
-	if ( pv_ctl_pB_alcanzada() ) {
-		PLTCB.exit_code = POUT_REACHED;
-		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_REACHED\r\n"));
-		retS = false;
-		goto quit;
-	}
-
-	retS = true;
 quit:
 
+	if ( retS ) {
+		if ( ajuste_al_alza ) {
+			xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para aumentar pB OK.\r\n"));
+		} else {
+			xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para reducir pB OK.\r\n"));
+		}
+	} else {
+		xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para modificar pB FAIL.!!\r\n"));
+	}
+
 	return(retS);
+
 }
 //------------------------------------------------------------------------------------
-bool pv_piloto_process_output( void )
+void pv_piloto_process_output( void )
 {
 	/*
 	 * Procesa la salida de la FSM.
@@ -299,22 +373,13 @@ bool pv_piloto_process_output( void )
 
 	xprintf_PD( DF_APP, PSTR("PILOTO: process_output (%d)\r\n"), PLTCB.exit_code );
 
-	if ( PLTCB.exit_code == MAX_TRYES ) {
-		// En varios intentos no pude llegar pero ajuste lo mas posible.
-		return(true);
+	if ( PLTCB.run_rollback ) {
 
-	} else if ( PLTCB.exit_code == POUT_REACHED ) {
-		// Alcance la presion target.
-		return(true);
-
-	} else {
-		// En todos los otros casos debo hacer un rollback
 		pv_rollback_ajustar_piloto();
 		xprintf_P(PSTR("PILOTOS: ROLLBACK\r\n"));
-		return(false);
+
 	}
 
-	return(false);
 }
 //------------------------------------------------------------------------------------
 void pv_piloto_ajustar(void)
@@ -381,6 +446,17 @@ float delta_pres = 0.0;
 	//PLTCB.pwidth = 20;
 	PLTCB.pwidth = piloto_conf.pWidth;
 
+	// Ajuste de pRef por baja pA ??
+	// 2. Hay margen de regulacion pero la nueva presion a alcanzar supera el limite.
+	//    La ajusto al maximo permitido
+	if ( (  PLTCB.pA - DELTA_PA_PREF) <  PLTCB.pRef ) {
+		// CASO 2 ( pA > pRef ) y CASO 3 ( pA < pRef )
+		// La pA no es suficiente para subir todo lo requerido.
+		// La nueva pA ( PLTCB.pRef ) debe dejar una banda de ajuste con pA.
+		PLTCB.pRef = PLTCB.pA - DELTA_PA_PREF;
+		xprintf_P(PSTR("PILOTO: Recalculo (pA-pRef) < %.03f gr.!!\r\n"), DELTA_PA_PREF );
+		xprintf_P(PSTR("        Nueva pRef=%.03f\r\n"), PLTCB.pRef );
+	}
 	/*
 	 * D) Calculo los pulsos a aplicar.
 	 * El motor es de 200 pasos /rev
@@ -470,37 +546,37 @@ bool retS = false;
 	return(retS);
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_pA_es_positiva( float pA )
+bool pv_ctl_limites_pA( float pA, float pA_min, float pA_max )
 {
 
-	// Controlo que la pA sea positiva ( mayor que un minimo de 0.5k)
+	// Controlo que la pA este entre los limites.
 
 bool retS = false;
 
-	if ( pA > MIN_PA ) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check pA(%.03f) > %.03f OK\r\n"),pA, MIN_PA );
-		retS = true;
-	} else {
-		xprintf_P(PSTR("PILOTO: Ajuste ERROR: pA < %.03f.!!\r\n"), MIN_PA );
+	if ( ( pA < pA_min ) || ( pA > pA_max) ) {
+		xprintf_PD(DF_APP, PSTR("PILOTO: Check pA(%.03f) OUT limits.\r\n"),pA );
 		retS = false;
+	} else {
+		xprintf_P(PSTR("PILOTO: Check pA(%.03f) IN limits.\r\n"),pA );
+		retS = true;
 	}
 	return (retS);
 
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_pB_es_positiva( float pB)
+bool pv_ctl_limites_pB( float pB, float pB_min, float pB_max )
 {
 
-	// Controlo que la pB sea positiva ( mayor que un minimo de 0.5k)
+	// Controlo que la pB este entre los limites.
 
 bool retS = false;
 
-	if ( pB >= MIN_PB ) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check pB(%.03f) > %.03f OK\r\n"), pB, MIN_PB );
-		retS = true;
-	} else {
-		xprintf_P(PSTR("PILOTO: Ajuste ERROR: pB < %.03f.!!\r\n"), MIN_PB );
+	if ( ( pB < pB_min ) || ( pB > pB_max) ) {
+		xprintf_PD(DF_APP, PSTR("PILOTO: Check pB(%.03f) OUT limits.\r\n"),pB );
 		retS = false;
+	} else {
+		xprintf_P(PSTR("PILOTO: Check pB(%.03f) IN limits.\r\n"),pB );
+		retS = true;
 	}
 	return (retS);
 
@@ -548,89 +624,50 @@ bool pv_ctl_band_gap_suficiente( float pA, float pB, float pRef )
 	 * que la reguladora trabaje.
 	 * Tambien puede que la pRef sea mayor a lo posible pero no por esto no subirla
 	 * sino subirla todo lo posible.
-	 * Cuando debo bajar pB, no importa la banda sino solo controlar no llegar
-	 * al minimo y cerrar la valvula.
 	 * La banda entre pA y pB debe ser mayor a 300gr para que  trabaje la reguladora
+	 *
+	 * De hecho esta funcion solo la invoco cuando controlo un aumento de presion.
 	 */
 
-bool retS = false;
-bool ajuste_a_baja = false;
-
-	ajuste_a_baja = ( pRef < pB );
-
-	// Si ajusto a la baja no tengo que controlar el bandgap.
-	if ( ajuste_a_baja ) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check bandgap OK (Ajuste a baja)\r\n") );
-		retS = true;
-		goto quit;
-	}
+bool retS = true;
+float margen_subida = 0.0;
 
 	// Ajuste a la suba. Debo subir pB.
 
 	// 1. No hay margen de regulacion
 	if ( ( pA - pB ) < DELTA_PA_PB ) {
-		xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
+		xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.03f gr.!!\r\n"), DELTA_PA_PB );
 		retS = false;
 		goto quit;
 	}
 
 	// 2. Hay margen de regulacion pero la nueva presion a alcanzar supera el limite.
-	//    La ajusto al maximo permitido
-	if ( ( pA - pRef ) < DELTA_PA_PREF ) {
-		// La nueva pA ( PLTCB.pRef ) debe dejar una banda de ajuste con pA.
-		PLTCB.pRef = pA - DELTA_PA_PREF;
-		xprintf_P(PSTR("PILOTO: Recalculo (pA-pRef) < %.03f gr.!!\r\n"), DELTA_PA_PREF );
-		xprintf_P(PSTR("        Nueva pRef=%.03f\r\n"), PLTCB.pRef );
+	if ( (pA - DELTA_PA_PREF) >= pRef ) {
+		// CASO 1: Normal
 		retS = true;
+		xprintf_P(PSTR("PILOTO: Check bandgap OK\r\n") );
+		goto quit;
+
+	} else {
+		// CASO 2 ( pA > pRef ) y CASO 3 ( pA < pRef )
+		// La pA no es suficiente para subir todo lo requerido.
+		// Si tengo al menos un margen de 65gr, ajusto modificando el limite.
+		margen_subida = ( pA - DELTA_PA_PREF - pB );
+		if ( margen_subida > 0.65 ) {
+			retS = true;
+			xprintf_P(PSTR("PILOTO: Check bandgap OK: margen=%.03f gr.!!\r\n"), margen_subida );
+		} else {
+			retS = false;
+			xprintf_P(PSTR("PILOTO: Check bandgap FAIL: margen=%.03f gr.!!\r\n"), margen_subida );
+		}
 		goto quit;
 	}
 
-	// Entonces hay banda suficiente para subir.
-	xprintf_PD(DF_APP, PSTR("PILOTO: Check bandgap OK (Ajuste al alza %.03f)\r\n"), ( pA - pB ) );
 	retS = true;
 
 quit:
 
 	return(retS);
-
-}
-//------------------------------------------------------------------------------------
-bool pv_ctl_caudal( float qMin, float pA, float pB, float pRef)
-{
-	/*
-	 * Si medimos caudal, en un ajuste a la baja debemos partir de un caudal positivo.
-	 * Si el ajuste es al alza, podemos partir de un caudal 0.
-	 */
-
-bool mido_caudal = false;
-bool ajuste_a_baja = false;
-
-	mido_caudal = ( plt_ctl_vars.Q_module != NONE );
-	ajuste_a_baja = ( pRef < pB );
-
-	// No mido caudal: No puedo hacer nada.
-	if ( ! mido_caudal ) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (No mido)r\n") );
-		return(true);
-	}
-
-	// Si mido caudal.
-	if ( ajuste_a_baja ) {
-		// Debo tener caudal para poder bajar la presion
-		if ( plt_ctl_vars.caudal > qMin ) {
-			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (%.03f)\r\n"), plt_ctl_vars.caudal );
-			return(true);
-		} else {
-			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal ERROR !! (%.03f)\r\n"), plt_ctl_vars.caudal );
-			return(false);
-		}
-	} else {
-		// Ajuste al alza. Puedo partir de Q=0
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (Ajuste al alza)\r\n") );
-		return(true);
-	}
-
-	return(true);
 
 }
 /*
@@ -1002,110 +1039,99 @@ void plt_consumer_handler(void)
 	 * Veo si estan las pre-condiciones para intentar ajustar.
 	 * Si no estan salgo y queda el ajuste pendiente.
 	 */
-	if ( ! pv_piloto_pre_conditions() ) {
+	if ( ! pv_piloto_conditions4start() ) {
 		return;
 	}
 
 	// Estan las condiciones para intentar ajustar.
-	if ( FSM_piloto_ajustar_presion() ) {
-		/*
-		 * Si pude ajustar la presion, la saco de la FIFO.
-		 * Si no lo dejo y entonces queda pendiente.
-		 */
-		rbf_Pop(&pFIFO, &PLTCB.pRef );
-	}
+	FSM_piloto_ajustar_presion();
 
 }
 //------------------------------------------------------------------------------------
-bool pv_piloto_pre_conditions( void )
+bool pv_piloto_conditions4start( void )
 {
 	/*
 	 * Evalua si existen las condiciones previas necesarias para iniciar el ajuste.
-	 * Las precondiciones no son las mismas para ajsutar a la baja que a la alta.
+	 * Las precondiciones no son las mismas para ajustar a la baja que a la alta.
+	 *
+	 * Condiciones comunes:
+	 * 1- La presion pA debe ser positiva
+	 * 2- Si voy a subirla, la presion pB puede ser que sea 0. pero si debe ser positiva
+	 * 3- pA debe ser mayor que pB
+	 *
+	 * Al Alza:
+	 * 4- No importa que haya o no margen para subir pB. Esto se calcula al ajustar.
+	 * 5- El caudal no importa ya que puede estar la valvula cerrada con caudal 0.
+	 *
+	 * A la Baja:
+	 *
 	 */
 
-bool retS = false;
+bool retS = true;
+bool ajuste_al_alza = false;
 
-	xprintf_P(PSTR("PILOTO: PREconditions\r\n"));
+	xprintf_P(PSTR("PILOTO: PRE conditions\r\n"));
 
 	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), plt_ctl_vars.pA );
 	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), plt_ctl_vars.pB );
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
 
 	if ( PLTCB.pRef > plt_ctl_vars.pB ) {
-		// Ajuste al alza
-		retS = pv_piloto_pre_conditions_4increase();
+		ajuste_al_alza = true;
+	}
+
+	// Condiciones comunes (alza, baja)
+	if ( ! pv_ctl_limites_pA( plt_ctl_vars.pA, PA_MIN, PA_MAX )) {
+		retS = false;
+		goto quit;
+	}
+
+	if ( ! pv_ctl_limites_pB( plt_ctl_vars.pB, PB_MIN, PB_MAX ) ) {
+		retS = false;
+		goto quit;
+	}
+
+	if ( ! pv_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
+		retS = false;
+		goto quit;
+	}
+
+	//-------------------------------------------------------------------------------
+	// AJUSTE AL ALZA
+	if ( ajuste_al_alza ) {
+		// Band gap:
+		// 1. No hay margen de regulacion
+		if ( ! pv_ctl_band_gap_suficiente(plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
+			xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
+			retS = false;
+			goto quit;
+		}
+	}
+
+	//-------------------------------------------------------------------------------
+	// AJUSTE A LA BAJA:
+	if ( ! ajuste_al_alza ) {
+		// -Si mido caudal, este debe ser positivo.
+		if ( mido_caudal && ( plt_ctl_vars.caudal < 1.0 ) ) {
+			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal ERROR (%.03f) < 1.0\r\n"), plt_ctl_vars.caudal );
+			retS = false;
+			goto quit;
+		}
+	}
+
+quit:
+
+	if ( retS ) {
+		if ( ajuste_al_alza ) {
+			xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones para aumentar pB OK.\r\n"));
+		} else {
+			xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones para reducir pB OK.\r\n"));
+		}
 	} else {
-		// Ajuste a la baja
-		retS = pv_piloto_pre_conditions_4reduce();
+		xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones para modificar pB FAIL.!!\r\n"));
 	}
 
-	return( retS );
-}
-//------------------------------------------------------------------------------------
-bool pv_piloto_pre_conditions_4increase( void )
-{
-	/*
-	 * Evalua si existen las condiciones previas necesarias para iniciar el ajuste a la alta
-	 * 1- La presion pA debe ser positiva
-	 * 2- Si voy a subirla, la presion pB puede ser que sea 0. pero si debe ser positiva
-	 * 3- pA debe ser mayor que pB
-	 * 4- No importa que haya o no margen para subir pB. Esto se calcula al ajustar.
-	 * 5- El caudal no importa ya que puede estar la valvula cerrada con caudal 0.
-	 */
-
-	// Vemos si estan las condiciones para intentar el ajuste.
-	if ( ! pv_ctl_pA_es_positiva(plt_ctl_vars.pA) ) {
-		return(false);
-	}
-
-	if ( ! pv_ctl_pB_es_positiva(plt_ctl_vars.pB ) ) {
-		return(false);
-	}
-
-	if ( ! pv_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
-		return(false);
-	}
-
-	// Estan las condiciones.
-	// Guardo la presion en la cola FIFO.
-	xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para aumentar pB OK.\r\n"));
-	return(true);
-
-}
-//------------------------------------------------------------------------------------
-bool pv_piloto_pre_conditions_4reduce( void )
-{
-	/*
-	 * Evalua si existen las condiciones previas necesarias para iniciar el ajuste a la baja
-	 * 1- La presion pA debe ser positiva
-	 * 2- Si voy a bajarla, la presion pB puede ser positiva
-	 * 3- pA debe ser mayor que pB
-	 * 5- El caudal no puede ser 0.
-	 */
-
-	// Vemos si estan las condiciones para intentar el ajuste.
-	if ( ! pv_ctl_pA_es_positiva(plt_ctl_vars.pA) ) {
-		return(false);
-	}
-
-	if ( ! pv_ctl_pB_es_positiva(plt_ctl_vars.pB ) ) {
-		return(false);
-	}
-
-	if ( ! pv_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
-		return(false);
-	}
-
-	if ( ! pv_ctl_caudal( 1.0, plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
-		return(false);
-	}
-
-	// Estan las condiciones.
-	// Guardo la presion en la cola FIFO.
-	xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para reducir pB OK.\r\n"));
-	return(true);
-
+	return(retS);
 }
 //------------------------------------------------------------------------------------
 bool pv_piloto_check_inputs_conf(void)
