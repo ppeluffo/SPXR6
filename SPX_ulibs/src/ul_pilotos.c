@@ -192,7 +192,12 @@ uint8_t state = PLT_READ_INPUTS;
 				rbf_Pop(&pFIFO, &PLTCB.pRef );
 			}
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state EXIT\r\n"));
-			xprintf_P(PSTR("PILOTO: Fin de Ajuste\r\n"));
+			if (PLTCB.accion_pendiente ) {
+				xprintf_P(PSTR("PILOTO: Fin de Ajuste (pendiente)\r\n"));
+			} else {
+				xprintf_P(PSTR("PILOTO: Fin de Ajuste\r\n"));
+			}
+			return;
 			break;
 		}
 	}
@@ -279,7 +284,7 @@ bool ajuste_al_alza = false;
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_ERR\r\n"));
 		PLTCB.exit_code = PA_ERR;
 		PLTCB.run_rollback = true;
-		PLTCB.accion_pendiente = false;
+		PLTCB.accion_pendiente = true;
 		retS = false;
 		goto quit;
 	}
@@ -289,7 +294,7 @@ bool ajuste_al_alza = false;
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PB_ERR\r\n"));
 		PLTCB.exit_code = PB_ERR;
 		PLTCB.run_rollback = true;
-		PLTCB.accion_pendiente = false;
+		PLTCB.accion_pendiente = true;
 		retS = false;
 		goto quit;
 	}
@@ -299,7 +304,7 @@ bool ajuste_al_alza = false;
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_LESS_PB\r\n"));
 		PLTCB.exit_code = PA_LESS_PB;
 		PLTCB.run_rollback = true;
-		PLTCB.accion_pendiente = false;
+		PLTCB.accion_pendiente = true;
 		retS = false;
 		goto quit;
 	}
@@ -308,7 +313,7 @@ bool ajuste_al_alza = false;
 	if ( ! pv_dyncontrol_check() ) {
 		PLTCB.exit_code = DYNC_ERR;
 		PLTCB.run_rollback = true;
-		PLTCB.accion_pendiente = false;
+		PLTCB.accion_pendiente = true;
 		retS = false;
 		goto quit;
 	}
@@ -334,7 +339,7 @@ bool ajuste_al_alza = false;
 		if ( !mido_caudal && ( plt_ctl_vars.caudal < 0.5 ) ) {
 			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (%.03f) < 0.5\r\n"), plt_ctl_vars.caudal );
 			PLTCB.run_rollback = false;
-			PLTCB.accion_pendiente = false;
+			PLTCB.accion_pendiente = true;
 			PLTCB.exit_code = CAUDAL_CERO;
 			retS = false;
 			goto quit;
@@ -350,7 +355,7 @@ quit:
 			xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para reducir pB OK.\r\n"));
 		}
 	} else {
-		xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para modificar pB FAIL.!!\r\n"));
+		xprintf_PD( DF_APP, PSTR("PILOTO: No hay condiciones para modificar pB.!!\r\n"));
 	}
 
 	return(retS);
@@ -729,6 +734,9 @@ void pv_rollback_ajustar_piloto( void )
 	}
 	xprintf_P(PSTR("-----------------------------\r\n"));
 
+	if ( PLTCB.pulsos_a_aplicar == 0 ) {
+		return;
+	}
 
 	// Activo el driver
 	xprintf_P(PSTR("STEPPER: driver pwr on\r\n"));
@@ -879,7 +887,9 @@ int8_t state;
 
 		case ST_AWAIT:
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_AWAIT\r\n"));
-			vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
+			//vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
+			vTaskDelay( ( TickType_t)( (systemVars.timerPoll) * 1000 / portTICK_RATE_MS ) );
+
 			state = ST_PRODUCER;
 			break;
 
@@ -958,6 +968,8 @@ int8_t slot = -1;
 			xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
 			xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
 			// Guardo la presion en la cola FIFO.
+			// Un nuevo slot borra todo lo anterior.
+			rbf_Flush(&pFIFO);
 			rbf_Poke(&pFIFO, &piloto_conf.pltSlots[slot_actual].presion );
 		}
 	}
@@ -1035,6 +1047,7 @@ void plt_consumer_handler(void)
 
 	// Leo sin sacar.
 	rbf_PopRead(&pFIFO, &PLTCB.pRef );
+	PLTCB.pError = PERROR;
 	/*
 	 * Veo si estan las pre-condiciones para intentar ajustar.
 	 * Si no estan salgo y queda el ajuste pendiente.
@@ -1096,13 +1109,19 @@ bool ajuste_al_alza = false;
 		goto quit;
 	}
 
+	// Presion en la banda. No hqy que ajustar.
+	if ( fabs(plt_ctl_vars.pB - PLTCB.pRef) < PLTCB.pError ) {
+		retS = false;
+		goto quit;
+	}
+
 	//-------------------------------------------------------------------------------
 	// AJUSTE AL ALZA
 	if ( ajuste_al_alza ) {
 		// Band gap:
 		// 1. No hay margen de regulacion
 		if ( ! pv_ctl_band_gap_suficiente(plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
-			xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
+			//xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
 			retS = false;
 			goto quit;
 		}
@@ -1128,7 +1147,7 @@ quit:
 			xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones para reducir pB OK.\r\n"));
 		}
 	} else {
-		xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones para modificar pB FAIL.!!\r\n"));
+		xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones. No se modifica pB.!!\r\n"));
 	}
 
 	return(retS);
