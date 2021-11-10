@@ -59,12 +59,13 @@ typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, 
 #define PERROR					0.065
 #define INTERVALO_PB_SECS		5
 #define INTERVALO_TRYES_SECS	15
-#define PA_MIN					0.5
+#define PA_MIN					1.0
 #define PA_MAX					8.0
-#define PB_MIN					0.0
+#define PB_MIN					0.8
 #define PB_MAX					8.0
 #define DELTA_PA_PB				0.3
-#define DELTA_PA_PREF			0.3
+#define PGAP					0.3
+
 
 struct {
 	int16_t pulsos_calculados;

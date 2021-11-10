@@ -96,7 +96,7 @@ bool pv_ctl_max_reintentos_reached(void);
 bool pv_ctl_limites_pA( float pA, float pA_min, float pA_max );
 bool pv_ctl_limites_pB( float pB, float pB_min, float pB_max );
 bool pv_ctl_pA_mayor_pB( float pA, float pB);
-bool pv_ctl_pB_alcanzada(void);
+bool pv_ctl_pB_alcanzada(float pB );
 bool pv_ctl_band_gap_suficiente(float pA, float pB, float pRef );
 
 void pv_rollback_init(void);
@@ -105,7 +105,7 @@ void pv_rollback_ajustar_piloto( void );
 
 void pv_dyncontrol_init(void);
 void pv_dyncontrol_update(void);
-bool pv_dyncontrol_check(void);
+bool pv_dyncontrol_pass(void);
 
 #define  mido_caudal ( plt_ctl_vars.Q_module != NONE )
 
@@ -252,8 +252,16 @@ bool pv_piloto_conditions4adjust( void )
 bool retS = true;
 bool ajuste_al_alza = false;
 
+	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
+	xprintf_P(PSTR("PILOTO: ConditionsXadjust start\r\n"));
+
+
 	if ( PLTCB.pRef > PLTCB.pB ) {
 		ajuste_al_alza = true;
+		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste al alza.\r\n") );
+	} else {
+		ajuste_al_alza = false;
+		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste a la baja.\r\n") );
 	}
 
 	PLTCB.run_rollback = false;
@@ -270,7 +278,7 @@ bool ajuste_al_alza = false;
 	}
 
 	// Alcance la presion buscada. Salgo.
-	if ( pv_ctl_pB_alcanzada() ) {
+	if ( pv_ctl_pB_alcanzada( PLTCB.pB ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_REACHED\r\n"));
 		PLTCB.exit_code = POUT_REACHED;
 		PLTCB.run_rollback = false;
@@ -310,7 +318,7 @@ bool ajuste_al_alza = false;
 	}
 
 	// Si ya movi el motor, debe haber cambiado la presion con 1 revolucion completa.
-	if ( ! pv_dyncontrol_check() ) {
+	if ( ! pv_dyncontrol_pass() ) {
 		PLTCB.exit_code = DYNC_ERR;
 		PLTCB.run_rollback = true;
 		PLTCB.accion_pendiente = true;
@@ -358,6 +366,8 @@ quit:
 		xprintf_PD( DF_APP, PSTR("PILOTO: No hay condiciones para modificar pB.!!\r\n"));
 	}
 
+	xprintf_P(PSTR("PILOTO: ConditionsXadjust start\r\n"));
+	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
 	return(retS);
 
 }
@@ -454,12 +464,12 @@ float delta_pres = 0.0;
 	// Ajuste de pRef por baja pA ??
 	// 2. Hay margen de regulacion pero la nueva presion a alcanzar supera el limite.
 	//    La ajusto al maximo permitido
-	if ( (  PLTCB.pA - DELTA_PA_PREF) <  PLTCB.pRef ) {
+	if ( (  PLTCB.pA - PGAP) <  PLTCB.pRef ) {
 		// CASO 2 ( pA > pRef ) y CASO 3 ( pA < pRef )
 		// La pA no es suficiente para subir todo lo requerido.
 		// La nueva pA ( PLTCB.pRef ) debe dejar una banda de ajuste con pA.
-		PLTCB.pRef = PLTCB.pA - DELTA_PA_PREF;
-		xprintf_P(PSTR("PILOTO: Recalculo (pA-pRef) < %.03f gr.!!\r\n"), DELTA_PA_PREF );
+		PLTCB.pRef = PLTCB.pA - PGAP;
+		xprintf_P(PSTR("PILOTO: Recalculo (pA-pRef) < %.03f gr.!!\r\n"), PGAP );
 		xprintf_P(PSTR("        Nueva pRef=%.03f\r\n"), PLTCB.pRef );
 	}
 	/*
@@ -605,14 +615,14 @@ bool retS = false;
 	return(retS);
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_pB_alcanzada(void)
+bool pv_ctl_pB_alcanzada( float pB )
 {
 
 	// Presion alcanzada: Ultima condicion a evaluar
 
 bool retS = false;
 
-	if ( fabs(PLTCB.pB - PLTCB.pRef) < PLTCB.pError ) {
+	if ( fabs( pB - PLTCB.pRef) < PLTCB.pError ) {
 		xprintf_P(PSTR("PILOTO: Presion alcanzada\r\n"));
 		retS = true;
 	} else {
@@ -639,26 +649,29 @@ float margen_subida = 0.0;
 
 	// Ajuste a la suba. Debo subir pB.
 
-	// 1. No hay margen de regulacion
-	if ( ( pA - pB ) < DELTA_PA_PB ) {
-		xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.03f gr.!!\r\n"), DELTA_PA_PB );
+	// No hay margen de regulacion
+	if ( ( pA - pB ) < PGAP ) {
+		xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.03f gr.!!\r\n"), PGAP );
 		retS = false;
 		goto quit;
 	}
 
-	// 2. Hay margen de regulacion pero la nueva presion a alcanzar supera el limite.
-	if ( (pA - DELTA_PA_PREF) >= pRef ) {
-		// CASO 1: Normal
+	// Hay margen de regulacion
+	// Caso Normal.
+	if ( (pA - PGAP) >= pRef ) {
 		retS = true;
 		xprintf_P(PSTR("PILOTO: Check bandgap OK\r\n") );
 		goto quit;
 
 	} else {
+
+		// Hay margen pero la nueva presion a alcanzar supera el limite.
 		// CASO 2 ( pA > pRef ) y CASO 3 ( pA < pRef )
 		// La pA no es suficiente para subir todo lo requerido.
 		// Si tengo al menos un margen de 65gr, ajusto modificando el limite.
-		margen_subida = ( pA - DELTA_PA_PREF - pB );
-		if ( margen_subida > 0.65 ) {
+
+		margen_subida = ( pA - PGAP - pB );
+		if ( margen_subida > 0.065 ) {
 			retS = true;
 			xprintf_P(PSTR("PILOTO: Check bandgap OK: margen=%.03f gr.!!\r\n"), margen_subida );
 		} else {
@@ -674,153 +687,6 @@ quit:
 
 	return(retS);
 
-}
-/*
- *------------------------------------------------------------------------------------
- * ROLLBACK
- *------------------------------------------------------------------------------------
- */
-void pv_rollback_init(void)
-{
-	// Cuando arranca un ciclo de mover el piloto, inicializo
-	PLTCB.pulsos_rollback = 0;
-}
-/*------------------------------------------------------------------------------------*/
-void pv_rollback_update(void)
-{
-	/*
-	 *  Cada vez que voy a mover el piloto, actualizo el rollback
-	 *  Los pulsos de rollback tienen sentido contrario.
-	 */
-
-	if ( PLTCB.dir == STEPPER_FWD) {
-		PLTCB.pulsos_rollback -= PLTCB.pulse_counts;
-	} else {
-		PLTCB.pulsos_rollback += PLTCB.pulse_counts;
-	}
-}
-/*------------------------------------------------------------------------------------*/
-void pv_rollback_ajustar_piloto( void )
-{
-	/*
-	 * Aplico los pulsos de rollback para llevar el piloto a la posicion inicial
-	 * del ciclo.
-	 * No controlo condiciones ni presiones.
-	 *
-	 */
-
-	xprintf_P( PSTR("PILOTO: Rollback Start\r\n"));
-	u_wdg_kick( plt_app_wdg,  240 );
-
-	if ( PLTCB.pulsos_rollback > 0 ) {
-		PLTCB.dir = STEPPER_FWD;
-	} else {
-		PLTCB.dir = STEPPER_REV;
-	}
-
-	PLTCB.pulsos_a_aplicar = PLTCB.pulsos_rollback;
-	PLTCB.pwidth = piloto_conf.pWidth;
-	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
-
-	// Print datos.
-	xprintf_P(PSTR("-----------------------------\r\n"));
-	xprintf_P(PSTR("PILOTO: ROLLBACK.\r\n"));
-	xprintf_P(PSTR("PILOTO: pulses apply=%d\r\n"), PLTCB.pulsos_a_aplicar );
-	xprintf_P(PSTR("PILOTO: pwidth=%d\r\n"), PLTCB.pwidth );
-	if ( PLTCB.dir == STEPPER_FWD ) {
-		xprintf_P(PSTR("PILOTO: dir=Forward\r\n"));
-	} else {
-		xprintf_P(PSTR("PILOTO: dir=Reverse\r\n"));
-	}
-	xprintf_P(PSTR("-----------------------------\r\n"));
-
-	if ( PLTCB.pulsos_a_aplicar == 0 ) {
-		return;
-	}
-
-	// Activo el driver
-	xprintf_P(PSTR("STEPPER: driver pwr on\r\n"));
-	stepper_pwr_on();
-	vTaskDelay( ( TickType_t)( 20000 / portTICK_RATE_MS ) );
-
-	// Arranca el timer que por callbacks va a generar los pulsos
-	PLTCB.motor_running = true;
-	xprintf_P(PSTR("STEPPER: driver pulses start..\r\n"));
-	stepper_awake();
-	stepper_start();
-
-	xTimerChangePeriod(plt_pulse_xTimer, ( PLTCB.pwidth * 2) / portTICK_PERIOD_MS , 10 );
-	xTimerStart( plt_pulse_xTimer, 10 );
-
-	// Espero que termine de mover el motor. EL callback pone motor_running en false. !!
-	while ( PLTCB.motor_running ) {
-		vTaskDelay( ( TickType_t) (1000 / portTICK_RATE_MS ) );
-		// El rollback puede demorar mucho por lo que debo controlar el wdg.
-		u_wdg_kick( plt_app_wdg,  240 );
-	}
-
-}
-/*
- *------------------------------------------------------------------------------------
- * DYNCONTROL
- *------------------------------------------------------------------------------------
- */
-void pv_dyncontrol_init(void)
-{
-	// Inicializa las variables del control dinamico
-
-	PLTCB.dync_pB0 = PLTCB.pB;
-	PLTCB.dync_pulsos = 0;
-	xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control_init\r\n"));
-}
-/*------------------------------------------------------------------------------------*/
-void pv_dyncontrol_update(void)
-{
-
-	xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control_update\r\n"));
-	if ( PLTCB.dir == STEPPER_FWD) {
-		PLTCB.dync_pulsos += PLTCB.pulse_counts;
-	} else {
-		PLTCB.dync_pulsos -= PLTCB.pulse_counts;
-	}
-
-}
-/*------------------------------------------------------------------------------------*/
-bool pv_dyncontrol_check(void)
-{
-	/*
-	 *  Movi el piloto algo mas de 1 vuelta y la pB no se modifico en al menos 200 gr. ( Rollback )
-	 *  El piloto se esta moviendo pero la pB no esta ajustando.
-	 *  Si di mas de una revolucion, la presion debe haber cambiado al menos 200grs.
-	 *  Si cambio, renicio el control dinamico al nuevo punto
-	 */
-
-	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control:\r\n"));
-	xprintf_PD( DF_APP, PSTR("PILOTO:   pxrev=%d\r\n"), piloto_conf.pulsesXrev );
-	xprintf_PD( DF_APP, PSTR("PILOTO:   dync_pulsos=%d\r\n"), PLTCB.dync_pulsos );
-	xprintf_PD( DF_APP, PSTR("PILOTO:   pB0=%.03f\r\n"), PLTCB.dync_pB0 );
-	xprintf_PD( DF_APP, PSTR("PILOTO:   pB=%.03f\r\n"), PLTCB.pB );
-
-	// Si di al menos una vuelta completa....
-	if ( fabs(PLTCB.dync_pulsos) >= piloto_conf.pulsesXrev ) {
-
-		xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control 1xrev.\r\n"));
-
-		if ( fabs( PLTCB.pB - PLTCB.dync_pB0 ) < 0.2 ) {
-			// Giro al menos 1 vuelta y no cambio ni 200 grs. ERROR.
-			xprintf_P( PSTR("PILOTO: dyn_control PresERROR !!.\r\n"));
-			return(false);
-
-		} else {
-			// Giro y cambio la presion. Está funcionando.
-			// Actualizo los parametros del dyn_control.
-			pv_dyncontrol_init();
-		}
-	}
-
-	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control OK.\r\n"));
-
-	return(true);
 }
 /*
  * -----------------------------------------------------------------------------------
@@ -915,10 +781,12 @@ void plt_producer_online_handler( float presion)
 	 *
 	 */
 
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_online start.\r\n"));
 	xprintf_P(PSTR("PILOTO: Set presion from Server.\r\n"));
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), presion);
 	// Guardo la presion en la cola FIFO.
 	rbf_Poke(&pFIFO, &presion );
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_online end.\r\n"));
 
 }
 //------------------------------------------------------------------------------------
@@ -959,7 +827,9 @@ void plt_producer_slot_handler(void)
 static int8_t slot_actual = -1;
 int8_t slot = -1;
 
-	xprintf_PD( DF_APP, PSTR("\r\nPILOTO: SLOTS_A: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_slot start.\r\n"));
+
+	xprintf_PD( DF_APP, PSTR("PILOTO: SLOTS_A: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
 	if ( pv_piloto_leer_slot_actual( &slot ) ) {
 		xprintf_PD( DF_APP, PSTR("\r\nPILOTO: SLOTS_B: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
 		if ( slot_actual != slot ) {
@@ -973,62 +843,7 @@ int8_t slot = -1;
 			rbf_Poke(&pFIFO, &piloto_conf.pltSlots[slot_actual].presion );
 		}
 	}
-
-}
-//------------------------------------------------------------------------------------
-uint8_t piloto_hash(void)
-{
-	// PLT;PXR:5000;PWIDTH:20;SLOT0:0630,1.20;SLOT1:0745,2.40;SLOT2:1230,3.60;SLOT3:2245,4.80;SLOT4:2345,5.00;
-
-uint8_t hash = 0;
-char *p;
-uint8_t slot = 0;
-uint8_t i = 0;
-uint8_t j = 0;
-int16_t free_size = sizeof(hash_buffer);
-
-	// Vacio el buffer temporal
-	memset(hash_buffer,'\0', sizeof(hash_buffer));
-
-	i += snprintf_P( &hash_buffer[i], free_size, PSTR("PLT;PXR:%d;PWIDTH:%d;"), piloto_conf.pulsesXrev, piloto_conf.pWidth);
-	//xprintf_P(PSTR("HASH: [%s]\r\n"), hash_buffer);
-
-	free_size = (  sizeof(hash_buffer) - i );
-	if ( free_size < 0 ) goto exit_error;
-	p = hash_buffer;
-	while (*p != '\0') {
-		hash = u_hash(hash, *p++);
-	}
-
-	// SLOTS
-	for ( slot = 0; slot < MAX_PILOTO_PSLOTS; slot++ ) {
-		// Vacio el buffer temoral
-		memset(hash_buffer,'\0', sizeof(hash_buffer));
-		free_size = sizeof(hash_buffer);
-		// Copio sobe el buffer una vista ascii ( imprimible ) de c/registro.
-		j = snprintf_P( hash_buffer, free_size, PSTR("SLOT%d:%02d%02d,%0.2f;"),
-				slot,
-				piloto_conf.pltSlots[slot].pTime.hour,
-				piloto_conf.pltSlots[slot].pTime.min,
-				piloto_conf.pltSlots[slot].presion );
-		//xprintf_P(PSTR("HASH: [%s]\r\n"), hash_buffer);
-		free_size = (  sizeof(hash_buffer) - j );
-		if ( free_size < 0 ) goto exit_error;
-
-		// Apunto al comienzo para recorrer el buffer
-		p = hash_buffer;
-		while (*p != '\0') {
-			hash = u_hash(hash, *p++);
-		}
-	}
-
-	return(hash);
-
-exit_error:
-
-	xprintf_P( PSTR("PILOTOS: Hash ERROR !!!\r\n\0"));
-	return(0x00);
-
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_slot end.\r\n"));
 }
 //------------------------------------------------------------------------------------
 void plt_consumer_handler(void)
@@ -1040,9 +855,11 @@ void plt_consumer_handler(void)
 	 * con esta accion pendiente.
 	 */
 
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer start.\r\n"));
+
 	if ( rbf_GetCount(&pFIFO) == 0 ) {
 		// No hay datos en la FIFO
-		return;
+		goto quit;
 	}
 
 	// Leo sin sacar.
@@ -1053,12 +870,15 @@ void plt_consumer_handler(void)
 	 * Si no estan salgo y queda el ajuste pendiente.
 	 */
 	if ( ! pv_piloto_conditions4start() ) {
-		return;
+		goto quit;
 	}
 
 	// Estan las condiciones para intentar ajustar.
 	FSM_piloto_ajustar_presion();
 
+quit:
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer end.\r\n"));
 }
 //------------------------------------------------------------------------------------
 bool pv_piloto_conditions4start( void )
@@ -1083,14 +903,19 @@ bool pv_piloto_conditions4start( void )
 bool retS = true;
 bool ajuste_al_alza = false;
 
-	xprintf_P(PSTR("PILOTO: PRE conditions\r\n"));
+	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
+	xprintf_P(PSTR("PILOTO: PRE conditions start\r\n"));
 
 	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), plt_ctl_vars.pA );
 	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), plt_ctl_vars.pB );
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
 
 	if ( PLTCB.pRef > plt_ctl_vars.pB ) {
+		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste al alza.\r\n") );
 		ajuste_al_alza = true;
+	} else {
+		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste a la baja.\r\n") );
+		ajuste_al_alza = false;
 	}
 
 	// Condiciones comunes (alza, baja)
@@ -1110,7 +935,8 @@ bool ajuste_al_alza = false;
 	}
 
 	// Presion en la banda. No hqy que ajustar.
-	if ( fabs(plt_ctl_vars.pB - PLTCB.pRef) < PLTCB.pError ) {
+	if ( pv_ctl_pB_alcanzada( plt_ctl_vars.pB )) {
+		xprintf_PD(DF_APP, PSTR("PILOTO: Presion en banda.\r\n") );
 		retS = false;
 		goto quit;
 	}
@@ -1150,6 +976,8 @@ quit:
 		xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones. No se modifica pB.!!\r\n"));
 	}
 
+	xprintf_P(PSTR("PILOTO: PRE conditions end.\r\n"));
+	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
 	return(retS);
 }
 //------------------------------------------------------------------------------------
@@ -1191,7 +1019,6 @@ char lname[PARAMNAME_LENGTH];
 	plt_ctl_vars.pA_channel = PLTCB.pA_channel;
 	plt_ctl_vars.pB_channel = PLTCB.pB_channel;
 
-	// ------------------------------------------------------------------------------------------
 	// CAUDAL
 	plt_ctl_vars.Q_module = NONE;
 	plt_ctl_vars.Q_channel = -1;
@@ -1325,6 +1152,214 @@ uint16_t slot_hhmm;
 	}
 	return(true);
 
+}
+//-------------------------------------------------------------------------------------
+uint8_t piloto_hash(void)
+{
+	// PLT;PXR:5000;PWIDTH:20;SLOT0:0630,1.20;SLOT1:0745,2.40;SLOT2:1230,3.60;SLOT3:2245,4.80;SLOT4:2345,5.00;
+
+uint8_t hash = 0;
+char *p;
+uint8_t slot = 0;
+uint8_t i = 0;
+uint8_t j = 0;
+int16_t free_size = sizeof(hash_buffer);
+
+	// Vacio el buffer temporal
+	memset(hash_buffer,'\0', sizeof(hash_buffer));
+
+	i += snprintf_P( &hash_buffer[i], free_size, PSTR("PLT;PXR:%d;PWIDTH:%d;"), piloto_conf.pulsesXrev, piloto_conf.pWidth);
+	//xprintf_P(PSTR("HASH: [%s]\r\n"), hash_buffer);
+
+	free_size = (  sizeof(hash_buffer) - i );
+	if ( free_size < 0 ) goto exit_error;
+	p = hash_buffer;
+	while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+
+	// SLOTS
+	for ( slot = 0; slot < MAX_PILOTO_PSLOTS; slot++ ) {
+		// Vacio el buffer temoral
+		memset(hash_buffer,'\0', sizeof(hash_buffer));
+		free_size = sizeof(hash_buffer);
+		// Copio sobe el buffer una vista ascii ( imprimible ) de c/registro.
+		j = snprintf_P( hash_buffer, free_size, PSTR("SLOT%d:%02d%02d,%0.2f;"),
+				slot,
+				piloto_conf.pltSlots[slot].pTime.hour,
+				piloto_conf.pltSlots[slot].pTime.min,
+				piloto_conf.pltSlots[slot].presion );
+		//xprintf_P(PSTR("HASH: [%s]\r\n"), hash_buffer);
+		free_size = (  sizeof(hash_buffer) - j );
+		if ( free_size < 0 ) goto exit_error;
+
+		// Apunto al comienzo para recorrer el buffer
+		p = hash_buffer;
+		while (*p != '\0') {
+			hash = u_hash(hash, *p++);
+		}
+	}
+
+	return(hash);
+
+exit_error:
+
+	xprintf_P( PSTR("PILOTOS: Hash ERROR !!!\r\n\0"));
+	return(0x00);
+
+}
+//------------------------------------------------------------------------------------
+/*
+ *------------------------------------------------------------------------------------
+ * ROLLBACK
+ * Se lleva un control de los pulsos aplicados en el ciclo para que si es necesario
+ * volver atrás, al punto inicial del arranque
+ *------------------------------------------------------------------------------------
+ */
+void pv_rollback_init(void)
+{
+	// Cuando arranca un ciclo de mover el piloto, inicializo
+	PLTCB.pulsos_rollback = 0;
+}
+/*------------------------------------------------------------------------------------*/
+void pv_rollback_update(void)
+{
+	/*
+	 *  Cada vez que voy a mover el piloto, actualizo el rollback
+	 *  Los pulsos de rollback tienen sentido contrario.
+	 */
+
+	if ( PLTCB.dir == STEPPER_FWD) {
+		PLTCB.pulsos_rollback -= PLTCB.pulse_counts;
+	} else {
+		PLTCB.pulsos_rollback += PLTCB.pulse_counts;
+	}
+}
+/*------------------------------------------------------------------------------------*/
+void pv_rollback_ajustar_piloto( void )
+{
+	/*
+	 * Aplico los pulsos de rollback para llevar el piloto a la posicion inicial
+	 * del ciclo.
+	 * No controlo condiciones ni presiones.
+	 *
+	 */
+
+	xprintf_P( PSTR("PILOTO: Rollback Start\r\n"));
+	u_wdg_kick( plt_app_wdg,  240 );
+
+	if ( PLTCB.pulsos_rollback > 0 ) {
+		PLTCB.dir = STEPPER_FWD;
+	} else {
+		PLTCB.dir = STEPPER_REV;
+	}
+
+	PLTCB.pulsos_a_aplicar = PLTCB.pulsos_rollback;
+	PLTCB.pwidth = piloto_conf.pWidth;
+	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
+
+	// Print datos.
+	xprintf_P(PSTR("-----------------------------\r\n"));
+	xprintf_P(PSTR("PILOTO: ROLLBACK.\r\n"));
+	xprintf_P(PSTR("PILOTO: pulses apply=%d\r\n"), PLTCB.pulsos_a_aplicar );
+	xprintf_P(PSTR("PILOTO: pwidth=%d\r\n"), PLTCB.pwidth );
+	if ( PLTCB.dir == STEPPER_FWD ) {
+		xprintf_P(PSTR("PILOTO: dir=Forward\r\n"));
+	} else {
+		xprintf_P(PSTR("PILOTO: dir=Reverse\r\n"));
+	}
+	xprintf_P(PSTR("-----------------------------\r\n"));
+
+	if ( PLTCB.pulsos_a_aplicar == 0 ) {
+		return;
+	}
+
+	// Activo el driver
+	xprintf_P(PSTR("STEPPER: driver pwr on\r\n"));
+	stepper_pwr_on();
+	vTaskDelay( ( TickType_t)( 20000 / portTICK_RATE_MS ) );
+
+	// Arranca el timer que por callbacks va a generar los pulsos
+	PLTCB.motor_running = true;
+	xprintf_P(PSTR("STEPPER: driver pulses start..\r\n"));
+	stepper_awake();
+	stepper_start();
+
+	xTimerChangePeriod(plt_pulse_xTimer, ( PLTCB.pwidth * 2) / portTICK_PERIOD_MS , 10 );
+	xTimerStart( plt_pulse_xTimer, 10 );
+
+	// Espero que termine de mover el motor. EL callback pone motor_running en false. !!
+	while ( PLTCB.motor_running ) {
+		vTaskDelay( ( TickType_t) (1000 / portTICK_RATE_MS ) );
+		// El rollback puede demorar mucho por lo que debo controlar el wdg.
+		u_wdg_kick( plt_app_wdg,  240 );
+	}
+
+}
+/*
+ *------------------------------------------------------------------------------------
+ * DYNCONTROL
+ * Se controlan los pulsos ( con signo ) que se aplican.
+ * Si se dió una revolución y la presion no vario, se considera que algo esta mal
+ * y se abora la operacion.
+ *------------------------------------------------------------------------------------
+ */
+void pv_dyncontrol_init(void)
+{
+	// Inicializa las variables del control dinamico
+
+	PLTCB.dync_pB0 = PLTCB.pB;
+	PLTCB.dync_pulsos = 0;
+	xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control_init\r\n"));
+}
+/*------------------------------------------------------------------------------------*/
+void pv_dyncontrol_update(void)
+{
+
+	xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control_update\r\n"));
+	if ( PLTCB.dir == STEPPER_FWD) {
+		PLTCB.dync_pulsos += PLTCB.pulse_counts;
+	} else {
+		PLTCB.dync_pulsos -= PLTCB.pulse_counts;
+	}
+
+}
+/*------------------------------------------------------------------------------------*/
+bool pv_dyncontrol_pass(void)
+{
+	/*
+	 *  Movi el piloto algo mas de 1 vuelta y la pB no se modifico en al menos 200 gr. ( Rollback )
+	 *  El piloto se esta moviendo pero la pB no esta ajustando.
+	 *  Si di mas de una revolucion, la presion debe haber cambiado al menos 200grs.
+	 *  Si cambio, renicio el control dinamico al nuevo punto
+	 */
+
+	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control:\r\n"));
+	xprintf_PD( DF_APP, PSTR("PILOTO:   pxrev=%d\r\n"), piloto_conf.pulsesXrev );
+	xprintf_PD( DF_APP, PSTR("PILOTO:   dync_pulsos=%d\r\n"), PLTCB.dync_pulsos );
+	xprintf_PD( DF_APP, PSTR("PILOTO:   pB0=%.03f\r\n"), PLTCB.dync_pB0 );
+	xprintf_PD( DF_APP, PSTR("PILOTO:   pB=%.03f\r\n"), PLTCB.pB );
+
+	// Si di al menos una vuelta completa....
+	if ( fabs(PLTCB.dync_pulsos) >= piloto_conf.pulsesXrev ) {
+
+		xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control 1xrev.\r\n"));
+
+		if ( fabs( PLTCB.pB - PLTCB.dync_pB0 ) < 0.2 ) {
+			// Giro al menos 1 vuelta y no cambio ni 200 grs. ERROR.
+			xprintf_P( PSTR("PILOTO: dyn_control PresERROR !!.\r\n"));
+			return(false);
+
+		} else {
+			// Giro y cambio la presion. Está funcionando.
+			// Actualizo los parametros del dyn_control.
+			pv_dyncontrol_init();
+		}
+	}
+
+	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control OK.\r\n"));
+
+	return(true);
 }
 /*
  * -----------------------------------------------------------------------------------
