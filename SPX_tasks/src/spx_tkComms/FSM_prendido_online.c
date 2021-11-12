@@ -63,6 +63,7 @@ uint16_t datos_pendientes_transmitir(void);
 void data_resync_clock(void);
 void data_process_response_MBUS(void);
 void data_process_response_PILOTO(void);
+void data_process_response_STEPPER(void);
 
 bool f_send_init_frame_base;
 bool f_send_init_frame_analog;
@@ -1851,6 +1852,12 @@ FAT_t fat;
 		// return(rsp);
 	}
 
+	if ( gprs_check_response (0, "STEPPER") ) {
+		data_process_response_STEPPER();
+		// rsp = rsp_OK;
+		// return(rsp);
+	}
+
 	/*
 	 * Lo ultimo que debo procesar es el OK !!!
 	 * Borro los registros transmitidos
@@ -2037,9 +2044,49 @@ char *delim = ",;:=><";
 	tk_presion = strsep(&stringp,delim);			// PILOTO
 	tk_presion = strsep(&stringp,delim);			// 3.45
 	presion = atof(tk_presion);
-	plt_producer_online_handler(presion);
+	plt_productor_online_handler(presion);
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_piloto out\r\n\0"));
+}
+//------------------------------------------------------------------------------------
+void data_process_response_STEPPER(void)
+{
+	/*
+	 * Recibo una respuesta que me dice que cuanto mover el stepper
+	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;STEPPER=0.43,FW</h1></body></html>
+	 *
+	 * 0.43 es la fraccion de revolucion
+	 * FW es el sentido
+	 * Testing desde el server:
+	 * Se abre una consola redis: >redis-cli
+	 * Comandos:
+	 *    hset PTEST01 STEPPER "0.43,FW"
+	 *    hgetall PTEST01
+	 *    hset PTEST01 MODBUS "NUL"
+	 *
+	 *
+	 */
+
+char *ts = NULL;
+char localStr[48] = { 0 };
+char *stringp = NULL;
+char *tk_rev = NULL;
+char *tk_direccion = NULL;
+char *delim = ",;:=><";
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_stepper in\r\n\0"));
+	//gprs_print_RX_buffer();
+
+	memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( gprs_rxbuffer.buffer, "STEPPER");
+	strncpy(localStr, ts, sizeof(localStr));
+	stringp = localStr;
+	tk_rev = strsep(&stringp,delim);			// STEPPER
+	tk_rev = strsep(&stringp,delim);			// 0.43
+	tk_direccion = strsep(&stringp,delim);		// FW
+//	plt_producer_stepper_online_handler(tk_rev, tk_direccion);
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_stepper out\r\n\0"));
 }
 //------------------------------------------------------------------------------------
 

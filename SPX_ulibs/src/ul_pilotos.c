@@ -4,6 +4,17 @@
  *  Created on: 13 may. 2021
  *      Author: pablo
  *
+ *  TESTING:
+ *  2021-11-12:
+ *  1- Paso PB_MIN a 0.0 ya que puede ser que la valvula este cerrada y quiera subirla. OK
+ *  2- Agrego una condicion que vea que pREF sea mayor a pB - pGAP. OK
+ *  3- El control dinamico no se hace el primer loop porque esta en 0 y da error. OK
+ *  4- Si en condiciones4start/adjust ya estoy en el bandgap, borro el request OK
+ *  5- Revisaer inicilizar variables antes de usarlas en funciones. OK.
+ *
+ *
+ *
+ *
  *  Armo una FSM que maneja el movimiento del servo.
  *  Agrego en el PLTCB un control de los pulsos que llevo aplicados por si tengo que hacer
  *  un rollback.
@@ -75,58 +86,339 @@
 TimerHandle_t plt_pulse_xTimer;
 StaticTimer_t plt_pulse_xTimerBuffer;
 
-void pv_piloto_pulse_TimerCallback( TimerHandle_t xTimer );
-bool pv_piloto_leer_slot_actual( int8_t *slot_id );
-void FSM_piloto_ajustar_presion( void );
 
-void plt_producer_slot_handler(void);
+void plt_productor_slot_handler(void);
+
 void plt_consumer_handler(void);
+bool plt_consumer_handler_presion(float presion );
+bool plt_consumer_handler_stepper(float pulsos );
 
-bool pv_piloto_check_inputs_conf(void);
-void pv_piloto_read_inputs( int8_t samples, uint16_t intervalo_secs );
-bool pv_piloto_conditions4adjust( void );
-bool pv_piloto_conditions4start( void );
+void plt_run_stepper( int16_t npulses, int8_t pwidth );
 
-void pv_piloto_ajustar( void );
-void pv_piloto_calcular_parametros_ajuste( void );
-void pv_piloto_print_parametros( void );
-void pv_piloto_process_output( void );
+void plt_pulse_TimerCallback( TimerHandle_t xTimer );
+bool plt_leer_slot_actual( int8_t *slot_id );
+bool FSM_piloto_ajustar_presion( void );
 
-bool pv_ctl_max_reintentos_reached(void);
-bool pv_ctl_limites_pA( float pA, float pA_min, float pA_max );
-bool pv_ctl_limites_pB( float pB, float pB_min, float pB_max );
-bool pv_ctl_pA_mayor_pB( float pA, float pB);
-bool pv_ctl_pB_alcanzada(float pB );
-bool pv_ctl_band_gap_suficiente(float pA, float pB, float pRef );
+bool plt_check_inputs_conf(void);
+void plt_read_inputs( int8_t samples, uint16_t intervalo_secs );
 
-void pv_rollback_init(void);
-void pv_rollback_update(void);
-void pv_rollback_ajustar_piloto( void );
 
-void pv_dyncontrol_init(void);
-void pv_dyncontrol_update(void);
-bool pv_dyncontrol_pass(void);
+void plt_ajustar( void );
+void plt_calcular_parametros_ajuste( void );
+void plt_print_parametros( void );
+void plt_process_output( void );
+
+bool plt_ctl_max_reintentos_reached(void);
+bool plt_ctl_limites_pA( float pA, float pA_min, float pA_max );
+bool plt_ctl_limites_pB( float pB, float pB_min, float pB_max );
+bool plt_ctl_pA_mayor_pB( float pA, float pB);
+bool plt_ctl_pB_alcanzada( float pB, float pRef );
+bool plt_ctl_band_gap_suficiente(float pA, float pB, float pRef );
+bool plt_ctl_conditions4adjust( void );
+bool plt_ctl_conditions4start( void );
+
+void plt_rollback_init(void);
+void plt_rollback_update(void);
+void plt_rollback_ajustar_piloto( void );
+
+void plt_dyncontrol_init(void);
+void plt_dyncontrol_update(void);
+bool plt_dyncontrol_pass(void);
 
 #define  mido_caudal ( plt_ctl_vars.Q_module != NONE )
 
 /*
  * -----------------------------------------------------------------------------------
+ * Funcion de servicio
+ * -----------------------------------------------------------------------------------
+ */
+void FSM_piloto_app_service( uint8_t app_wdt )
+{
+	/*
+	 * Implemento una maquina de estados que lee una FIFO donde guardamos las
+	 * presiones a fijar. Si hay datos los saca y los ejecuta.
+	 *
+	 */
+
+int8_t state;
+
+	/*
+	 * Inicializo el watchdog de la aplicacion como variable global porque
+	 * voy a usarla en varias parte.
+	 */
+	plt_app_wdg = app_wdt;
+	u_wdg_kick( plt_app_wdg,  240 );
+	vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
+	xprintf_P(PSTR("PILOTO\r\n"));
+
+	// Vemos si tengo una configuracion que permita trabajar ( definidos canales de presiones )
+	if ( ! plt_check_inputs_conf() ) {
+		xprintf_P(PSTR("PILOTOS: No tengo canales pA/pB configurados. EXIT !!\r\n"));
+		return;
+	}
+
+	// Creo la cola fifo (ringbuffer) de elementos
+	ringBuffer_CreateStatic ( &pFIFO, &pFifo_storage, PFIFO_STORAGE_SIZE, sizeof(s_jobOrder)  );
+	state = ST_PRODUCER;
+
+	for(;;) {
+
+		u_wdg_kick( plt_app_wdg,  240 );
+
+		switch(state) {
+
+		case ST_PRODUCER:
+			/*
+			 * PRODUCTOR:
+			 * Chequea si cambio el slot o no. Si cambio, pone la nueva presion en
+			 * la cola FIFO.
+			 * Los otros productores son testing, online y el propio proceso.
+			 */
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_PRODUCER\r\n"));
+			plt_productor_slot_handler();
+			state = ST_CONSUMER;
+			break;
+
+		case ST_CONSUMER:
+			/*
+			 * CONSUMER:
+			 * Si hay algun dato en la fifo, vemos si es posible ejecutar la accion.
+			 */
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_CONSUMER\r\n"));
+			plt_consumer_handler();
+			state = ST_AWAIT;
+			break;
+
+		case ST_AWAIT:
+			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_AWAIT\r\n"));
+			//vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
+			vTaskDelay( ( TickType_t)( (systemVars.timerPoll) * 1000 / portTICK_RATE_MS ) );
+
+			state = ST_PRODUCER;
+			break;
+
+		default:
+			// Error: No deberiamos estar aqui
+			ringBuffer_Flush(&pFIFO);
+			xprintf_P(PSTR("PILOTO: ERROR. FSMservice: State Default !! (Reset)\r\n"));
+			state = ST_PRODUCER;
+			break;
+
+		}
+
+	}
+}
+/*
+ * -----------------------------------------------------------------------------------
+ * Productors
+ * -----------------------------------------------------------------------------------
+ */
+void plt_productor_slot_handler(void)
+{
+	/*
+	 * PRDUCTOR HANDLE
+	 * Es la funcion que controla que si cambio de slot, pone en la cola de datos
+	 * la nueva orden de trabajo de presion.
+	 */
+
+static int8_t slot_actual = -1;
+int8_t slot = -1;
+s_jobOrder jobOrder;
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: productor_slot start.\r\n"));
+
+	xprintf_PD( DF_APP, PSTR("PILOTO: SLOTS_A: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
+	if ( plt_leer_slot_actual( &slot ) ) {
+		xprintf_PD( DF_APP, PSTR("PILOTO: SLOTS_B: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
+		if ( slot_actual != slot ) {
+			// Cambio el slot.
+			slot_actual = slot;
+			xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
+			xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
+			// Guardo la presion en la cola FIFO.
+			// Un nuevo slot borra todo lo anterior.
+			jobOrder.tipo = PRESION;
+			jobOrder.valor = piloto_conf.pltSlots[slot_actual].presion;
+
+			ringBuffer_Flush(&pFIFO);
+			ringBuffer_Poke(&pFIFO, &jobOrder );
+		}
+	}
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: productor_slot end.\r\n"));
+}
+//------------------------------------------------------------------------------------
+void piloto_productor_testing_handler(char *s_pRef )
+{
+	/*
+	 * PRODUCTOR ( test ) - asincronico
+	 * Se activa desde cmdMode
+	 * Guardo una orden de trabajo de PRESION en la cola
+	 */
+
+s_jobOrder jobOrder;
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: productor_testing start.\r\n"));
+
+	jobOrder.tipo = PRESION;
+	jobOrder.valor = atof(s_pRef);
+	ringBuffer_Poke(&pFIFO, &jobOrder );
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: productor_testing end.\r\n"));
+}
+//------------------------------------------------------------------------------------
+void plt_productor_online_handler( float presion )
+{
+	/*
+	 * PRODUCTOR ( online ) - asincronico
+	 * Funcion invocada online para fijar una nueva presion hasta que finalize
+	 * el slot.
+	 * Solo debo ponerla en la FIFO.
+	 *
+	 */
+
+s_jobOrder jobOrder;
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: productor_online start.\r\n"));
+
+	jobOrder.tipo = PRESION;
+	jobOrder.valor = presion;
+	ringBuffer_Poke(&pFIFO, &jobOrder );
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: productor_online end.\r\n"));
+
+}
+/*
+ * -----------------------------------------------------------------------------------
+ * Consumers:
+ * -----------------------------------------------------------------------------------
+ */
+void plt_consumer_handler(void)
+{
+	/*
+	 * CONSUMIDOR:
+	 * Leo la presion de la FIFO y veo si puedo ajustar.
+	 * Si ajusto y todo sale bien, la saco de la FIFO.
+	 * Si no pude ajustar, la dejo en la FIFO para que el proximo ciclo vuelva a reintentar
+	 * con esta accion pendiente.
+	 */
+
+s_jobOrder jobOrder;
+bool retS = false;
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer start.\r\n"));
+
+	// No hay datos en la FIFO
+	if ( ringBuffer_GetCount(&pFIFO) == 0 ) {
+		goto quit;
+	}
+
+	// Leo sin sacar.
+	ringBuffer_PopRead(&pFIFO, &jobOrder );
+	//xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer tipo=%d, valor=%f\r\n"), jobOrder.tipo, jobOrder.valor );
+
+	if ( jobOrder.tipo == PRESION ) {
+		retS = plt_consumer_handler_presion( jobOrder.valor);
+	} else {
+		retS = plt_consumer_handler_stepper( jobOrder.valor);
+	}
+
+	// Si pude ejecutar el handler, borro el request.
+	if ( retS ) {
+		ringBuffer_Pop(&pFIFO, NULL );
+	}
+
+quit:
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer end.\r\n"));
+}
+//------------------------------------------------------------------------------------
+bool plt_consumer_handler_presion(float presion )
+{
+	/*
+	 * Debo procesar una order de ajustar la presion.
+	 * Chequeo las precondiciones.
+	 * Si las paso, mando ajustar.
+	 */
+
+bool retS = false;
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer_presion start.\r\n"));
+
+	PLTCB.pRef = presion;
+	PLTCB.pError = PERROR;
+
+	// Si la presion esta en la banda, salgo y borro el request
+	if ( plt_ctl_pB_alcanzada( plt_ctl_vars.pB, PLTCB.pRef )) {
+		xprintf_PD(DF_APP, PSTR("PILOTO: Presion en banda.\r\n") );
+		retS = true;	// Para borrar el request
+		goto quit;
+	}
+
+	if ( ! plt_ctl_conditions4start() ) {
+		retS = false;
+		goto quit;
+	}
+
+	// Estan las condiciones para intentar ajustar.
+	retS = FSM_piloto_ajustar_presion();
+
+quit:
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer_presion stop.\r\n"));
+	return(retS);
+}
+//------------------------------------------------------------------------------------
+bool plt_consumer_handler_stepper(float pulsos )
+{
+	/*
+	 * Debo procesar una orden de mover el piloto.
+	 * El sentido lo indica el signo: + es FW, - es REV
+	 * Nunca lo giro mas de 1 revolucion.
+	 */
+
+int16_t lpulsos;
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer_stepper start.\r\n"));
+
+	lpulsos = (int16_t)pulsos;
+
+	if ( ( lpulsos > 0) && ( lpulsos > piloto_conf.pulsesXrev ) ) {
+		lpulsos = piloto_conf.pulsesXrev;
+	}
+
+	if ( ( lpulsos < 0) && ( abs(lpulsos) > piloto_conf.pulsesXrev ) ) {
+		lpulsos = -1 * piloto_conf.pulsesXrev;
+	}
+
+	plt_run_stepper( lpulsos, piloto_conf.pWidth );
+
+	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer_stepper stop.\r\n"));
+
+	return(true);
+
+}
+//------------------------------------------------------------------------------------
+/*
+ * -----------------------------------------------------------------------------------
  * FSM de ajustar la presion.
  * -----------------------------------------------------------------------------------
  */
-void FSM_piloto_ajustar_presion( void )
+bool FSM_piloto_ajustar_presion( void )
 {
 
 uint8_t state = PLT_READ_INPUTS;
+bool retS = false;
 
 	// Inicializo
 	xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste ENTRY\r\n"));
 	xprintf_P(PSTR("PILOTO: Ajuste de presion a (%.03f)\r\n"), PLTCB.pRef );
+
 	PLTCB.loops = 0;
 	PLTCB.exit_code = UNKNOWN;
-	PLTCB.run_rollback = false;
 	PLTCB.accion_pendiente = false;
-	pv_rollback_init();
+
+	plt_rollback_init();
+
 	state = PLT_READ_INPUTS;
 
 	for (;;) {
@@ -143,14 +435,14 @@ uint8_t state = PLT_READ_INPUTS;
 			u_wdg_kick( plt_app_wdg,  240 );
 			vTaskDelay( ( TickType_t) (30000 / portTICK_RATE_MS ) );
 			//
-			pv_piloto_read_inputs(5, INTERVALO_PB_SECS );
+			plt_read_inputs(5, INTERVALO_PB_SECS );
 			state = PLT_CHECK_CONDITIONS4ADJUST;
 			break;
 
 		case PLT_CHECK_CONDITIONS4ADJUST:
 			// Veo si tengo las condiciones para continuar el ajuste.
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state CHECK_CONDITIONS\r\n"));
-			if ( pv_piloto_conditions4adjust() ) {
+			if ( plt_ctl_conditions4adjust() ) {
 				state = PLT_AJUSTE;
 			} else {
 				state = PLT_PROCESS_OUTPUT;
@@ -161,23 +453,23 @@ uint8_t state = PLT_READ_INPUTS;
 			// Ajusto
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state AJUSTE\r\n"));
 			// Calculo la direccion y los pulsos a aplicar
-			pv_piloto_calcular_parametros_ajuste();
+			plt_calcular_parametros_ajuste();
 			//
-			pv_rollback_update();
+			plt_rollback_update();
 			//
-			pv_dyncontrol_update();
+			plt_dyncontrol_update();
 			//
 			// Muestro el resumen de datos
-			pv_piloto_print_parametros();
+			plt_print_parametros();
 			//
-			pv_piloto_ajustar();
+			plt_ajustar();
 			state = PLT_READ_INPUTS;
 			break;
 
 		case PLT_PROCESS_OUTPUT:
 			// Evaluo condiciones de salida
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state OUTPUT\r\n"));
-			pv_piloto_process_output();
+			plt_process_output();
 			state = PLT_EXIT;
 			break;
 
@@ -188,27 +480,28 @@ uint8_t state = PLT_READ_INPUTS;
 			 * Si pude ajustar la presion, la saco de la FIFO.
 			 * Si no lo dejo y entonces queda pendiente.
 			 */
-			if ( ! PLTCB.accion_pendiente ) {
-				rbf_Pop(&pFIFO, &PLTCB.pRef );
-			}
 			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste: state EXIT\r\n"));
+
 			if (PLTCB.accion_pendiente ) {
 				xprintf_P(PSTR("PILOTO: Fin de Ajuste (pendiente)\r\n"));
+				retS = false;
 			} else {
 				xprintf_P(PSTR("PILOTO: Fin de Ajuste\r\n"));
+				retS = true;
 			}
-			return;
+			return(retS);
 			break;
 		}
 	}
 
+	return(retS);
 }
 /*
  * -----------------------------------------------------------------------------------
  * Funciones auxiliares de la FSM de ajustar
  * -----------------------------------------------------------------------------------
  */
-void pv_piloto_read_inputs( int8_t samples, uint16_t intervalo_secs )
+void plt_read_inputs( int8_t samples, uint16_t intervalo_secs )
 {
 	/*
 	 * Lee las entradas: pA,pB.
@@ -239,14 +532,15 @@ float presion[ANALOG_CHANNELS];
 	// DYNAMIC CONTROL: Si estoy al inicio del ciclo, inicializo el control dinamico
 	// Lo hago aca porque es donde tengo las presiones.
 	if ( PLTCB.loops == 0 ) {
-		pv_dyncontrol_init();
+		plt_dyncontrol_init();
 	}
 }
 //------------------------------------------------------------------------------------
-bool pv_piloto_conditions4adjust( void )
+bool plt_ctl_conditions4adjust( void )
 {
 	/*
 	 * Chequeo todas las condiciones necesarias para activar el servo o salir
+	 * Ahora se chequean con los valores leidos para esto de las entradas.
 	 */
 
 bool retS = true;
@@ -255,7 +549,12 @@ bool ajuste_al_alza = false;
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
 	xprintf_P(PSTR("PILOTO: ConditionsXadjust start\r\n"));
 
+	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), PLTCB.pA );
+	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
+	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
+	xprintf_P(PSTR("PILOTO: pError=%.03f\r\n"), PLTCB.pError );
 
+	// Primero debemos saber si va al alza o a la baja.
 	if ( PLTCB.pRef > PLTCB.pB ) {
 		ajuste_al_alza = true;
 		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste al alza.\r\n") );
@@ -267,19 +566,9 @@ bool ajuste_al_alza = false;
 	PLTCB.run_rollback = false;
 	PLTCB.accion_pendiente = false;
 
-	// Debo tener algún cartucho en el bolsillo.
-	if ( pv_ctl_max_reintentos_reached()) {
-		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:MAX_TRYES\r\n"));
-		PLTCB.exit_code = MAX_TRYES;
-		PLTCB.run_rollback = false;
-		PLTCB.accion_pendiente = false;
-		retS = false;
-		goto quit;
-	}
-
-	// Alcance la presion buscada. Salgo.
-	if ( pv_ctl_pB_alcanzada( PLTCB.pB ) ) {
-		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_REACHED\r\n"));
+	// CONDICION 1: Alcance la presion buscada. Salgo.
+	if ( plt_ctl_pB_alcanzada( PLTCB.pB, PLTCB.pRef ) ) {
+		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode: PB_REACHED\r\n"));
 		PLTCB.exit_code = POUT_REACHED;
 		PLTCB.run_rollback = false;
 		PLTCB.accion_pendiente = false;
@@ -287,8 +576,20 @@ bool ajuste_al_alza = false;
 		goto quit;
 	}
 
-	// La pA siempre debe ser positiva
-	if ( ! pv_ctl_limites_pA( PLTCB.pA, PA_MIN, PA_MAX ) ) {
+
+	// CONDICION 2: Debo tener algún cartucho en el bolsillo.
+	if ( plt_ctl_max_reintentos_reached()) {
+		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:MAX_TRYES\r\n"));
+		PLTCB.exit_code = MAX_TRYES;
+		PLTCB.run_rollback = false;
+		PLTCB.accion_pendiente = false;		// Por ahora no queda pendiente.
+		retS = false;
+		goto quit;
+	}
+
+
+	// CONDICION 3: La pA siempre debe ser positiva
+	if ( ! plt_ctl_limites_pA( PLTCB.pA, PA_MIN, PA_MAX ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_ERR\r\n"));
 		PLTCB.exit_code = PA_ERR;
 		PLTCB.run_rollback = true;
@@ -297,8 +598,8 @@ bool ajuste_al_alza = false;
 		goto quit;
 	}
 
-	// La pB siempre debe ser positiva
-	if ( ! pv_ctl_limites_pB( PLTCB.pB, PB_MIN, PB_MAX ) ) {
+	// CONDICION 4: La pB siempre debe ser positiva
+	if ( ! plt_ctl_limites_pB( PLTCB.pB, PB_MIN, PB_MAX ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PB_ERR\r\n"));
 		PLTCB.exit_code = PB_ERR;
 		PLTCB.run_rollback = true;
@@ -307,8 +608,8 @@ bool ajuste_al_alza = false;
 		goto quit;
 	}
 
-	// Si todo anda bien, pA debe ser mayor que pB
-	if ( ! pv_ctl_pA_mayor_pB( PLTCB.pA,  PLTCB.pB) ) {
+	// CONDICION 5: Si todo anda bien, pA debe ser mayor que pB
+	if ( ! plt_ctl_pA_mayor_pB( PLTCB.pA,  PLTCB.pB) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_LESS_PB\r\n"));
 		PLTCB.exit_code = PA_LESS_PB;
 		PLTCB.run_rollback = true;
@@ -317,8 +618,8 @@ bool ajuste_al_alza = false;
 		goto quit;
 	}
 
-	// Si ya movi el motor, debe haber cambiado la presion con 1 revolucion completa.
-	if ( ! pv_dyncontrol_pass() ) {
+	// CONDICION 6: Si ya movi el motor, debe haber cambiado la presion con 1 revolucion completa.
+	if ( ! plt_dyncontrol_pass() ) {
 		PLTCB.exit_code = DYNC_ERR;
 		PLTCB.run_rollback = true;
 		PLTCB.accion_pendiente = true;
@@ -327,10 +628,10 @@ bool ajuste_al_alza = false;
 	}
 
 	//-------------------------------------------------------------------------------
-	// AJUSTE AL ALZA
+	// CONDICION 7A: AJUSTE AL ALZA
 	if ( ajuste_al_alza ) {
 		// Band gap:
-		if ( ! pv_ctl_band_gap_suficiente( PLTCB.pA, PLTCB.pB, PLTCB.pRef) ) {
+		if ( ! plt_ctl_band_gap_suficiente( PLTCB.pA, PLTCB.pB, PLTCB.pRef) ) {
 			xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:BAND_ERR\r\n"));
 			PLTCB.exit_code = BAND_ERR;
 			PLTCB.run_rollback = false;
@@ -341,10 +642,10 @@ bool ajuste_al_alza = false;
 	}
 
 	//-------------------------------------------------------------------------------
-	// AJUSTE A LA BAJA:
+	// CONDICION 7B: AJUSTE A LA BAJA:
 	if ( ! ajuste_al_alza ) {
 		// Si el caudal se fue a 0, termino.
-		if ( !mido_caudal && ( plt_ctl_vars.caudal < 0.5 ) ) {
+		if ( mido_caudal && ( plt_ctl_vars.caudal < 0.5 ) ) {
 			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (%.03f) < 0.5\r\n"), plt_ctl_vars.caudal );
 			PLTCB.run_rollback = false;
 			PLTCB.accion_pendiente = true;
@@ -366,38 +667,13 @@ quit:
 		xprintf_PD( DF_APP, PSTR("PILOTO: No hay condiciones para modificar pB.!!\r\n"));
 	}
 
-	xprintf_P(PSTR("PILOTO: ConditionsXadjust start\r\n"));
+	xprintf_P(PSTR("PILOTO: ConditionsXadjust stop\r\n"));
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
 	return(retS);
 
 }
 //------------------------------------------------------------------------------------
-void pv_piloto_process_output( void )
-{
-	/*
-	 * Procesa la salida de la FSM.
-	 * Puede salir directamente o hacer un rollback de los pulsos generados
-	 * para no tener al piloto con riesgo de salirse del tornillo.
-	 * Si no pudimos ajustar la presion, indico con false para que la FSM reponga
-	 * la presion de ajuste en la cola para un proximo reintento.
-	 * Condiciones:
-	 * MAX_TRYES:  No deberia reintentar mas. (true)
-	 * POUT_REACHED: True
-	 * OTROS_CASOS: Deberia reintentar cuando esten las condiciones ( false )
-	 */
-
-	xprintf_PD( DF_APP, PSTR("PILOTO: process_output (%d)\r\n"), PLTCB.exit_code );
-
-	if ( PLTCB.run_rollback ) {
-
-		pv_rollback_ajustar_piloto();
-		xprintf_P(PSTR("PILOTOS: ROLLBACK\r\n"));
-
-	}
-
-}
-//------------------------------------------------------------------------------------
-void pv_piloto_ajustar(void)
+void plt_ajustar(void)
 {
 	/*
 	 * Arranco el motor
@@ -415,7 +691,7 @@ void pv_piloto_ajustar(void)
 
 	// Muevo el piloto.
 	// Arranca el timer que por callbacks va a generar los pulsos
-	xprintf_P(PSTR("PILOTO: start\r\n"));
+	xprintf_P(PSTR("PILOTO: adjust start\r\n"));
 	// Activo el driver
 	xprintf_P(PSTR("STEPPER: driver pwr on\r\n"));
 	stepper_pwr_on();
@@ -432,10 +708,10 @@ void pv_piloto_ajustar(void)
 		vTaskDelay( ( TickType_t) (1000 / portTICK_RATE_MS ) );
 	}
 
-	xprintf_P(PSTR("PILOTO: end\r\n"));
+	xprintf_P(PSTR("PILOTO: adjust end\r\n"));
 }
 //------------------------------------------------------------------------------------
-void pv_piloto_calcular_parametros_ajuste( void )
+void plt_calcular_parametros_ajuste( void )
 {
 
 	/*
@@ -446,9 +722,6 @@ void pv_piloto_calcular_parametros_ajuste( void )
 
 float delta_pres = 0.0;
 
-	// A) pERROR
-	PLTCB.pError = PERROR;
-
 	// B) Calculo el sentido del giro
 	if ( PLTCB.pB < PLTCB.pRef ) {
 		// Debo aumentar pB o sxprintf_P(PSTR("PILOTO: npulses=%d\r\n"), spiloto.npulses);ea apretar el tornillo (FWD)
@@ -458,7 +731,6 @@ float delta_pres = 0.0;
 	}
 
 	// C) Intervalo de tiempo entre pulsos en ms.
-	//PLTCB.pwidth = 20;
 	PLTCB.pwidth = piloto_conf.pWidth;
 
 	// Ajuste de pRef por baja pA ??
@@ -490,28 +762,25 @@ float delta_pres = 0.0;
 	}
 
 	// E) Ajusto los pasos al 70%
+	PLTCB.pulsos_a_aplicar = (int16_t)(0.7 * PLTCB.pulsos_calculados);
 	/*
-	 * METODO 1: Cuando estoy en reverse( bajando la presion ) aplico los pulsos calculados
-	 *           Si estoy en forward (subiendo la presion), aplico solo el 70% de los pulsos
-	 *           calculados si estos son altos.
-	 *           Si son menos de 500 no lo corrijo.
-	 */
-	//if ( ( PLTCB.dir == STEPPER_FWD) && ( PLTCB.pulsos_calculados > 500 ) ) {
 	if ( PLTCB.pulsos_calculados > 500 ) {
 		PLTCB.pulsos_a_aplicar = (int16_t)(0.7 * PLTCB.pulsos_calculados);
 	} else {
-		PLTCB.pulsos_a_aplicar = (int16_t)(0.9 * PLTCB.pulsos_calculados);
+		PLTCB.pulsos_a_aplicar = (int16_t)(0.7 * PLTCB.pulsos_calculados);
 	}
-	// METODO 2: Los pulsos son los que me da el calculo.
+	*/
 
 	// F) Controlo no avanzar mas de 500gr aprox x loop !!! ( 1 revolucion )
 	if ( PLTCB.pulsos_a_aplicar > piloto_conf.pulsesXrev ) {
 		PLTCB.pulsos_a_aplicar = piloto_conf.pulsesXrev;
 	}
-	PLTCB.pulse_counts = (int16_t) PLTCB.pulsos_a_aplicar;
+
+	// pulse_counts lo usa el timer callback para llevar la cuenta.
+	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
 }
 //------------------------------------------------------------------------------------
-void pv_piloto_print_parametros( void )
+void plt_print_parametros( void )
 {
 	// Muestro en pantalla los parametros calculados de ajuste de presion.
 
@@ -538,12 +807,37 @@ void pv_piloto_print_parametros( void )
 	}
 	xprintf_P(PSTR("-----------------------------\r\n"));
 }
+//------------------------------------------------------------------------------------
+void plt_process_output( void )
+{
+	/*
+	 * Procesa la salida de la FSM.
+	 * Puede salir directamente o hacer un rollback de los pulsos generados
+	 * para no tener al piloto con riesgo de salirse del tornillo.
+	 * Si no pudimos ajustar la presion, indico con false para que la FSM reponga
+	 * la presion de ajuste en la cola para un proximo reintento.
+	 * Condiciones:
+	 * MAX_TRYES:  No deberia reintentar mas. (true)
+	 * POUT_REACHED: True
+	 * OTROS_CASOS: Deberia reintentar cuando esten las condiciones ( false )
+	 */
+
+	xprintf_PD( DF_APP, PSTR("PILOTO: process_output (%d)\r\n"), PLTCB.exit_code );
+
+	if ( PLTCB.run_rollback ) {
+
+		plt_rollback_ajustar_piloto();
+		xprintf_P(PSTR("PILOTOS: ROLLBACK\r\n"));
+
+	}
+
+}
 /*
  *------------------------------------------------------------------------------------
  * CONTROLES GENERALES
  *------------------------------------------------------------------------------------
  */
-bool pv_ctl_max_reintentos_reached(void)
+bool plt_ctl_max_reintentos_reached(void)
 {
 	// Controla si alcanzamos la maxima cantidad de reintentos de ajustes de presion.
 
@@ -561,7 +855,7 @@ bool retS = false;
 	return(retS);
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_limites_pA( float pA, float pA_min, float pA_max )
+bool plt_ctl_limites_pA( float pA, float pA_min, float pA_max )
 {
 
 	// Controlo que la pA este entre los limites.
@@ -569,17 +863,17 @@ bool pv_ctl_limites_pA( float pA, float pA_min, float pA_max )
 bool retS = false;
 
 	if ( ( pA < pA_min ) || ( pA > pA_max) ) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check pA(%.03f) OUT limits.\r\n"),pA );
+		xprintf_PD(DF_APP, PSTR("PILOTO: Check pA(%.03f) OUT limits (%.03f, %.03f).\r\n"),pA, pA_min, pA_max );
 		retS = false;
 	} else {
-		xprintf_P(PSTR("PILOTO: Check pA(%.03f) IN limits.\r\n"),pA );
+		xprintf_P(PSTR("PILOTO: Check pA(%.03f) IN limits (%.03f, %.03f).\r\n"),pA, pA_min, pA_max );
 		retS = true;
 	}
 	return (retS);
 
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_limites_pB( float pB, float pB_min, float pB_max )
+bool plt_ctl_limites_pB( float pB, float pB_min, float pB_max )
 {
 
 	// Controlo que la pB este entre los limites.
@@ -587,17 +881,17 @@ bool pv_ctl_limites_pB( float pB, float pB_min, float pB_max )
 bool retS = false;
 
 	if ( ( pB < pB_min ) || ( pB > pB_max) ) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Check pB(%.03f) OUT limits.\r\n"),pB );
+		xprintf_PD(DF_APP, PSTR("PILOTO: Check pB(%.03f) OUT limits (%.03f, %.03f).\r\n"),pB, pB_min, pB_max );
 		retS = false;
 	} else {
-		xprintf_P(PSTR("PILOTO: Check pB(%.03f) IN limits.\r\n"),pB );
+		xprintf_P(PSTR("PILOTO: Check pB(%.03f) IN limits (%.03f, %.03f).\r\n"),pB, pB_min, pB_max );
 		retS = true;
 	}
 	return (retS);
 
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_pA_mayor_pB( float pA, float pB )
+bool plt_ctl_pA_mayor_pB( float pA, float pB )
 {
 	// pA debe ser mayor que pB
 	// Puede ocurrir que baje la alta debajo de la regulacion con lo que pB se pega
@@ -615,14 +909,14 @@ bool retS = false;
 	return(retS);
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_pB_alcanzada( float pB )
+bool plt_ctl_pB_alcanzada( float pB, float pRef )
 {
 
 	// Presion alcanzada: Ultima condicion a evaluar
 
 bool retS = false;
 
-	if ( fabs( pB - PLTCB.pRef) < PLTCB.pError ) {
+	if ( fabs( pB - pRef) < PERROR ) {
 		xprintf_P(PSTR("PILOTO: Presion alcanzada\r\n"));
 		retS = true;
 	} else {
@@ -632,7 +926,7 @@ bool retS = false;
 
 }
 //------------------------------------------------------------------------------------
-bool pv_ctl_band_gap_suficiente( float pA, float pB, float pRef )
+bool plt_ctl_band_gap_suficiente( float pA, float pB, float pRef )
 {
 	/*
 	 * Cuando ajusto subiendo pB, debe haber una banda entre el pB y el pA para
@@ -671,7 +965,7 @@ float margen_subida = 0.0;
 		// Si tengo al menos un margen de 65gr, ajusto modificando el limite.
 
 		margen_subida = ( pA - PGAP - pB );
-		if ( margen_subida > 0.065 ) {
+		if ( margen_subida > PERROR ) {
 			retS = true;
 			xprintf_P(PSTR("PILOTO: Check bandgap OK: margen=%.03f gr.!!\r\n"), margen_subida );
 		} else {
@@ -688,200 +982,8 @@ quit:
 	return(retS);
 
 }
-/*
- * -----------------------------------------------------------------------------------
- * Funciones de servicio
- * -----------------------------------------------------------------------------------
- */
-void FSM_piloto_app_service( uint8_t app_wdt )
-{
-	/*
-	 * Implemento una maquina de estados que lee una FIFO donde guardamos las
-	 * presiones a fijar. Si hay datos los saca y los ejecuta.
-	 *
-	 */
-
-int8_t state;
-
-	/*
-	 * Inicializo el watchdog de la aplicacion como variable global porque
-	 * voy a usarla en varias parte.
-	 */
-	plt_app_wdg = app_wdt;
-	u_wdg_kick( plt_app_wdg,  240 );
-	vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
-	xprintf_P(PSTR("PILOTO\r\n"));
-
-	// Vemos si tengo una configuracion que permita trabajar ( definidos canales de presiones )
-	if ( ! pv_piloto_check_inputs_conf() ) {
-		xprintf_P(PSTR("PILOTOS: No tengo canales pA/pB configurados. EXIT !!\r\n"));
-		return;
-	}
-
-	// Creo la cola fifo (ringbuffer) de presiones
-	rbf_CreateStatic( &pFIFO, &pFifo_storage[0], PFIFO_STORAGE_SIZE );
-
-	state = ST_PRODUCER;
-
-	for(;;) {
-
-		u_wdg_kick( plt_app_wdg,  240 );
-
-		switch(state) {
-
-		case ST_PRODUCER:
-			/*
-			 * PRODUCTOR:
-			 * Chequea si cambio el slot o no. Si cambio, pone la nueva presion en
-			 * la cola FIFO.
-			 * Los otros productores son testing, online y el propio proceso.
-			 */
-			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_PRODUCER\r\n"));
-			plt_producer_slot_handler();
-			state = ST_CONSUMER;
-			break;
-
-		case ST_CONSUMER:
-			/*
-			 * CONSUMER:
-			 * Si hay algun dato en la fifo, vemos si es posible ejecutar la accion.
-			 */
-			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_CONSUMER\r\n"));
-			plt_consumer_handler();
-			state = ST_AWAIT;
-			break;
-
-		case ST_AWAIT:
-			xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMservice: state ST_AWAIT\r\n"));
-			//vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
-			vTaskDelay( ( TickType_t)( (systemVars.timerPoll) * 1000 / portTICK_RATE_MS ) );
-
-			state = ST_PRODUCER;
-			break;
-
-		default:
-			// Error: No deberiamos estar aqui
-			rbf_Flush(&pFIFO);
-			xprintf_P(PSTR("PILOTO: ERROR. FSMservice: State Default !! (Reset)\r\n"));
-			state = ST_PRODUCER;
-			break;
-
-		}
-
-	}
-}
 //------------------------------------------------------------------------------------
-void plt_producer_online_handler( float presion)
-{
-	/*
-	 * PRODUCER ( online )
-	 * Funcion invocada online para fijar una nueva presion hasta que finalize
-	 * el slot.
-	 * Solo debo ponerla en la FIFO.
-	 *
-	 */
-
-	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_online start.\r\n"));
-	xprintf_P(PSTR("PILOTO: Set presion from Server.\r\n"));
-	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), presion);
-	// Guardo la presion en la cola FIFO.
-	rbf_Poke(&pFIFO, &presion );
-	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_online end.\r\n"));
-
-}
-//------------------------------------------------------------------------------------
-void pv_piloto_pulse_TimerCallback( TimerHandle_t xTimer )
-{
-	// Genera un pulso.
-	// Cuando la cuenta de pulsos llega a 0, se desactiva.
-
-	stepper_pulse( PLTCB.dir, PLTCB.pwidth );
-
-	if ( (PLTCB.pulse_counts % 100) == 0 ) {
-		xprintf_P(PSTR("."));
-	}
-
-	if ( PLTCB.pulse_counts-- == 0 ) {
-		xprintf_P(PSTR("\r\n"));
-		xprintf_P(PSTR("PILOTO: stop\r\n"));
-		PLTCB.motor_running = false;
-		// Detengo el timer.
-		xTimerStop( plt_pulse_xTimer, 10 );
-		stepper_sleep();
-		stepper_pwr_off();
-	}
-
-}
-/*
- * -----------------------------------------------------------------------------------
- * Funciones generales
- * -----------------------------------------------------------------------------------
- */
-void plt_producer_slot_handler(void)
-{
-	/*
-	 * Es la funcion que controla que si cambio de slot, pone en la cola de datos
-	 * la nueva presion
-	 */
-
-static int8_t slot_actual = -1;
-int8_t slot = -1;
-
-	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_slot start.\r\n"));
-
-	xprintf_PD( DF_APP, PSTR("PILOTO: SLOTS_A: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
-	if ( pv_piloto_leer_slot_actual( &slot ) ) {
-		xprintf_PD( DF_APP, PSTR("\r\nPILOTO: SLOTS_B: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
-		if ( slot_actual != slot ) {
-			// Cambio el slot.
-			slot_actual = slot;
-			xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
-			xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
-			// Guardo la presion en la cola FIFO.
-			// Un nuevo slot borra todo lo anterior.
-			rbf_Flush(&pFIFO);
-			rbf_Poke(&pFIFO, &piloto_conf.pltSlots[slot_actual].presion );
-		}
-	}
-	xprintf_PD( DF_APP, PSTR(">>PILOTO: producer_slot end.\r\n"));
-}
-//------------------------------------------------------------------------------------
-void plt_consumer_handler(void)
-{
-	/*
-	 * Leo la presion de la FIFO y veo si puedo ajustar.
-	 * Si ajusto y todo sale bien, la saco de la FIFO.
-	 * Si no pude ajustar, la dejo en la FIFO para que el proximo ciclo vuelva a reintentar
-	 * con esta accion pendiente.
-	 */
-
-	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer start.\r\n"));
-
-	if ( rbf_GetCount(&pFIFO) == 0 ) {
-		// No hay datos en la FIFO
-		goto quit;
-	}
-
-	// Leo sin sacar.
-	rbf_PopRead(&pFIFO, &PLTCB.pRef );
-	PLTCB.pError = PERROR;
-	/*
-	 * Veo si estan las pre-condiciones para intentar ajustar.
-	 * Si no estan salgo y queda el ajuste pendiente.
-	 */
-	if ( ! pv_piloto_conditions4start() ) {
-		goto quit;
-	}
-
-	// Estan las condiciones para intentar ajustar.
-	FSM_piloto_ajustar_presion();
-
-quit:
-
-	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer end.\r\n"));
-}
-//------------------------------------------------------------------------------------
-bool pv_piloto_conditions4start( void )
+bool plt_ctl_conditions4start( void )
 {
 	/*
 	 * Evalua si existen las condiciones previas necesarias para iniciar el ajuste.
@@ -904,12 +1006,14 @@ bool retS = true;
 bool ajuste_al_alza = false;
 
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
-	xprintf_P(PSTR("PILOTO: PRE conditions start\r\n"));
+	xprintf_P(PSTR("PILOTO: conditions4start start\r\n"));
 
 	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), plt_ctl_vars.pA );
 	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), plt_ctl_vars.pB );
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
+	xprintf_P(PSTR("PILOTO: pError=%.03f\r\n"), PLTCB.pError );
 
+	// Determino si ajusto al alza o a la baja.
 	if ( PLTCB.pRef > plt_ctl_vars.pB ) {
 		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste al alza.\r\n") );
 		ajuste_al_alza = true;
@@ -919,24 +1023,17 @@ bool ajuste_al_alza = false;
 	}
 
 	// Condiciones comunes (alza, baja)
-	if ( ! pv_ctl_limites_pA( plt_ctl_vars.pA, PA_MIN, PA_MAX )) {
+	if ( ! plt_ctl_limites_pA( plt_ctl_vars.pA, PA_MIN, PA_MAX )) {
 		retS = false;
 		goto quit;
 	}
 
-	if ( ! pv_ctl_limites_pB( plt_ctl_vars.pB, PB_MIN, PB_MAX ) ) {
+	if ( ! plt_ctl_limites_pB( plt_ctl_vars.pB, PB_MIN, PB_MAX ) ) {
 		retS = false;
 		goto quit;
 	}
 
-	if ( ! pv_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
-		retS = false;
-		goto quit;
-	}
-
-	// Presion en la banda. No hqy que ajustar.
-	if ( pv_ctl_pB_alcanzada( plt_ctl_vars.pB )) {
-		xprintf_PD(DF_APP, PSTR("PILOTO: Presion en banda.\r\n") );
+	if ( ! plt_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
 		retS = false;
 		goto quit;
 	}
@@ -946,7 +1043,7 @@ bool ajuste_al_alza = false;
 	if ( ajuste_al_alza ) {
 		// Band gap:
 		// 1. No hay margen de regulacion
-		if ( ! pv_ctl_band_gap_suficiente(plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
+		if ( ! plt_ctl_band_gap_suficiente(plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
 			//xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
 			retS = false;
 			goto quit;
@@ -976,12 +1073,41 @@ quit:
 		xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones. No se modifica pB.!!\r\n"));
 	}
 
-	xprintf_P(PSTR("PILOTO: PRE conditions end.\r\n"));
+	xprintf_P(PSTR("PILOTO: conditions4start end.\r\n"));
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
 	return(retS);
 }
 //------------------------------------------------------------------------------------
-bool pv_piloto_check_inputs_conf(void)
+/*
+ * -----------------------------------------------------------------------------------
+ * Funciones generales
+ * -----------------------------------------------------------------------------------
+ */
+
+void plt_pulse_TimerCallback( TimerHandle_t xTimer )
+{
+	// Genera un pulso.
+	// Cuando la cuenta de pulsos llega a 0, se desactiva.
+
+	stepper_pulse( PLTCB.dir, PLTCB.pwidth );
+
+	if ( (PLTCB.pulse_counts % 100) == 0 ) {
+		xprintf_P(PSTR("."));
+	}
+
+	if ( PLTCB.pulse_counts-- == 0 ) {
+		xprintf_P(PSTR("\r\n"));
+		xprintf_P(PSTR("PILOTO: stop\r\n"));
+		PLTCB.motor_running = false;
+		// Detengo el timer.
+		xTimerStop( plt_pulse_xTimer, 10 );
+		stepper_sleep();
+		stepper_pwr_off();
+	}
+
+}
+//------------------------------------------------------------------------------------
+bool plt_check_inputs_conf(void)
 {
 	/*
 	 *  Se fija si en la configuracion del equipo hay algun canal con el
@@ -1095,7 +1221,7 @@ quit:
 
 }
 //------------------------------------------------------------------------------------
-bool pv_piloto_leer_slot_actual( int8_t *slot_id )
+bool plt_leer_slot_actual( int8_t *slot_id )
 {
 	// Determina el id del slot en que estoy.
 	// Los slots deben tener presion > 0.1
@@ -1216,13 +1342,14 @@ exit_error:
  * volver atrás, al punto inicial del arranque
  *------------------------------------------------------------------------------------
  */
-void pv_rollback_init(void)
+void plt_rollback_init(void)
 {
 	// Cuando arranca un ciclo de mover el piloto, inicializo
+	PLTCB.run_rollback = false;
 	PLTCB.pulsos_rollback = 0;
 }
 /*------------------------------------------------------------------------------------*/
-void pv_rollback_update(void)
+void plt_rollback_update(void)
 {
 	/*
 	 *  Cada vez que voy a mover el piloto, actualizo el rollback
@@ -1236,12 +1363,13 @@ void pv_rollback_update(void)
 	}
 }
 /*------------------------------------------------------------------------------------*/
-void pv_rollback_ajustar_piloto( void )
+void plt_rollback_ajustar_piloto( void )
 {
 	/*
 	 * Aplico los pulsos de rollback para llevar el piloto a la posicion inicial
 	 * del ciclo.
 	 * No controlo condiciones ni presiones.
+	 * Los pulsos de rollback pueden tener signo.
 	 *
 	 */
 
@@ -1254,7 +1382,7 @@ void pv_rollback_ajustar_piloto( void )
 		PLTCB.dir = STEPPER_REV;
 	}
 
-	PLTCB.pulsos_a_aplicar = PLTCB.pulsos_rollback;
+	PLTCB.pulsos_a_aplicar = abs(PLTCB.pulsos_rollback);
 	PLTCB.pwidth = piloto_conf.pWidth;
 	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
 
@@ -1304,7 +1432,7 @@ void pv_rollback_ajustar_piloto( void )
  * y se abora la operacion.
  *------------------------------------------------------------------------------------
  */
-void pv_dyncontrol_init(void)
+void plt_dyncontrol_init(void)
 {
 	// Inicializa las variables del control dinamico
 
@@ -1313,7 +1441,7 @@ void pv_dyncontrol_init(void)
 	xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control_init\r\n"));
 }
 /*------------------------------------------------------------------------------------*/
-void pv_dyncontrol_update(void)
+void plt_dyncontrol_update(void)
 {
 
 	xprintf_PD( DF_APP, PSTR("PILOTO: dyn_control_update\r\n"));
@@ -1325,21 +1453,54 @@ void pv_dyncontrol_update(void)
 
 }
 /*------------------------------------------------------------------------------------*/
-bool pv_dyncontrol_pass(void)
+bool plt_dyncontrol_pass(void)
 {
 	/*
 	 *  Movi el piloto algo mas de 1 vuelta y la pB no se modifico en al menos 200 gr. ( Rollback )
 	 *  El piloto se esta moviendo pero la pB no esta ajustando.
 	 *  Si di mas de una revolucion, la presion debe haber cambiado al menos 200grs.
 	 *  Si cambio, renicio el control dinamico al nuevo punto
+	 *
+	 *  Agregamos controlar el cociente DpresB / Dpulsos.
+	 *  Dado que el resorte es lineal, debemos movernos en cierto rango. Si no se cumple, es error.
+	 *
 	 */
+
+float sigma = 0.0;
+float limite;
+
+	// Cuando arranco no hago el control dinamico. Da error porque esta inicializado en 0
+	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control: loops=%d\r\n"), PLTCB.loops );
+
+	if ( PLTCB.loops == 1 ) {
+		return(true);
+	}
+
+	// dync_pulsos tiene signo !!
+	if ( abs(PLTCB.dync_pulsos) > 0 ) {
+		sigma = fabs(PLTCB.dync_pB0 - PLTCB.pB) / abs(PLTCB.dync_pulsos);
+	}
 
 	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control:\r\n"));
 	xprintf_PD( DF_APP, PSTR("PILOTO:   pxrev=%d\r\n"), piloto_conf.pulsesXrev );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   dync_pulsos=%d\r\n"), PLTCB.dync_pulsos );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   pB0=%.03f\r\n"), PLTCB.dync_pB0 );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   pB=%.03f\r\n"), PLTCB.pB );
+	xprintf_PD( DF_APP, PSTR("PILOTO:   sigma=%f\r\n"), sigma );
 
+	limite = ( 0.2/piloto_conf.pulsesXrev);
+	if ( sigma < limite ) {
+		xprintf_P( PSTR("PILOTO: dyn_control ERROR baja pendiente (%f < [%f]!!.\r\n"), sigma, limite);
+		return(false);
+	}
+
+	limite = ( 0.6/piloto_conf.pulsesXrev);
+	if ( sigma > ( 0.6/piloto_conf.pulsesXrev) ) {
+		xprintf_P( PSTR("PILOTO: dyn_control ERROR alta pendiente (%f > [%f]!!.\r\n"), sigma, limite);
+		return(false);
+	}
+
+	/*
 	// Si di al menos una vuelta completa....
 	if ( fabs(PLTCB.dync_pulsos) >= piloto_conf.pulsesXrev ) {
 
@@ -1353,9 +1514,11 @@ bool pv_dyncontrol_pass(void)
 		} else {
 			// Giro y cambio la presion. Está funcionando.
 			// Actualizo los parametros del dyn_control.
-			pv_dyncontrol_init();
+			plt_dyncontrol_init();
 		}
 	}
+	*/
+
 
 	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control OK.\r\n"));
 
@@ -1366,47 +1529,54 @@ bool pv_dyncontrol_pass(void)
  * Funciones de test
  * -----------------------------------------------------------------------------------
  */
-void plt_producer_testing_handler(char *s_pRef )
-{
-	/*
-	 * PRODUCER ( test )
-	 * Guardo la presion en la FIFO.
-	 */
-
-float pRef = atof(s_pRef);
-
-	rbf_Poke(&pFIFO, &pRef );
-
-}
-//------------------------------------------------------------------------------------
 void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth )
 {
 	// Funcion invocada desde cmdline.
-	// Inicializa la estructura de control para hacer el test.
+	// Wrapper de 'piloto_run_stepper'.
 
-	if ( strcmp_P( strupr(s_dir), PSTR("FW")) == 0 ) {
-		PLTCB.dir = STEPPER_FWD;
-	} else if ( strcmp_P( strupr(s_dir), PSTR("REV")) == 0) {
-		PLTCB.dir = STEPPER_REV;
-	} else {
-		xprintf_P(PSTR("Error en direccion\r\n"));
-		return;
-	}
+int16_t npulses;
+int8_t pwidth;
 
 	if ( *s_npulses == '\0' ) {
 		xprintf_P(PSTR("steppertest ERROR: debe indicar npulses\r\n"));
 		return;
 	}
+	npulses = atoi(s_npulses);
 
-	PLTCB.pwidth = atoi(s_pwidth);
+	if ( strcmp_P( strupr(s_dir), PSTR("FW")) == 0) {
+		npulses *= 1;
+	} else if ( strcmp_P( strupr(s_dir), PSTR("REV")) == 0) {
+		npulses *= -1;
+	} else {
+		xprintf_P(PSTR("Error en direccion\r\n"));
+		return;
+	}
+
+	pwidth = atoi(s_pwidth);
 	if ( *s_pwidth == '\0' ) {
 		xprintf_P(PSTR("steppertest ERROR: debe indicar pwidth\r\n"));
 		return;
 	}
 
+	plt_run_stepper(npulses, pwidth );
 
-	PLTCB.pulsos_a_aplicar = atoi(s_npulses);
+}
+//------------------------------------------------------------------------------------
+void plt_run_stepper( int16_t npulses, int8_t pwidth )
+{
+	/*
+	 * Mueve el stepper.
+	 */
+
+	// Completo PLT_CB
+	PLTCB.pwidth = pwidth;
+	PLTCB.pulsos_a_aplicar = abs(npulses);
 	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
+	if ( npulses > 0 ) {
+		PLTCB.dir = STEPPER_FWD;
+	} else {
+		PLTCB.dir = STEPPER_REV;
+	}
 
 	// Print datos.
 	xprintf_P(PSTR("-----------------------------\r\n"));
@@ -1434,12 +1604,11 @@ void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth )
 	xTimerStart( plt_pulse_xTimer, 10 );
 
 	// Espero que termine de mover el motor. EL callback pone motor_running en false. !!
-	//while ( PLTCB.motor_running ) {
-	//	vTaskDelay( ( TickType_t) (1000 / portTICK_RATE_MS ) );
-	//}
+	while ( PLTCB.motor_running ) {
+		vTaskDelay( ( TickType_t) (1000 / portTICK_RATE_MS ) );
+	}
 
-	xprintf_P(PSTR("STEPPER: test running.\r\n"));
-
+	xprintf_P(PSTR("STEPPER: running.\r\n"));
 }
 /*
  * -----------------------------------------------------------------------------------
@@ -1491,7 +1660,7 @@ void piloto_setup_outofrtos(void )
 			pdMS_TO_TICKS( 20 ),
 			pdTRUE,
 			( void * ) 0,
-			pv_piloto_pulse_TimerCallback,
+			plt_pulse_TimerCallback,
 			&plt_pulse_xTimerBuffer
 			);
 
@@ -1539,6 +1708,17 @@ void piloto_config_ppr( char *s_pulseXrev )
 void piloto_config_pwidth( char *s_pwidth )
 {
 	piloto_conf.pWidth = atoi(s_pwidth);
+}
+//------------------------------------------------------------------------------------
+void piloto_read_ring_buffer(void)
+{
+int8_t i;
+
+	xprintf_P( PSTR("RB: Count=%d \r\n"),ringBuffer_GetCount(&pFIFO) );
+	xprintf_P( PSTR("RB: FreeCount=%d \r\n"),ringBuffer_GetFreeCount(&pFIFO) );
+	for (i=0; i < PFIFO_STORAGE_SIZE; i++) {
+		xprintf_P( PSTR("RB: [%d] tipo_tarea=%d, valor=%0.3f\r\n"), i, pFifo_storage[i].tipo, pFifo_storage[i].valor);
+	}
 }
 //------------------------------------------------------------------------------------
 

@@ -8,167 +8,137 @@
 
 #include "l_ringBuffer.h"
 
+
 //------------------------------------------------------------------------------------
-ringBufferHandle_t ringBufferCreate ( const uint16_t length,int flags  )
+/*
+ *  RING BUFFERS DE ESTRUCTURAS
+ */
+void ringBuffer_CreateStatic ( void_ringBuffer_s *rB, void *storage_area, uint16_t buffersize, uint16_t elementsize  )
 {
-ringBuffer_s *pxNewRingBuffer = NULL;
-ringBufferHandle_t xReturn = NULL;
-int8_t *pcAllocatedBuffer = NULL ;
-uint8_t *dataBuffer = NULL;
-
-	// Aloco el espacio para el buffer de datos.
-	dataBuffer = ( uint8_t * ) pvPortMalloc( length + 1);
-
-	pcAllocatedBuffer = ( int8_t * ) pvPortMalloc( sizeof(ringBuffer_s ));
-	if( pcAllocatedBuffer != NULL )
-	{
-		pxNewRingBuffer = ( ringBufferHandle_t * ) pcAllocatedBuffer;
-		pxNewRingBuffer->head = 0;	// start
-		pxNewRingBuffer->tail = 0;	// end
-		pxNewRingBuffer->count = 0;
-		pxNewRingBuffer->buff = dataBuffer;
-		pxNewRingBuffer->length = length;		// REVISAR
-		xReturn = pxNewRingBuffer;
-	}
-
-	return(xReturn);
+	rB->buff = storage_area;
+	rB->head = 0;	// start
+	rB->tail = 0;	// end
+	rB->count = 0;
+	rB->length = buffersize;
+	rB->elementsize = elementsize;
 
 }
 //------------------------------------------------------------------------------------
-void ringBufferFlush( ringBufferHandle_t ringBufferHandle )
+bool ringBuffer_Poke( void_ringBuffer_s *rB, void *element )
 {
-ringBuffer_s *pxRingBuffer = NULL;
 
-	taskENTER_CRITICAL();
+	// Coloco una estructura presionTask ( put_on_top ) en la FIFO
 
-	pxRingBuffer = ringBufferHandle;
-	pxRingBuffer->head = 0;
-	pxRingBuffer->tail = 0;
-	pxRingBuffer->count = 0;
-	memset(pxRingBuffer->buff,'\0', pxRingBuffer->length );	// REVISAR
-
-	taskEXIT_CRITICAL();
-}
-//------------------------------------------------------------------------------------
-bool ringBufferPoke( ringBufferHandle_t ringBufferHandle,const char *cChar )
-{
-	// Inserta un elemento en el ringBuffer.
-	// Si el buffer esta lleno, descarto el valor recibido
-	// Guardo en el lugar apuntado por head y avanzo.
-
-ringBuffer_s *pxRingBuffer = ringBufferHandle;
 bool ret = false;
+void *p;
 
 	taskENTER_CRITICAL();
+
 	// Si el buffer esta vacio ajusto los punteros
-	if( pxRingBuffer->count == 0) {
-		pxRingBuffer->head = pxRingBuffer->tail = 0;
+	if( rB->count == 0) {
+		rB->head = rB->tail = 0;
 	}
 
-	if ( pxRingBuffer->count < pxRingBuffer->length ) {
-		pxRingBuffer->buff[pxRingBuffer->head] = *cChar;
-		++pxRingBuffer->count;
+	if ( rB->count < rB->length ) {
+
+		p =  (rB->buff);
+		p += sizeof(uint8_t)*( rB->head * rB->elementsize);
+
+		memcpy( p, element, rB->elementsize );
+		++rB->count;
 		// Avanzo en modo circular
-		pxRingBuffer->head = ( pxRingBuffer->head  + 1 ) % ( pxRingBuffer->length );
+		rB->head = ( rB->head  + 1 ) % ( rB->length );
 		ret = true;
     }
+
 	taskEXIT_CRITICAL();
 	return(ret);
 
 }
 //------------------------------------------------------------------------------------
-bool ringBufferPokeFromISR( ringBufferHandle_t ringBufferHandle,const char *cChar )
-{
-	// Si el buffer esta lleno, descarto el valor recibido
-	// Guardo en el lugar apuntado por head y avanzo.
-
-ringBuffer_s *pxRingBuffer = ringBufferHandle;
-bool ret = false;
-
-	// Si el buffer esta vacio ajusto los punteros !!!
-	if( pxRingBuffer->count == 0) {
-		pxRingBuffer->head = pxRingBuffer->tail = 0;
-	}
-
-	if ( pxRingBuffer->count < pxRingBuffer->length ) {
-		pxRingBuffer->buff[pxRingBuffer->head] = *cChar;
-		++pxRingBuffer->count;
-		// Avanzo en modo circular
-		pxRingBuffer->head = ( pxRingBuffer->head  + 1 ) % ( pxRingBuffer->length );
-		ret = true;
-    }
-	return(ret);
-
-}
-//------------------------------------------------------------------------------------
-bool ringBufferPop( ringBufferHandle_t ringBufferHandle, char *cChar )
+bool ringBuffer_Pop( void_ringBuffer_s *rB, void *element )
 {
 
-ringBuffer_s *pxRingBuffer = ringBufferHandle;
+	// Saco un valor ( get_from_tail ) de la FIFO.
+
 bool ret = false;
+void *p;
 
 	taskENTER_CRITICAL();
 	//  Si el buffer esta vacio retorno.
-	if( pxRingBuffer->count == 0) {
-		pxRingBuffer->head = pxRingBuffer->tail = 0;
+	if( rB->count == 0) {
+		rB->head = rB->tail = 0;
 		taskEXIT_CRITICAL();
 		return(ret);
 	}
 
-	*cChar = pxRingBuffer->buff[pxRingBuffer->tail];
-	--pxRingBuffer->count;
-	// Avanzo en modo circular
-	pxRingBuffer->tail = ( pxRingBuffer->tail  + 1 ) % ( pxRingBuffer->length );
-	ret = true;
-	taskEXIT_CRITICAL();
+	p =  (rB->buff);
+	p += sizeof(uint8_t)*( rB->tail * rB->elementsize);
 
+	memcpy( element, p, rB->elementsize );
+	--rB->count;
+	// Avanzo en modo circular
+	rB->tail = ( rB->tail  + 1 ) % ( rB->length );
+	ret = true;
+
+	taskEXIT_CRITICAL();
 	return(ret);
 }
 //------------------------------------------------------------------------------------
-bool ringBufferPopFromISR( ringBufferHandle_t ringBufferHandle, char *cChar )
+bool ringBuffer_PopRead( void_ringBuffer_s *rB, void *element )
 {
 
-ringBuffer_s *pxRingBuffer = ringBufferHandle;
+	// Leo un valor ( red_from_tail ) de la FIFO.
+
 bool ret = false;
+void *p;
 
-	// Cannot block in an ISR
-
+	taskENTER_CRITICAL();
 	//  Si el buffer esta vacio retorno.
-	if( pxRingBuffer->count == 0) {
-		pxRingBuffer->head = pxRingBuffer->tail = 0;
+	if( rB->count == 0) {
+		rB->head = rB->tail = 0;
+		taskEXIT_CRITICAL();
 		return(ret);
 	}
 
-	*cChar = pxRingBuffer->buff[pxRingBuffer->tail];
-	--pxRingBuffer->count;
-	// Avanzo en modo circular
-	pxRingBuffer->tail = ( pxRingBuffer->tail  + 1 ) % ( pxRingBuffer->length );
+	p =  (rB->buff);
+	p += sizeof(uint8_t)*( rB->tail * rB->elementsize);
+
+	memcpy( element, p, rB->elementsize );
+	// No muevo el puntero
+
 	ret = true;
 
+	taskEXIT_CRITICAL();
 	return(ret);
 }
 //------------------------------------------------------------------------------------
-uint16_t ringBufferGetCount( ringBufferHandle_t ringBufferHandle )
+void ringBuffer_Flush( void_ringBuffer_s *rB )
 {
 
-ringBuffer_s *pxRingBuffer = ringBufferHandle;
+	rB->head = 0;
+	rB->tail = 0;
+	rB->count = 0;
+	memset( (rB->buff), '\0', (rB->length * rB->elementsize) );
+}
+//------------------------------------------------------------------------------------
+uint16_t ringBuffer_GetCount( void_ringBuffer_s *rB )
+{
 
-	return(pxRingBuffer->count);
+	return(rB->count);
 
 }
 //------------------------------------------------------------------------------------
-uint16_t ringBufferGetFreeCount( ringBufferHandle_t ringBufferHandle )
+uint16_t ringBuffer_GetFreeCount( void_ringBuffer_s *rB )
 {
 
-ringBuffer_s *pxRingBuffer = ringBufferHandle;
-
-	return(pxRingBuffer->length - pxRingBuffer->count);
+	return(rB->length - rB->count);
 
 }
 //------------------------------------------------------------------------------------
-
-
-//------------------------------------------------------------------------------------
+/*
+ *  RING BUFFERS DE CHAR
+ */
 bool rBufferPoke( ringBuffer_s *rB, char *cChar )
 {
 

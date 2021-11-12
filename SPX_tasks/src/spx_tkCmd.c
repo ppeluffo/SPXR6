@@ -36,10 +36,25 @@ static void cmdStatusFunction(void);
 static void cmdConfigFunction(void);
 static void cmdKillFunction(void);
 
+//static void cmdRbTestFunction(void);
+
 #define WR_CMD 0
 #define RD_CMD 1
 
 RtcTimeType_t rtc;
+
+/*
+typedef struct {
+	int tipo_tarea;
+	float valor;
+} s_element;
+
+#define RBFIFO_STORAGE_SIZE 5
+s_element rbfifo_storage[RBFIFO_STORAGE_SIZE];
+void_ringBuffer_s rbFIFO;
+
+s_element elemento;
+*/
 
 //------------------------------------------------------------------------------------
 void tkCmd(void * pvParameters)
@@ -57,20 +72,23 @@ uint8_t ticks = 0;
 	FRTOS_CMD_init( xputChar, xprintf_cmd );
 
 	// Registro los comandos y los mapeo al cmd string.
-	FRTOS_CMD_register( "cls\0", cmdClearScreen );
-	FRTOS_CMD_register( "reset\0", cmdResetFunction);
-	FRTOS_CMD_register( "write\0", cmdWriteFunction);
-	FRTOS_CMD_register( "read\0", cmdReadFunction);
-	FRTOS_CMD_register( "help\0", cmdHelpFunction );
-	FRTOS_CMD_register( "status\0", cmdStatusFunction );
-	FRTOS_CMD_register( "config\0", cmdConfigFunction );
-	FRTOS_CMD_register( "kill\0", cmdKillFunction );
+	FRTOS_CMD_register( "cls", cmdClearScreen );
+	FRTOS_CMD_register( "reset", cmdResetFunction);
+	FRTOS_CMD_register( "write", cmdWriteFunction);
+	FRTOS_CMD_register( "read", cmdReadFunction);
+	FRTOS_CMD_register( "help", cmdHelpFunction );
+	FRTOS_CMD_register( "status", cmdStatusFunction );
+	FRTOS_CMD_register( "config", cmdConfigFunction );
+	FRTOS_CMD_register( "kill", cmdKillFunction );
+//	FRTOS_CMD_register( "rb", cmdRbTestFunction );
 
 	// Fijo el timeout del READ
 	ticks = 5;
 	frtos_ioctl( fdTERM,ioctl_SET_TIMEOUT, &ticks );
 
 	xprintf_P( PSTR("starting tkCmd..\r\n") );
+
+	//ringBuffer_CreateStatic ( &rbFIFO, &rbfifo_storage, RBFIFO_STORAGE_SIZE, sizeof(s_element)  );
 
 	// Comienzo a disparar la orden de arrancar las tareas
 
@@ -100,6 +118,68 @@ uint8_t ticks = 0;
 
 	}
 }
+//------------------------------------------------------------------------------------
+/*
+static void cmdRbTestFunction(void)
+{
+
+int8_t i;
+
+	FRTOS_CMD_makeArgv();
+
+	// rb poke tipo valor
+	if ( strcmp_P( strupr(argv[1]), PSTR("POKE")) == 0 ) {
+		elemento.tipo_tarea = atoi(argv[2]);
+		elemento.valor = atof(argv[3]);
+		ringBuffer_Poke(&rbFIFO,  &elemento );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// rb pop
+	if ( strcmp_P( strupr(argv[1]), PSTR("POP")) == 0 ) {
+		ringBuffer_Pop(&rbFIFO,  &elemento );
+		xprintf_P( PSTR("RB: tipo_tarea=%d, valor=%0.3f\r\n"), elemento.tipo_tarea, elemento.valor);
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// rb flush
+	if ( strcmp_P( strupr(argv[1]), PSTR("FLUSH")) == 0 ) {
+		ringBuffer_Flush(&rbFIFO);
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// rb count
+	if ( strcmp_P( strupr(argv[1]), PSTR("COUNT")) == 0 ) {
+		xprintf_P( PSTR("RB: Count=%d \r\n"),ringBuffer_GetCount(&rbFIFO) );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// rb free
+	if ( strcmp_P( strupr(argv[1]), PSTR("FREE")) == 0 ) {
+		xprintf_P( PSTR("RB: FreeCount=%d \r\n"),ringBuffer_GetFreeCount(&rbFIFO) );
+		pv_snprintfP_OK();
+		return;
+	}
+
+	// rb display
+	if ( strcmp_P( strupr(argv[1]), PSTR("DISPLAY")) == 0 ) {
+		xprintf_P( PSTR("RB: Count=%d \r\n"),ringBuffer_GetCount(&rbFIFO) );
+		xprintf_P( PSTR("RB: FreeCount=%d \r\n"),ringBuffer_GetFreeCount(&rbFIFO) );
+		for (i=0; i<RBFIFO_STORAGE_SIZE; i++) {
+			xprintf_P( PSTR("RB: [%d] tipo_tarea=%d, valor=%0.3f\r\n"), i, rbfifo_storage[i].tipo_tarea, rbfifo_storage[i].valor);
+		}
+		pv_snprintfP_OK();
+		return;
+	}
+	return;
+
+
+}
+*/
 //------------------------------------------------------------------------------------
 static void cmdStatusFunction(void)
 {
@@ -277,7 +357,7 @@ static void cmdWriteFunction(void)
 	// PILOTO
 	// write pilototest pRef(kg/cm2)
 	if ( strcmp_P( strupr(argv[1]), PSTR("PILOTOTEST\0")) == 0 ) {
-		plt_producer_testing_handler( argv[2] );
+		piloto_productor_testing_handler( argv[2] );
 		pv_snprintfP_OK();
 		return;
 	}
@@ -388,6 +468,13 @@ st_dataRecord_t dr;
 uint8_t cks;
 
 	FRTOS_CMD_makeArgv();
+
+	// RB ( piloto ring-buffer)
+	// read rb
+	if (!strcmp_P( strupr(argv[1]), PSTR("RB\0")) ) {
+		piloto_read_ring_buffer();
+		return;
+	}
 
 	// AUX
 	// read aux rsp
@@ -782,6 +869,15 @@ static void cmdHelpFunction(void)
 
 	FRTOS_CMD_makeArgv();
 
+	// HELP rb
+	/*
+	if (!strcmp_P( strupr(argv[1]), PSTR("RB\0"))) {
+		xprintf_P( PSTR("-rb {poke tipo valor, pop, flush, free, count, display}\r\n"));
+		return;
+
+	}
+	*/
+
 	// HELP WRITE
 	if (!strcmp_P( strupr(argv[1]), PSTR("WRITE\0"))) {
 		xprintf_P( PSTR("-write\r\n\0"));
@@ -823,6 +919,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  gprs {rsp,cts,dcd,ri,sms}\r\n"));
 		xprintf_P( PSTR("       {modo,pref,bands}\r\n"));
 		xprintf_P( PSTR("  aux rsp\r\n"));
+		xprintf_P( PSTR("  rb\r\n"));
 		return;
 
 	}

@@ -16,7 +16,7 @@
 
 #include "l_steppers.h"
 #include "l_rtc79410.h"
-#include "l_float_ringBuffer.h"
+#include "l_ringBuffer.h"
 
 #include "spx.h"
 #include "ul_utils.h"
@@ -61,7 +61,7 @@ typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, 
 #define INTERVALO_TRYES_SECS	15
 #define PA_MIN					1.0
 #define PA_MAX					8.0
-#define PB_MIN					0.8
+#define PB_MIN					0.0
 #define PB_MAX					8.0
 #define DELTA_PA_PB				0.3
 #define PGAP					0.3
@@ -92,21 +92,31 @@ struct {
 
 uint8_t plt_app_wdg;
 
-#define PFIFO_STORAGE_SIZE 5
-float pFifo_storage[PFIFO_STORAGE_SIZE];
-float_ringBuffer_s pFIFO;
 
+typedef enum { PRESION=0, STEPPER } t_jobOrderTipo;
+
+typedef struct {
+	int tipo;
+	float valor;
+} s_jobOrder;
+
+#define PFIFO_STORAGE_SIZE 5
+s_jobOrder pFifo_storage[PFIFO_STORAGE_SIZE];
+void_ringBuffer_s pFIFO;
+
+void FSM_piloto_app_service( uint8_t app_wdt );
 void piloto_setup_outofrtos(void );
-void plt_producer_testing_handler(char *s_pRef );
 void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth );
+void piloto_productor_testing_handler(char *s_pRef );
+void plt_productor_online_handler( float presion );
 bool piloto_config_slot( char *s_slot, char *s_hhmm, char *s_presion );
 void piloto_config_ppr( char *s_pulseXrev );
 void piloto_config_pwidth( char *s_pwidth );
 void piloto_config_status(void);
 void piloto_config_defaults(void);
-void FSM_piloto_app_service(uint8_t app_wdt );
 uint8_t piloto_hash(void);
-void plt_producer_online_handler( float presion);
+void piloto_read_ring_buffer(void);
+
 
 
 
