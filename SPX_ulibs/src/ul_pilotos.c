@@ -11,6 +11,12 @@
  *  3- El control dinamico no se hace el primer loop porque esta en 0 y da error. OK
  *  4- Si en condiciones4start/adjust ya estoy en el bandgap, borro el request OK
  *  5- Revisaer inicilizar variables antes de usarlas en funciones. OK.
+ *  6- El ajuste dinamico se va actualizando y tambien el rollback.
+ *     Ver si volver al ppio o al punto anterior.
+ *     Volvemos al ultimo punto correcto dado por el dyncontrol de modo que quedar
+ *     lo mas cerca de la consigna.
+ *      Cuantas veces reintento un rollback antes de borrar el pedido ?
+ *
  *
  *
  *
@@ -303,7 +309,7 @@ void plt_consumer_handler(void)
 	 */
 
 s_jobOrder jobOrder;
-bool retS = false;
+bool borrar_request = false;
 
 	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer start.\r\n"));
 
@@ -317,13 +323,13 @@ bool retS = false;
 	//xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer tipo=%d, valor=%f\r\n"), jobOrder.tipo, jobOrder.valor );
 
 	if ( jobOrder.tipo == PRESION ) {
-		retS = plt_consumer_handler_presion( jobOrder.valor);
+		borrar_request = plt_consumer_handler_presion( jobOrder.valor);
 	} else {
-		retS = plt_consumer_handler_stepper( jobOrder.valor);
+		borrar_request = plt_consumer_handler_stepper( jobOrder.valor);
 	}
 
 	// Si pude ejecutar el handler, borro el request.
-	if ( retS ) {
+	if ( borrar_request ) {
 		ringBuffer_Pop(&pFIFO, NULL );
 	}
 
@@ -340,7 +346,7 @@ bool plt_consumer_handler_presion(float presion )
 	 * Si las paso, mando ajustar.
 	 */
 
-bool retS = false;
+bool borrar_request = false;
 
 	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer_presion start.\r\n"));
 
@@ -350,22 +356,25 @@ bool retS = false;
 	// Si la presion esta en la banda, salgo y borro el request
 	if ( plt_ctl_pB_alcanzada( plt_ctl_vars.pB, PLTCB.pRef )) {
 		xprintf_PD(DF_APP, PSTR("PILOTO: Presion en banda.\r\n") );
-		retS = true;	// Para borrar el request
+		borrar_request = true;	// Para borrar el request
 		goto quit;
 	}
 
 	if ( ! plt_ctl_conditions4start() ) {
-		retS = false;
+		// No hay condiciones para empezar a ajustar.
+		// Salgo y espero el proximo turno pero no borro el request
+		borrar_request = false;
 		goto quit;
 	}
 
 	// Estan las condiciones para intentar ajustar.
-	retS = FSM_piloto_ajustar_presion();
+	// Dependiendo si ajuste o no es que borro el request o queda pendiente
+	borrar_request = FSM_piloto_ajustar_presion();
 
 quit:
 
 	xprintf_PD( DF_APP, PSTR(">>PILOTO: consumer_presion stop.\r\n"));
-	return(retS);
+	return(borrar_request);
 }
 //------------------------------------------------------------------------------------
 bool plt_consumer_handler_stepper(float pulsos )
@@ -407,7 +416,7 @@ bool FSM_piloto_ajustar_presion( void )
 {
 
 uint8_t state = PLT_READ_INPUTS;
-bool retS = false;
+bool borrar_request = false;
 
 	// Inicializo
 	xprintf_PD( DF_APP, PSTR("\r\nPILOTO: FSMajuste ENTRY\r\n"));
@@ -416,6 +425,7 @@ bool retS = false;
 	PLTCB.loops = 0;
 	PLTCB.exit_code = UNKNOWN;
 	PLTCB.accion_pendiente = false;
+	PLTCB.bajar_presion = false;
 
 	plt_rollback_init();
 
@@ -484,17 +494,17 @@ bool retS = false;
 
 			if (PLTCB.accion_pendiente ) {
 				xprintf_P(PSTR("PILOTO: Fin de Ajuste (pendiente)\r\n"));
-				retS = false;
+				borrar_request = false;
 			} else {
 				xprintf_P(PSTR("PILOTO: Fin de Ajuste\r\n"));
-				retS = true;
+				borrar_request = true;
 			}
-			return(retS);
+			return(borrar_request);
 			break;
 		}
 	}
 
-	return(retS);
+	return(borrar_request);
 }
 /*
  * -----------------------------------------------------------------------------------
@@ -543,7 +553,7 @@ bool plt_ctl_conditions4adjust( void )
 	 * Ahora se chequean con los valores leidos para esto de las entradas.
 	 */
 
-bool retS = true;
+bool ajustar = true;
 bool ajuste_al_alza = false;
 
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
@@ -563,16 +573,13 @@ bool ajuste_al_alza = false;
 		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste a la baja.\r\n") );
 	}
 
-	PLTCB.run_rollback = false;
-	PLTCB.accion_pendiente = false;
-
 	// CONDICION 1: Alcance la presion buscada. Salgo.
 	if ( plt_ctl_pB_alcanzada( PLTCB.pB, PLTCB.pRef ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode: PB_REACHED\r\n"));
 		PLTCB.exit_code = POUT_REACHED;
 		PLTCB.run_rollback = false;
 		PLTCB.accion_pendiente = false;
-		retS = false;
+		ajustar = false;
 		goto quit;
 	}
 
@@ -581,9 +588,9 @@ bool ajuste_al_alza = false;
 	if ( plt_ctl_max_reintentos_reached()) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:MAX_TRYES\r\n"));
 		PLTCB.exit_code = MAX_TRYES;
-		PLTCB.run_rollback = false;
+		PLTCB.run_rollback = false;			// Hice el maximo esfuerzo
 		PLTCB.accion_pendiente = false;		// Por ahora no queda pendiente.
-		retS = false;
+		ajustar = false;
 		goto quit;
 	}
 
@@ -592,9 +599,10 @@ bool ajuste_al_alza = false;
 	if ( ! plt_ctl_limites_pA( PLTCB.pA, PA_MIN, PA_MAX ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_ERR\r\n"));
 		PLTCB.exit_code = PA_ERR;
-		PLTCB.run_rollback = true;
+		PLTCB.run_rollback = true;			// Vuelvo al punto de partida
 		PLTCB.accion_pendiente = true;
-		retS = false;
+		PLTCB.bajar_presion = true;			// Por las dudas ya que perdi el sensor
+		ajustar = false;
 		goto quit;
 	}
 
@@ -602,9 +610,10 @@ bool ajuste_al_alza = false;
 	if ( ! plt_ctl_limites_pB( PLTCB.pB, PB_MIN, PB_MAX ) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PB_ERR\r\n"));
 		PLTCB.exit_code = PB_ERR;
-		PLTCB.run_rollback = true;
+		PLTCB.run_rollback = true;			// Vuelvo al punto de partida
 		PLTCB.accion_pendiente = true;
-		retS = false;
+		PLTCB.bajar_presion = true;			// Por las dudas ya que perdi el sensor
+		ajustar = false;
 		goto quit;
 	}
 
@@ -612,9 +621,10 @@ bool ajuste_al_alza = false;
 	if ( ! plt_ctl_pA_mayor_pB( PLTCB.pA,  PLTCB.pB) ) {
 		xprintf_PD( DF_APP, PSTR("PILOTO: FSMajuste: outcode:PA_LESS_PB\r\n"));
 		PLTCB.exit_code = PA_LESS_PB;
-		PLTCB.run_rollback = true;
+		PLTCB.run_rollback = true;			// Vuelvo al punto de partida
 		PLTCB.accion_pendiente = true;
-		retS = false;
+		PLTCB.bajar_presion = true;			// Por las dudas ya que perdi el sensor
+		ajustar = false;
 		goto quit;
 	}
 
@@ -623,7 +633,7 @@ bool ajuste_al_alza = false;
 		PLTCB.exit_code = DYNC_ERR;
 		PLTCB.run_rollback = true;
 		PLTCB.accion_pendiente = true;
-		retS = false;
+		ajustar = false;
 		goto quit;
 	}
 
@@ -636,9 +646,9 @@ bool ajuste_al_alza = false;
 			PLTCB.exit_code = BAND_ERR;
 			PLTCB.run_rollback = false;
 			PLTCB.accion_pendiente = true;
-			retS = false;
-			goto quit;
+			ajustar = false;
 		}
+		goto quit;
 	}
 
 	//-------------------------------------------------------------------------------
@@ -650,14 +660,14 @@ bool ajuste_al_alza = false;
 			PLTCB.run_rollback = false;
 			PLTCB.accion_pendiente = true;
 			PLTCB.exit_code = CAUDAL_CERO;
-			retS = false;
-			goto quit;
+			ajustar = false;
 		}
+		goto quit;
 	}
 
 quit:
 
-	if ( retS ) {
+	if ( ajustar ) {
 		if ( ajuste_al_alza ) {
 			xprintf_PD( DF_APP, PSTR("PILOTO: Condiciones para aumentar pB OK.\r\n"));
 		} else {
@@ -669,7 +679,7 @@ quit:
 
 	xprintf_P(PSTR("PILOTO: ConditionsXadjust stop\r\n"));
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
-	return(retS);
+	return(ajustar);
 
 }
 //------------------------------------------------------------------------------------
@@ -1002,7 +1012,7 @@ bool plt_ctl_conditions4start( void )
 	 *
 	 */
 
-bool retS = true;
+bool ajustar = true;
 bool ajuste_al_alza = false;
 
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
@@ -1024,17 +1034,17 @@ bool ajuste_al_alza = false;
 
 	// Condiciones comunes (alza, baja)
 	if ( ! plt_ctl_limites_pA( plt_ctl_vars.pA, PA_MIN, PA_MAX )) {
-		retS = false;
+		ajustar = false;
 		goto quit;
 	}
 
 	if ( ! plt_ctl_limites_pB( plt_ctl_vars.pB, PB_MIN, PB_MAX ) ) {
-		retS = false;
+		ajustar = false;
 		goto quit;
 	}
 
 	if ( ! plt_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
-		retS = false;
+		ajustar = false;
 		goto quit;
 	}
 
@@ -1045,9 +1055,9 @@ bool ajuste_al_alza = false;
 		// 1. No hay margen de regulacion
 		if ( ! plt_ctl_band_gap_suficiente(plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
 			//xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
-			retS = false;
-			goto quit;
+			ajustar = false;
 		}
+		goto quit;
 	}
 
 	//-------------------------------------------------------------------------------
@@ -1056,14 +1066,14 @@ bool ajuste_al_alza = false;
 		// -Si mido caudal, este debe ser positivo.
 		if ( mido_caudal && ( plt_ctl_vars.caudal < 1.0 ) ) {
 			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal ERROR (%.03f) < 1.0\r\n"), plt_ctl_vars.caudal );
-			retS = false;
-			goto quit;
+			ajustar = false;
 		}
+		goto quit;
 	}
 
 quit:
 
-	if ( retS ) {
+	if ( ajustar ) {
 		if ( ajuste_al_alza ) {
 			xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones para aumentar pB OK.\r\n"));
 		} else {
@@ -1075,7 +1085,7 @@ quit:
 
 	xprintf_P(PSTR("PILOTO: conditions4start end.\r\n"));
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
-	return(retS);
+	return(ajustar);
 }
 //------------------------------------------------------------------------------------
 /*
@@ -1371,18 +1381,21 @@ void plt_rollback_ajustar_piloto( void )
 	 * No controlo condiciones ni presiones.
 	 * Los pulsos de rollback pueden tener signo.
 	 *
+	 *
 	 */
 
 	xprintf_P( PSTR("PILOTO: Rollback Start\r\n"));
 	u_wdg_kick( plt_app_wdg,  240 );
 
-	if ( PLTCB.pulsos_rollback > 0 ) {
+	//if ( PLTCB.pulsos_rollback > 0 ) {
+	if ( PLTCB.dync_pulsos_rollback > 0 ) {
 		PLTCB.dir = STEPPER_FWD;
 	} else {
 		PLTCB.dir = STEPPER_REV;
 	}
 
-	PLTCB.pulsos_a_aplicar = abs(PLTCB.pulsos_rollback);
+	//PLTCB.pulsos_a_aplicar = abs(PLTCB.pulsos_rollback);
+	PLTCB.pulsos_a_aplicar = abs(PLTCB.dync_pulsos_rollback);
 	PLTCB.pwidth = piloto_conf.pWidth;
 	PLTCB.pulse_counts = PLTCB.pulsos_a_aplicar;
 
@@ -1451,6 +1464,7 @@ void plt_dyncontrol_update(void)
 		PLTCB.dync_pulsos -= PLTCB.pulse_counts;
 	}
 
+	PLTCB.dync_pulsos_rollback = PLTCB.dync_pulsos;
 }
 /*------------------------------------------------------------------------------------*/
 bool plt_dyncontrol_pass(void)
@@ -1478,27 +1492,34 @@ float limite;
 
 	// dync_pulsos tiene signo !!
 	if ( abs(PLTCB.dync_pulsos) > 0 ) {
-		sigma = fabs(PLTCB.dync_pB0 - PLTCB.pB) / abs(PLTCB.dync_pulsos);
+		sigma = fabs(PLTCB.dync_pB0 - PLTCB.pB) / abs(PLTCB.dync_pulsos) * 1000;
 	}
 
 	xprintf_PD( DF_APP, PSTR("PILOTO: Check dyn_control:\r\n"));
 	xprintf_PD( DF_APP, PSTR("PILOTO:   pxrev=%d\r\n"), piloto_conf.pulsesXrev );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   dync_pulsos=%d\r\n"), PLTCB.dync_pulsos );
+	xprintf_PD( DF_APP, PSTR("PILOTO:   dync_pulsos_rollback=%d\r\n"), PLTCB.dync_pulsos_rollback );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   pB0=%.03f\r\n"), PLTCB.dync_pB0 );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   pB=%.03f\r\n"), PLTCB.pB );
 	xprintf_PD( DF_APP, PSTR("PILOTO:   sigma=%f\r\n"), sigma );
 
-	limite = ( 0.2/piloto_conf.pulsesXrev);
+	// Si no varia 200grs en 1 rev es error
+	limite = ( 0.2/piloto_conf.pulsesXrev * 1000 );
 	if ( sigma < limite ) {
 		xprintf_P( PSTR("PILOTO: dyn_control ERROR baja pendiente (%f < [%f]!!.\r\n"), sigma, limite);
 		return(false);
 	}
 
-	limite = ( 0.6/piloto_conf.pulsesXrev);
-	if ( sigma > ( 0.6/piloto_conf.pulsesXrev) ) {
+	// Si varia mas de 1K en 1 rev es error
+	limite = ( 1.0/piloto_conf.pulsesXrev * 1000);
+	if ( sigma > limite ) {
 		xprintf_P( PSTR("PILOTO: dyn_control ERROR alta pendiente (%f > [%f]!!.\r\n"), sigma, limite);
 		return(false);
 	}
+
+	// Giro y cambio la presion. Está funcionando.
+	// Actualizo los parametros del dyn_control.
+	plt_dyncontrol_init();
 
 	/*
 	// Si di al menos una vuelta completa....

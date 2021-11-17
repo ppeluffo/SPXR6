@@ -85,9 +85,11 @@ struct {
 	float dync_pB0;
 	float pB0;
 	int16_t dync_pulsos;
+	int16_t dync_pulsos_rollback;
 	t_exit_conditions exit_code;
 	bool run_rollback;
 	bool accion_pendiente;
+	bool bajar_presion;
 } PLTCB;	// Piloto Control Block
 
 uint8_t plt_app_wdg;
