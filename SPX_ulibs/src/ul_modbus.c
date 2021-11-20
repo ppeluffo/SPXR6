@@ -128,6 +128,13 @@ float pvalue = 0.0;
 	modbus_io( DF_MBUS, &mbus_cb );
 	//
 	// Siempre retorno un float
+
+	// Si hubo un error, pongo un NaN y salgo
+	if (mbus_cb.io_status == false) {
+		pvalue = mbus_cb.udata.float_value;
+		goto quit;
+	}
+
 	// La operacion de io es exitosa.
 	if ( mbus_cb.channel.type == FLOAT) {
 		pvalue = mbus_cb.udata.float_value;
@@ -146,6 +153,8 @@ float pvalue = 0.0;
 		pvalue = 1.0 * mbus_cb.udata.i32_value / pow(10, mbus_cb.channel.divisor_p10 );
 
 	}
+
+quit:
 
 	xSemaphoreGive( sem_MBUS );
 

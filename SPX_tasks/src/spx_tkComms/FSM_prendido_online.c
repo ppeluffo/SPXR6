@@ -1954,6 +1954,7 @@ void data_process_response_MBUS(void)
 	 * Testing desde el server:
 	 * Se abre una consola redis: >redis-cli
 	 * Comandos:
+	 *    hset PABLO BROADCAST [1,2091,2,16,FLOAT,c3210,435.92][2,2091,2,16,U16,c3210,435][3,2091,2,16,U16,c3210,1234]
 	 *    hset PTEST01 MODBUS "[2091,I,435][2093,F,12.45]"
 	 *    hgetall PTEST01
 	 *    hset PTEST01 MODBUS "NUL"
@@ -1973,22 +1974,27 @@ char *tk_type = NULL;
 char *tk_codec = NULL;
 char *tk_value = NULL;
 char *delim = ",;:=><[]";
+int len;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus in\r\n\0"));
 	gprs_print_RX_buffer();
 
 	// MBUS
 	if ( gprs_check_response( 0, "MBUS") ) {
-		memset(localStr,'\0',sizeof(localStr));
+
 		ts = strstr( gprs_rxbuffer.buffer, "MBUS");
-		strncpy(localStr, ts, sizeof(localStr));
 		//xprintf_P(PSTR("DEBUG_MBUS: [%s]\r\n"), localStr);
 
 		start = strchr(ts,'[');
-		end = strchr(localStr,']');
+		end = strchr(start,']');
 
 		while ( ( start != NULL) && ( end != NULL ) ) {
-			stringp = start;
+			memset(localStr,'\0',sizeof(localStr));
+			len = ( end - start );
+			memcpy(&localStr, start, len );
+			//xprintf_P(PSTR("RES_A =[%s]\r\n"), localStr );
+
+			stringp = localStr;
 			tk_slaaddr = strsep(&stringp,delim);
 			tk_slaaddr = strsep(&stringp,delim);	// sla_address
 			tk_regaddr = strsep(&stringp,delim);	// reg_address
@@ -2000,11 +2006,17 @@ char *delim = ",;:=><[]";
 
 			modbus_write_output_register( tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type,tk_codec,tk_value );
 
-			// Copio el segundo bloque al temporal
-			strncpy(localStr, end, sizeof(localStr));
+			//xprintf_P(PSTR("RES_B=[%s][%s][%s][%s][%s]\r\n"), tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type );
 
-			start = strchr(localStr,'[');
-			end = strchr(localStr,']');
+			start++;
+			ts = start;
+			start = strchr(ts,'[');
+			if ( start != NULL ) {
+				end = strchr(start,']');
+			} else {
+				end = NULL;
+			}
+
 		}
 	}
 
