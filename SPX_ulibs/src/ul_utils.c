@@ -5,10 +5,12 @@
  *      Author: pablo
  */
 
+#include <tkComms_sms.h>
 #include "spx.h"
 #include "tkComms.h"
 #include "tkApp.h"
 #include "ul_utils.h"
+
 
 #define RTC32_ToscBusy()        !( VBAT.STATUS & VBAT_XOSCRDY_bm )
 
@@ -260,6 +262,7 @@ void u_load_defaults( char *opt )
 
 	modbus_config_defaults();
 
+	sms_config_defaults();
 }
 //------------------------------------------------------------------------------------
 uint8_t u_checksum( uint8_t *s, uint16_t size )
@@ -323,7 +326,6 @@ uint16_t ee_wr_addr;
 	// Copio la configuracion de modbus al systemVars.
 	memcpy( &systemVars.modbus_conf,  &modbus_conf, sizeof(modbus_conf));
 
-
 	// SystemVars.
 	// Guardo systemVars en la EE
 	ee_wr_addr = 0x00;
@@ -384,7 +386,7 @@ uint16_t ee_rd_addr;
 
 	// Actualizo DEBUG flag
 	counters_clr_debug();
-	if ( systemVars.debug == DEBUG_COUNTER ) {
+	if ( (systemVars.debug == DEBUG_COUNTER ) || (systemVars.debug == DEBUG_ALL ) ) {
 		counters_set_debug();
 	}
 	return(true);
@@ -448,7 +450,7 @@ FAT_t fat;
 		retS = true;
 	} else {
 		retS = false;
-		if ( systemVars.debug == DEBUG_COMMS ) {
+		if ( DF_COMMS ) {
 			xprintf_P( PSTR("COMMS: bd EMPTY\r\n\0"));
 		}
 	}
@@ -758,7 +760,7 @@ void XPRINT_ELAPSED( uint32_t ticks )
 float time = 1.0 * ( sysTicks - ticks ) / 1000;
 
 	//xprintf_PD( DF_COMMS,  PSTR("elapsed ticks: %lu\r\n"), ( sysTicks - ticks ) );
-	xprintf_PD( DF_COMMS,  PSTR("elapsed time: %0.3f\r\n"), time );
+	xprintf_PD( DF_COMMS,  PSTR("COMMS: elapsed time: %0.3f\r\n"), time );
 }
 //------------------------------------------------------------------------------------
 float ELAPSED_TIME_SECS( uint32_t ticks )
@@ -774,3 +776,7 @@ uint32_t getSysTicks(void)
 	return(sysTicks);
 }
 //------------------------------------------------------------------------------------
+void print_running_ticks(char *tag )
+{
+	xprintf_P(PSTR("%s[%.03f]\r\n"), tag, 1.0 * (xTaskGetTickCount() / 1000) );
+}

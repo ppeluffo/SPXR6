@@ -70,6 +70,7 @@ typedef struct {
 } modbus_control_channel_t;
 
 typedef struct {
+	uint8_t modbus_delay_inter_bytes;
 	uint16_t waiting_poll_time;
 	modbus_channel_t channel[MODBUS_CHANNELS];
 	modbus_control_channel_t control_channel;
@@ -78,7 +79,7 @@ typedef struct {
 modbus_conf_t modbus_conf;
 
 #define MBUS_TXMSG_LENGTH	16
-#define MBUS_RXMSG_LENGTH	16
+#define MBUS_RXMSG_LENGTH	90
 
 /*
  * Los registros de modbus pueden ser enteros, long o float.
@@ -100,7 +101,6 @@ typedef union {
 typedef struct {
 
 	modbus_channel_t channel;
-
 	uint8_t tx_buffer[MBUS_TXMSG_LENGTH];
 	uint8_t rx_buffer[MBUS_RXMSG_LENGTH];
 	uint8_t tx_size;		// Cantidad de bytes en el txbuffer para transmitir
@@ -115,6 +115,7 @@ void modbus_config_defaults(void);
 void modbus_config_status(void);
 bool modbus_config_channel( uint8_t channel,char *s_name,char *s_sla,char *s_addr,char *s_nro_recds,char *s_fcode,char *s_type,char *s_codec,char *s_divisor_p10 );
 bool modbus_config_waiting_poll_time( char *s_waiting_poll_time);
+bool modbus_config_dib( char *s_delay_inter_bytes);
 bool modbus_config_chcontrol ( char *sla_addr, char *reg_addr);
 
 uint8_t modbus_hash(void);
@@ -123,6 +124,7 @@ void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 void modbus_read( float mbus_data[] );
 float modbus_read_channel ( uint8_t ch );
 void modbus_report_status(uint8_t bit_pos, uint8_t bit_value );
+void modbus_read_block_channel( float mbus_data[] );
 
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
@@ -134,12 +136,14 @@ void modbus_data_print( file_descriptor_t fd, float mbus_data[] );
 char * modbus_sprintf( char *sbuffer, float src[] );
 
 void modbus_test_genpoll(char *arg_ptr[16] );
+void modbus_test_frame(char *arg_ptr[16] );
 void modbus_test_chpoll(char *s_channel);
 void modbus_test_int( char *s_nbr );
 void modbus_test_long( char *s_nbr );
 void modbus_test_float( char *s_nbr );
 
 void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value );
+float modbus_write_output_channel( uint8_t ch, float fvalue );
 
 
 #endif /* SPX_ULIBS_INCLUDE_UL_MODBUS_H_ */

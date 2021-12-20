@@ -17,6 +17,7 @@ static bool cmd_read_CREG(void);
 static bool cmd_read_CPSI(void);
 static bool cmd_set_CIPHEAD(void);
 static bool cmd_set_CGDSOCKCONT(void);
+static bool cmd_set_CMGF(void);
 static void state_MONSQE(void);
 //static bool state_configurar_C1(void);
 static void pv_read_SQE(void) ;
@@ -61,6 +62,8 @@ int8_t tkXComms_PRENDIDO_OFFLINE(void)
 
 	if ( !cmd_set_CGDSOCKCONT() )	// Configuro el APN
 		return (APAGADO	);
+
+	cmd_set_CMGF();				// Envio los SMS como texto.
 
 	state_MONSQE();		// Monitoreo la SQE
 
@@ -376,10 +379,12 @@ int8_t cmd_rsp;
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE:CREG in\r\n"));
 
 	// Veo si ya esta configurado. Pregunto hasta 3 veces.
-	for ( tryes = 0; tryes < 3; tryes++ ) {
+	for ( tryes = 0; tryes < 4; tryes++ ) {
 
-		timeout = 30 * ( 1 + tryes ); // Puede demorar mucho !!
-		cmd_rsp = FSM_sendATcmd( timeout, "AT+CREG?\r" );
+		timeout = 15 * tryes + 1; // Puede demorar mucho !!
+
+		// La respuesta al comando suele ser inmediata
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CREG?\r" );
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			if ( gprs_check_response ( 1 * SEC_CHECK_RSP, "CREG: 0,1" ) ) {
@@ -387,6 +392,9 @@ int8_t cmd_rsp;
 				return ( true );
 			}
 		}
+
+		// Espero que se registre.
+		vTaskDelay( (portTickType)( timeout* 1000 / portTICK_RATE_MS ) );
 
 		// Reintento
 		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CREG retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
@@ -575,6 +583,40 @@ int8_t cmd_rsp = -1;
 	}
 }
 //------------------------------------------------------------------------------------
+static bool cmd_set_CMGF(void)
+{
+	// CMGF: Configura los SMS para enviarse en modo texto.
+
+int8_t cmd_rsp;
+int8_t tryes;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoOFFLINE: CMGF\r\n"));
+
+	//FSM_sendATcmd( 5, "AT+CIPSRIP=0\r" );
+
+	// Veo si ya esta configurado. Pregunto hasta 3 veces.
+	for ( tryes = 0; tryes < 3; tryes++ ) {
+
+		cmd_rsp = FSM_sendATcmd( 5, "AT+CMGF=1\r" );
+
+		if (cmd_rsp	== ATRSP_OK ) {
+			xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CMGF out: OK\r\n") );
+			return ( true );
+		}
+
+		// Reintento
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: prendidoOFFLINE:CMGF retry (t=%d) (rsp=%d)\r\n\0"), tryes, cmd_rsp );
+		FSM_sendATcmd( 2, "AT\r" );
+
+	}
+
+	// Errores luego de 3 reintentos: salgo.
+	xprintf_P( PSTR("COMMS: prendidoOFFLINE:CMGF out: ERROR.\r\n"));
+	return(false);
+
+}
+//------------------------------------------------------------------------------------
+
 /*
  * static bool state_configurar_C1(void)
 {

@@ -18,7 +18,7 @@
 
 #include "FreeRTOS.h"
 
-#define DF_COMMS ( systemVars.debug == DEBUG_COMMS )
+#define DF_COMMS ( (systemVars.debug == DEBUG_COMMS ) || (systemVars.debug == DEBUG_ALL ))
 
 #define TDIAL_MIN_DISCRETO 300
 
@@ -78,7 +78,7 @@ struct {
 	uint8_t ptr;
 } aux_txbuffer;
 
-#define AUX_RXBUFFER_LEN	16
+#define AUX_RXBUFFER_LEN	90
 struct {
 	char buffer[AUX_RXBUFFER_LEN];
 	uint8_t ptr;

@@ -104,6 +104,10 @@ void comms_config_defaults(char *opt)
 		strncpy_P( comms_conf.apn, PSTR("STG1.VPNANTEL"), APN_LENGTH );
 		strncpy_P( comms_conf.server_ip_address, PSTR("172.27.0.26"),16);
 
+	} else 	if ( strcmp_P( opt, PSTR("CLARO")) == 0)  {
+		strncpy_P( comms_conf.apn, PSTR("ipgrs.claro.com.uy"), APN_LENGTH );
+		strncpy_P( comms_conf.server_ip_address, PSTR("190.64.69.34"),16);
+
 	} else 	if ( strcmp_P( opt, PSTR("TEST")) == 0)  {
 		strncpy_P( comms_conf.apn, PSTR("SPYMOVIL.VPNANTEL"), APN_LENGTH );
 		strncpy_P( comms_conf.server_ip_address, PSTR("192.168.0.7"),16);

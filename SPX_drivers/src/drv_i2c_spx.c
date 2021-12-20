@@ -63,7 +63,7 @@ uint16_t bitrateKHz = 100;
 int16_t drv_I2C_master_write ( const uint8_t devAddress, const uint16_t dataAddress, const uint8_t dataAddressLength, char *pvBuffer, size_t xBytes )
 {
 
-	xprintf_PD(DEBUG_I2C, PSTR("drv_I2C_master_write: START\r\n"));
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: drv_I2C_master_write: START\r\n"));
 
 	// Paso 1: PONER EL BUS EN CONDICIONES
 	if ( ! pv_I2C_set_bus_idle() ) {
@@ -84,7 +84,7 @@ int16_t drv_I2C_master_write ( const uint8_t devAddress, const uint16_t dataAddr
 		return(-1);
 
 
-	xprintf_PD(DEBUG_I2C, PSTR("drv_I2C_master_write: EXIT\r\n"));
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: drv_I2C_master_write: EXIT\r\n"));
 	return(xBytes);
 
 }
@@ -92,7 +92,7 @@ int16_t drv_I2C_master_write ( const uint8_t devAddress, const uint16_t dataAddr
 int16_t drv_I2C_master_read ( const uint8_t devAddress, const uint16_t dataAddress, const uint8_t dataAddressLength, char *pvBuffer, size_t xBytes )
 {
 
-	xprintf_PD(DEBUG_I2C, PSTR("drv_I2C_master_read: START\r\n"));
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: drv_I2C_master_read: START\r\n"));
 
 	// Paso 1: PONER EL BUS EN CONDICIONES
 	if ( ! pv_I2C_set_bus_idle() ) {
@@ -119,13 +119,13 @@ int16_t drv_I2C_master_read ( const uint8_t devAddress, const uint16_t dataAddre
 		return(-1);
 
 
-	xprintf_PD(DEBUG_I2C, PSTR("drv_I2C_master_read: EXIT\r\n"));
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: drv_I2C_master_read: EXIT\r\n"));
 	return(xBytes);
 }
 //------------------------------------------------------------------------------------
 bool pv_I2C_send_devAddress( uint8_t devAddress )
 {
-	xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_devAddress: START + SLA/RW (%d)\r\n"), devAddress);
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_devAddress: START + SLA/RW (%d)\r\n"), devAddress);
 	TWIE.MASTER.ADDR = devAddress;
 	if ( pv_I2C_busTransactionStatus() == TWIM_RESULT_OK)
 		return(true);
@@ -136,7 +136,7 @@ bool pv_I2C_send_devAddress( uint8_t devAddress )
 //------------------------------------------------------------------------------------
 bool pv_I2C_send_dataAddress( uint16_t dataAddress, uint8_t dataAddressLength)
 {
-	xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_dataAddress: (%d)(%d)\r\n"), dataAddress,dataAddressLength );
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_dataAddress: (%d)(%d)\r\n"), dataAddress,dataAddressLength );
 
 uint8_t txData;
 bool retS = false;
@@ -144,7 +144,7 @@ bool retS = false;
 	// HIGH address
 	if ( dataAddressLength == 2 ) {
 		txData = (dataAddress) >> 8;
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_dataAddress: ADDR_H=0x%02x, status=0x%02x\r\n"), txData, TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_dataAddress: ADDR_H=0x%02x, status=0x%02x\r\n"), txData, TWIE.MASTER.STATUS );
 		TWIE.MASTER.DATA = txData;
 		if ( pv_I2C_busTransactionStatus() != TWIM_RESULT_OK)
 			goto quit;
@@ -153,7 +153,7 @@ bool retS = false;
 	// LOW address
 	if ( dataAddressLength >= 1 ) {
 		txData = (dataAddress) & 0x00FF;
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_dataAddress: ADDR_L=0x%02x, status=0x%02x\r\n"), txData, TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_dataAddress: ADDR_L=0x%02x, status=0x%02x\r\n"), txData, TWIE.MASTER.STATUS );
 		TWIE.MASTER.DATA = txData;
 		if ( pv_I2C_busTransactionStatus() != TWIM_RESULT_OK)
 			goto quit;
@@ -164,7 +164,7 @@ bool retS = false;
 quit:
 
 	if ( !retS )
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_dataAddress: ERROR (status=%d)\r\n"), TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_dataAddress: ERROR (status=%d)\r\n"), TWIE.MASTER.STATUS );
 
 	return(retS);
 
@@ -186,7 +186,7 @@ bool retS;
 	// Mando el buffer de datos. Debo recibir 0x28 (DATA_ACK) en c/u
 	for ( bytesWritten=0; bytesWritten < bytesToWrite; bytesWritten++ ) {
 		txData = *wrBuffer++;
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_data: 0x%02x(%c),0x%02x\r\n"),txData,txData, TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_data: 0x%02x(%c),0x%02x\r\n"),txData,txData, TWIE.MASTER.STATUS );
 		TWIE.MASTER.DATA = txData;
 		if ( pv_I2C_busTransactionStatus() != TWIM_RESULT_OK)
 			goto quit;
@@ -196,7 +196,7 @@ bool retS;
 quit:
 
 	if (! retS )
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_data: ERROR (status=%d)\r\n"), TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_data: ERROR (status=%d)\r\n"), TWIE.MASTER.STATUS );
 
 	// Envie todo el buffer. Termino con un STOP.
 	TWIE.MASTER.CTRLC = TWI_MASTER_CMD_STOP_gc;
@@ -215,7 +215,7 @@ bool retS = false;
 	for ( bytesRead=0; bytesRead < bytesToRead; bytesRead++ ) {
 		rxData = TWIE.MASTER.DATA;
 		*rdBuffer++ = rxData;
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_rcvd_data: 0x%02x(%c),0x%02x\r\n"),rxData,rxData, TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_rcvd_data: 0x%02x(%c),0x%02x\r\n"),rxData,rxData, TWIE.MASTER.STATUS );
 		TWIE.MASTER.CTRLC = TWI_MASTER_CMD_RECVTRANS_gc;	// Send ACK
 		if ( pv_I2C_busTransactionStatus() != TWIM_RESULT_OK)
 			goto quit;
@@ -225,7 +225,7 @@ bool retS = false;
 quit:
 
 	if (! retS )
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_send_data: ERROR (status=%d)\r\n"), TWIE.MASTER.STATUS );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_send_data: ERROR (status=%d)\r\n"), TWIE.MASTER.STATUS );
 
 	// STOP + NACK
 	TWIE.MASTER.CTRLC = TWI_MASTER_ACKACT_bm | TWI_MASTER_CMD_STOP_gc;
@@ -246,7 +246,7 @@ uint8_t currentStatus;
 	while ( ticks_to_wait-- > 0 ) {
 
 		currentStatus = TWIE.MASTER.STATUS;
-		xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_busTransactionStatus: status=0x%02x\r\n"), currentStatus );
+		xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_busTransactionStatus: status=0x%02x\r\n"), currentStatus );
 
 		/* If arbitration lost or bus error. */
 		if ( currentStatus & TWI_MASTER_ARBLOST_bm ) {
@@ -290,7 +290,7 @@ void pv_I2C_MasterArbitrationLostBusErrorHandler(void)
 
 uint8_t currentStatus = TWIE.MASTER.STATUS;
 
-	xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_MasterArbitrationLostBusErrorHandler\r\n"));
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_MasterArbitrationLostBusErrorHandler\r\n"));
 
 	/* If bus error. */
 	if (currentStatus & TWI_MASTER_BUSERR_bm) {
@@ -309,7 +309,7 @@ uint8_t currentStatus = TWIE.MASTER.STATUS;
 //------------------------------------------------------------------------------------
 void pv_I2C_MasterTransactionFinished(uint8_t result)
 {
-	xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_MasterTransactionFinished\r\n"));
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_MasterTransactionFinished\r\n"));
 	//I2C_control.result = result;
 	//I2C_control.status = TWIM_STATUS_READY;
 }
@@ -327,7 +327,7 @@ uint8_t	reintentos = I2C_MAXTRIES;
 
 		// Los bits CLKHOLD y RXACK son solo de read por eso la mascara !!!
 
-		//xprintf_PD(DEBUG_I2C, PSTR("drv_i2c:SetBusIdle tryes=(%d): status=0x%02x\r\n\0"),reintentos,TWIE.MASTER.STATUS );
+		//xprintf_PD(DEBUG_I2C, PSTR("I2C: drv_i2c:SetBusIdle tryes=(%d): status=0x%02x\r\n\0"),reintentos,TWIE.MASTER.STATUS );
 
 		if (  ( ( TWIE.MASTER.STATUS & TWI_MASTER_BUSSTATE_gm ) == TWI_MASTER_BUSSTATE_IDLE_gc ) ||
 				( ( TWIE.MASTER.STATUS & TWI_MASTER_BUSSTATE_gm ) == TWI_MASTER_BUSSTATE_OWNER_gc ) ) {
@@ -409,6 +409,6 @@ uint8_t i = 0;
 	TWIE.MASTER.STATUS = TWI_MASTER_BUSSTATE_IDLE_gc;	// Pongo el status en 01 ( idle )
 	vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
 
-	xprintf_PD(DEBUG_I2C, PSTR("pv_I2C_reset: 0x%02x\r\n"), TWIE.MASTER.STATUS );
+	xprintf_PD(DEBUG_I2C, PSTR("I2C: pv_I2C_reset: 0x%02x\r\n"), TWIE.MASTER.STATUS );
 }
 //------------------------------------------------------------------------------------

@@ -7,11 +7,12 @@
 
 
 #include <tkComms.h>
+#include <tkComms_sms.h>
 #include "tkApp.h"
 
-typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_MODBUS_LOW, ONLINE_MODBUS_MED, ONLINE_MODBUS_HIGH, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT } t_states_prendido_online;
+typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_MODBUS_LOW, ONLINE_MODBUS_MED, ONLINE_MODBUS_HIGH, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT, ONLINE_SMS } t_states_prendido_online;
 typedef enum { SF_ENTRY, SF_SOCK_STATUS, SF_SOCK_OPEN, SF_NET_STATUS, SF_SEND, SF_RSP, SF_EXIT } t_sendFrames_states;
-typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_MODBUS_LOW,  FRM_MODBUS_MED, FRM_MODBUS_HIGH, FRM_APP, FRM_DATA } t_frames;
+typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_MODBUS_LOW,  FRM_MODBUS_MED, FRM_MODBUS_HIGH, FRM_APP, FRM_SMS, FRM_DATA } t_frames;
 
 typedef enum { sock_OPEN = 0, sock_CLOSE, sock_UNKNOWN, sock_TOUT } t_socket_status;
 typedef enum { net_OPEN = 0, net_CLOSE, net_UNKNOWN, net_TOUT } t_network_status;
@@ -26,6 +27,7 @@ static bool state_online_counter(void);
 static bool state_online_modbus_low(void);
 static bool state_online_modbus_med(void);
 static bool state_online_modbus_high(void);
+static bool state_online_sms(void);
 static bool state_online_app(void);
 static bool state_online_data(void);
 static bool state_online_espera(void);
@@ -58,9 +60,10 @@ static bool process_rsp_counters(void);
 static bool process_rsp_app(void);
 static bool process_rsp_modbus(void);
 static bool process_rsp_data(void);
+static bool process_rsp_sms(void);
 
 uint16_t datos_pendientes_transmitir(void);
-void data_resync_clock(void);
+void data_resync_clock(bool force_adjust);
 void data_process_response_MBUS(void);
 void data_process_response_PILOTO(void);
 void data_process_response_STEPPER(void);
@@ -73,6 +76,7 @@ bool f_send_init_frame_modbus_low;
 bool f_send_init_frame_modbus_med;
 bool f_send_init_frame_modbus_high;
 bool f_send_init_frame_app;
+bool f_send_init_frame_sms;
 
 bool reset_datalogger;
 
@@ -201,9 +205,21 @@ int8_t tryes_substate;
 
 		case ONLINE_MODBUS_HIGH:
 			if ( ! f_send_init_frame_modbus_high ) {
-				state = ONLINE_APP;
+				state = ONLINE_SMS;
 				tryes_substate = 0;
 			} else if ( state_online_modbus_high() ) {
+				state = ONLINE_SMS;
+				tryes_substate = 0;
+			} else {
+				state = ONLINE_EXIT;
+			}
+			break;
+
+		case ONLINE_SMS:
+			if ( ! f_send_init_frame_sms ) {
+				state = ONLINE_APP;
+				tryes_substate = 0;
+			} else if ( state_online_sms() ) {
 				state = ONLINE_APP;
 				tryes_substate = 0;
 			} else {
@@ -345,6 +361,25 @@ int8_t timer = 60;
 
 quit:
 
+	SMS_rxcheckpoint();
+
+	return(exit_code);
+}
+//------------------------------------------------------------------------------------
+static bool state_online_sms(void)
+{
+bool exit_code = false;
+uint32_t init_ticks = sysTicks;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:SMS in\r\n"));
+
+	if (sendFrame( FRM_SMS )) {
+		process_rsp_sms();
+		socket_close();
+		exit_code = true;
+	}
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:SMS out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 	return(exit_code);
 }
 //------------------------------------------------------------------------------------
@@ -538,6 +573,7 @@ uint32_t init_ticks = sysTicks;
 	f_send_init_frame_modbus_med = false;
 	f_send_init_frame_modbus_high = false;
 	f_send_init_frame_app = false;
+	f_send_init_frame_sms = false;
 
 	reset_datalogger = false;
 
@@ -1028,6 +1064,7 @@ uint32_t init_ticks = sysTicks;
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CNT:0x%02X;" ), counters_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("MB:0x%02X;" ), modbus_hash() );
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("APP:0x%02X;" ), aplicacion_hash() );
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("SMS:0x%02X;" ), sms_hash() );
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
@@ -1076,6 +1113,12 @@ uint32_t init_ticks = sysTicks;
 	case FRM_APP:
 		i = prepare_header(FRM_COUNTER);
 		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_APP;"));
+		i +=  prepare_tail(i);
+		ret_code = send_txbuffer();
+		break;
+	case FRM_SMS:
+		i = prepare_header(FRM_SMS);
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_SMS;"));
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
@@ -1348,7 +1391,7 @@ static bool process_rsp_global(void)
 
 	// CLOCK
 	if ( gprs_check_response( 0, "CLOCK") ) {
-		data_resync_clock();
+		data_resync_clock(true);	// Fuerzo ajustar el clock.
 	}
 
 	// Flags de configuraciones particulares: BASE;ANALOG;DIGITAL;COUNTERS;
@@ -1360,6 +1403,7 @@ static bool process_rsp_global(void)
 	f_send_init_frame_modbus_med = false;
 	f_send_init_frame_modbus_high = false;
 	f_send_init_frame_app = false;
+	f_send_init_frame_sms = false;
 
 	if ( gprs_check_response( 0, "BASE") ) {
 		f_send_init_frame_base = true;
@@ -1391,6 +1435,10 @@ static bool process_rsp_global(void)
 
 	if ( gprs_check_response( 0, "APLICACION") ) {
 		f_send_init_frame_app = true;
+	}
+
+	if ( gprs_check_response( 0, "SMS") ) {
+		f_send_init_frame_sms = true;
 	}
 
 	return(true);
@@ -1824,6 +1872,71 @@ char str_base[8];
 
 }
 //------------------------------------------------------------------------------------
+static bool process_rsp_sms(void)
+{
+	//  PLOAD=CLASS:SMS;NRO0:0991234;NRO1:9900001;NRO2:99000002;DICT1:2,BOMBA;DICT2:-1,X;...;DICT9:-1,X;
+	//  PLOAD=CLASS:SMS;NRO0:99000000;NRO1:99000001;NRO2:990000022;DICT1:2,BOMBA;DICT2:-1,X;DICT3:-1,X;DICT4:-1,X;DICT5:-1,X;DICT6:-1,X;DICT7:-1,X;DICT8:-1,X;DICT9:-1,X;
+
+char localStr[32] = { 0 };
+uint8_t pos;
+char *ts = NULL;
+char str_base[8];
+char *stringp = NULL;
+char *s_auth_nro = NULL;
+char *s_mbus_channel = NULL;
+char *s_order = NULL;
+char *delim = ",;:=><";
+bool save_flag = false;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_sms in\r\n\0"));
+	gprs_print_RX_buffer();
+
+	if ( gprs_check_response( 0, "SMS") ) {
+
+		save_flag = true;
+
+		// Nros Autorizados ?
+		for (pos=0; pos < SMS_AUTH_NUMBER_MAX; pos++ ) {
+			memset( &str_base, '\0', sizeof(str_base) );
+			snprintf_P( str_base, sizeof(str_base), PSTR("NRO%d\0"), pos );
+			if ( gprs_check_response( 0, str_base ) ) {
+				memset(localStr,'\0',sizeof(localStr));
+				ts = strstr( gprs_rxbuffer.buffer, str_base);
+				strncpy(localStr, ts, sizeof(localStr));
+				stringp = localStr;
+				s_auth_nro = strsep(&stringp,delim);		//NROx
+				s_auth_nro = strsep(&stringp,delim);		//99000001
+				//xprintf_P(PSTR("DEBUG SMS NRO=%d, nbr=%s\r\n"), pos, s_auth_nro );
+				sms_config_auth_number(pos, s_auth_nro );
+			}
+		}
+
+		// Diccionario de ordenes
+		for (pos=1; pos < SMS_ORDERS_MAX; pos++ ) {
+			memset( &str_base, '\0', sizeof(str_base) );
+			snprintf_P( str_base, sizeof(str_base), PSTR("DICT%d\0"), pos );
+			if ( gprs_check_response( 0, str_base ) ) {
+				memset(localStr,'\0',sizeof(localStr));
+				ts = strstr( gprs_rxbuffer.buffer, str_base);
+				strncpy(localStr, ts, sizeof(localStr));
+				stringp = localStr;
+				s_mbus_channel = strsep(&stringp,delim);		//DICTx
+				s_mbus_channel = strsep(&stringp,delim);		//2
+				s_order = strsep(&stringp,delim);				//BOMBA
+				//xprintf_P(PSTR("DEBUG SMS DICT=%d, chmb=%s, order=%s\r\n"), pos, s_mbus_channel, s_order );
+				sms_config_order_dict(pos, s_mbus_channel, s_order );
+			}
+		}
+
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig SMS\r\n"));
+		if ( save_flag ) {
+			u_save_params_in_NVMEE();
+		}
+	}
+
+	return(true);
+}
+//------------------------------------------------------------------------------------
 static bool process_rsp_data(void)
 {
 
@@ -1837,7 +1950,7 @@ FAT_t fat;
 
 	if ( gprs_check_response( 0, "CLOCK") ) {
 		// Ajusto la hora local.
-		data_resync_clock();
+		data_resync_clock(false); // Es en respuesta a un frame. Solo ajusto si hay mas de 90s de diferencia.
 	}
 
 	if ( gprs_check_response (0, "MBUS") ) {
@@ -1907,18 +2020,26 @@ FAT_t fat;
 	return(nro_recs_pendientes);
 }
 //------------------------------------------------------------------------------------
-void data_resync_clock(void)
+void data_resync_clock(bool force_adjust)
 {
-	// Estrae el CLOCK del frame recibido y ajusta el clock interno
+	/*
+	 * Estrae el CLOCK del frame recibido y ajusta el clock interno
+	 * Bug 01: 2021-12-14:
+	 * El ajuste no considera los segundos entonces si el timerpoll es c/15s, cada 15s
+	 * se reajusta y cambia la hora del datalogger.
+	 * Modifico para que el reajuste se haga si hay una diferencia de mas de 90s entre
+	 * el reloj local y el del server
+	 */
 
 char localStr[32] = { 0 };
 char rtcStr[12];
-RtcTimeType_t rtc;
+RtcTimeType_t rtc_s,rtc_l;
 int8_t xBytes = 0;
 char *ts = NULL;
 char *stringp = NULL;
 char *token = NULL;
 char *delim = ",;:=><";
+float diff_seconds;
 
 	memset(localStr,'\0',sizeof(localStr));
 	ts = strstr( gprs_rxbuffer.buffer, "CLOCK:");
@@ -1929,18 +2050,51 @@ char *delim = ",;:=><";
 	memset(rtcStr, '\0', sizeof(rtcStr));
 	memcpy(rtcStr,token, sizeof(rtcStr));	// token apunta al comienzo del string con la hora
 
+	// Error en el string recibido
 	if ( strlen(rtcStr) < 10 ) {
 		// Hay un error en el string que tiene la fecha.
 		// No lo reconfiguro
 		xprintf_P(PSTR("COMMS: data_resync_clock ERROR:[%s]\r\n\0"), rtcStr );
-	} else {
-		memset( &rtc, '\0', sizeof(rtc) );
-		RTC_str2rtc(rtcStr, &rtc);			// Convierto el string YYMMDDHHMM a RTC.
-		xBytes = RTC_write_dtime(&rtc);		// Grabo el RTC
-		if ( xBytes == -1 )
-			xprintf_P(PSTR("ERROR: I2C:RTC:pv_process_server_clock\r\n\0"));
+		return;
+	}
 
-		xprintf_PD( DF_COMMS, PSTR("COMMS: Update rtc to: %s\r\n\0"), rtcStr );
+
+	// Ajusto la hora
+
+	// Convierto el string YYMMDDHHMM a RTC.
+	memset( &rtc_s, '\0', sizeof(rtc_s) );
+	RTC_str2rtc(rtcStr, &rtc_s);
+
+	// Leo la hora actual del datalogger
+	RTC_read_dtime( &rtc_l);
+
+
+	if ( force_adjust ) {
+		// Fuerzo el ajuste.( al comienzo )
+		xBytes = RTC_write_dtime(&rtc_s);		// Grabo el RTC
+		if ( xBytes == -1 ) {
+			xprintf_P(PSTR("ERROR: I2C:RTC:pv_process_server_clock\r\n\0"));
+		} else {
+			xprintf_PD( DF_COMMS, PSTR("COMMS: Update rtc to: %s\r\n\0"), rtcStr );
+		}
+		return;
+	}
+
+	// Solo ajusto si la diferencia es mayor de 90s
+	// Veo la diferencia de segundos entre ambos.
+	// Asumo yy,mm,dd iguales
+	diff_seconds = abs( rtc_l.hour * 3600 + rtc_l.min * 60 + rtc_l.sec - ( rtc_s.hour * 3600 + rtc_s.min * 60 + rtc_s.sec));
+	//xprintf_P( PSTR("COMMS: rtc diff=%.01f\r\n"), diff_seconds );
+
+	if ( diff_seconds > 90 ) {
+		// Ajusto
+		xBytes = RTC_write_dtime(&rtc_s);		// Grabo el RTC
+		if ( xBytes == -1 ) {
+			xprintf_P(PSTR("ERROR: I2C:RTC:pv_process_server_clock\r\n\0"));
+		} else {
+			xprintf_P( PSTR("COMMS: Update rtc to: %s\r\n\0"), rtcStr );
+		}
+		return;
 	}
 }
 //------------------------------------------------------------------------------------

@@ -5,6 +5,7 @@
  *      Author: root
  */
 
+#include <tkComms_sms.h>
 #include "spx.h"
 #include "tkComms.h"
 #include "tkApp.h"
@@ -24,6 +25,7 @@ static bool pv_cmd_configMODBUS(void);
 static bool pv_cmd_rwAUX(uint8_t cmd_mode );
 static bool pv_cmd_modbus(void);
 static void pv_cmd_status_ids(void);
+static bool pv_cmd_configSMS(void);
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE CMDMODE
 //----------------------------------------------------------------------------------------
@@ -212,6 +214,9 @@ st_dataRecord_t dr;
 	// COMMS Status
 	comms_config_status();
 
+	// SMS Status
+	sms_status();
+
 	// APP Status
 	aplicacion_config_status();
 
@@ -237,6 +242,12 @@ st_dataRecord_t dr;
 		break;
 	case DEBUG_APP:
 		xprintf_P( PSTR("  debug: app\r\n") );
+		break;
+	case DEBUG_SMS:
+		xprintf_P( PSTR("  debug: sms\r\n") );
+		break;
+	case DEBUG_ALL:
+		xprintf_P( PSTR("  debug: all\r\n") );
 		break;
 	default:
 		xprintf_P( PSTR("  debug: ???\r\n") );
@@ -321,6 +332,17 @@ static void cmdWriteFunction(void)
 
 	FRTOS_CMD_makeArgv();
 
+	// TEST
+	// write test sms
+	if ( strcmp_P( strupr(argv[1]), PSTR("TEST\0")) == 0 ) {
+
+		if ( strcmp_P( strupr(argv[2]), PSTR("SMS\0")) == 0 ) {
+			SMS_test();
+		}
+		pv_snprintfP_OK();
+		return;
+	}
+
 	// AUX
 	// write aux rts {on|off}
 	// write aux cmd {acmd}
@@ -331,6 +353,7 @@ static void cmdWriteFunction(void)
 
 	// MODBUS
 	// mbustest genpoll {type(F|I} sla fcode addr length }\r\n\0"));
+	// mbustest frame length {b0..bn}
 	//          chpoll {ch}\r\n\0"));
 	if ( strcmp_P( strupr(argv[1]), PSTR("MBUSTEST")) == 0 ) {
 		pv_cmd_modbus() ? pv_snprintfP_OK() : pv_snprintfP_ERR();
@@ -510,6 +533,8 @@ uint8_t cks;
 		xprintf_P( PSTR("Piloto hash = [0x%02x]\r\n\0"), cks );
 		cks = modbus_hash();
 		xprintf_P( PSTR("Modbus hash = [0x%02x]\r\n\0"), cks );
+		cks = sms_hash();
+		xprintf_P( PSTR("Sms hash = [0x%02x]\r\n\0"), cks );
 		return;
 	}
 
@@ -632,6 +657,14 @@ static void cmdConfigFunction(void)
 bool retS = false;
 
 	FRTOS_CMD_makeArgv();
+
+	// SMS
+	// sms auth {pos, number}
+	if ( strcmp_P ( strupr( argv[1]), PSTR("SMS\0")) == 0 ) {
+			retS = pv_cmd_configSMS();
+			retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+			return;
+		}
 
 	// MODBUS:
 	if ( strcmp_P ( strupr( argv[1]), PSTR("MODBUS\0")) == 0 ) {
@@ -794,26 +827,32 @@ bool retS = false;
 
 	// DEBUG
 	// config debug
-	if (!strcmp_P( strupr(argv[1]), PSTR("DEBUG\0"))) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("DEBUG"))) {
 		counters_clr_debug();
-		if (!strcmp_P( strupr(argv[2]), PSTR("NONE\0"))) {
+		if (!strcmp_P( strupr(argv[2]), PSTR("NONE"))) {
 			systemVars.debug = DEBUG_NONE;
 			retS = true;
-		} else if (!strcmp_P( strupr(argv[2]), PSTR("COUNTER\0"))) {
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("COUNTER"))) {
 			systemVars.debug = DEBUG_COUNTER;
 			counters_set_debug();
 			retS = true;
-		} else if (!strcmp_P( strupr(argv[2]), PSTR("DATA\0"))) {
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("DATA"))) {
 			systemVars.debug = DEBUG_DATA;
 			retS = true;
-		} else if (!strcmp_P( strupr(argv[2]), PSTR("COMMS\0"))) {
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("COMMS"))) {
 			systemVars.debug = DEBUG_COMMS;
 			retS = true;
-		} else if (!strcmp_P( strupr(argv[2]), PSTR("MODBUS\0"))) {
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("MODBUS"))) {
 			systemVars.debug = DEBUG_MODBUS;
 			retS = true;
-		} else if (!strcmp_P( strupr(argv[2]), PSTR("APP\0"))) {
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("APP"))) {
 			systemVars.debug = DEBUG_APP;
+			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("SMS"))) {
+			systemVars.debug = DEBUG_SMS;
+			retS = true;
+		} else if (!strcmp_P( strupr(argv[2]), PSTR("ALL"))) {
+			systemVars.debug = DEBUG_ALL;
 			retS = true;
 		} else {
 			retS = false;
@@ -824,7 +863,7 @@ bool retS = false;
 
 	// TIMEPWRSENSOR
 	// config timepwrsensor
-	if (!strcmp_P( strupr(argv[1]), PSTR("TIMEPWRSENSOR\0")) ) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("TIMEPWRSENSOR")) ) {
 		ainputs_config_timepwrsensor( argv[2] );
 		pv_snprintfP_OK();
 		return;
@@ -892,6 +931,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("  pilototest pRef(kg/cm2)\r\n"));
 
 		xprintf_P( PSTR("  mbustest genpoll {slaaddr,regaddr,nro_regs,fcode,type,codec}\r\n"));
+		xprintf_P( PSTR("  mbustest frame length {b0..bn}\r\n"));
 		xprintf_P( PSTR("           chpoll {ch}\r\n"));
 		xprintf_P( PSTR("           output {slaaddr,regaddr,nro_regs,fcode,type,codec,value}\r\n"));
 		xprintf_P( PSTR("           int{i},long{l},float{f}\r\n\0"));
@@ -942,7 +982,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("       bands {bandslist}\r\n\0"));
 		xprintf_P( PSTR("  timerpoll {val}, timerdial {val}, timepwrsensor {val}\r\n\0"));
 
-		xprintf_P( PSTR("  debug {none,counter,data,comms,modbus,app}\r\n\0"));
+		xprintf_P( PSTR("  debug {none,counter,data,comms,modbus,app,sms,all}\r\n\0"));
 
 		xprintf_P( PSTR("  digital {0..%d} {dname}\r\n\0"), ( DINPUTS_CHANNELS - 1 ) );
 
@@ -961,6 +1001,9 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
 		xprintf_P( PSTR("         type=>{i16,u16,i32,u32,float}\r\n"));
 		xprintf_P( PSTR("         codec=>{c0123,c1032,c3210,c2301}\r\n"));
+
+		xprintf_P( PSTR("  sms auth {pos number}\r\n\0"));
+		xprintf_P( PSTR("      order {pos mbch text}\r\n\0"));
 
 		xprintf_P( PSTR("  default {SPY|OSE|CLARO|TEST}\r\n\0"));
 		xprintf_P( PSTR("  save\r\n\0"));
@@ -1538,7 +1581,12 @@ static bool pv_cmd_modbus(void)
 	if ( strcmp_P( strupr(argv[2]), PSTR("GENPOLL")) == 0 ) {
 		modbus_test_genpoll(argv);
 		return(true);
+	}
 
+	// mbustest frame length {b0..bn}
+	if ( strcmp_P( strupr(argv[2]), PSTR("FRAME")) == 0 ) {
+		modbus_test_frame(argv);
+		return(true);
 	}
 
 	// modbus chpoll {ch}
@@ -1589,6 +1637,20 @@ static void pv_cmd_status_ids(void)
 		xprintf_P(PSTR("(AVR)\r\n"));
 	}
 
+}
+//------------------------------------------------------------------------------------
+static bool pv_cmd_configSMS(void)
+{
+	// config sms auth pos number
+	if ( strcmp_P( strupr(argv[2]), PSTR("AUTH")) == 0 ) {
+		return ( sms_config_auth_number(atoi(argv[3]),argv[4] ) );
+	}
+
+	// config sms order pos mbch text
+	if ( strcmp_P( strupr(argv[2]), PSTR("ORDER")) == 0 ) {
+		return ( sms_config_order_dict(atoi(argv[3]),argv[4],argv[5] ) );
+	}
+	return(false);
 }
 //------------------------------------------------------------------------------------
 

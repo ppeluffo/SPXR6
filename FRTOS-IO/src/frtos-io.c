@@ -6,6 +6,7 @@
  */
 
 #include "frtos-io.h"
+#include "util/delay.h"
 
 //#define GPRS_IsTXDataRegisterEmpty() ((USARTE0.STATUS & USART_DREIF_bm) != 0)
 
@@ -431,7 +432,136 @@ xTimeOutType xTimeOut;
 
 }
 //------------------------------------------------------------------------------------
+int16_t frtos_write_modbus_2( const char *pvBuffer, const uint16_t xBytes )
+{
+	// Transmito por interrupcion para asegurarme cumplir el compromiso del maximo gap entre bytes que
+	// no supere los 1.5 bytes (1.700 ms a 9600 baud. )
+
+char cChar = '\0';
+char *p = NULL;
+int16_t wBytes = 0;
+uint8_t i;
+
+	// RTS ON. Habilita el sentido de trasmision del chip.
+	IO_set_AUX_RTS();
+	vTaskDelay( ( TickType_t)( 5 ) );
+
+	// Trasmito.
+	// Espero que los buffers esten vacios. ( La uart se va limpiando al trasmitir )
+	while  ( rBufferGetCount(  &xComAUX1.uart->TXringBuffer ) > 0 )
+		vTaskDelay( ( TickType_t)( 1 ) );
+
+	p = (char *)pvBuffer;
+
+	// Cargo el buffer en la cola de trasmision.
+	// Asumo que el frame entra todo en el buffer.
+	for (i=0; i<xBytes; i++) {
+
+		// Voy cargando la cola de a uno.
+		cChar = *p;
+		rBufferPoke( &xComAUX1.uart->TXringBuffer, &cChar  );
+		//rBufferPoke( &uart_usb.TXringBuffer, &cChar  );
+		p++;
+		wBytes++;	// Cuento los bytes que voy trasmitiendo
+
+		// Si la cola esta llena, empiezo a trasmitir y espero que se vacie.
+		if (  rBufferReachHighWaterMark( &xComAUX1.uart->TXringBuffer ) ) {
+			// Habilito a trasmitir para que se vacie
+			drv_uart_interruptOn( xComAUX1.uart->uart_id );
+			// Y espero que se haga mas lugar.
+			while ( ! rBufferReachLowWaterMark( &xComAUX1.uart->TXringBuffer ) )
+				vTaskDelay( ( TickType_t)( 1 ) );
+		}
+	}
+
+	// Luego inicio la trasmision invocando la interrupcion.
+	drv_uart_interruptOn( xComAUX1.uart->uart_id );
+
+	// Espero que trasmita todo
+	while  ( rBufferGetCount( &xComAUX1.uart->TXringBuffer ) > 0 )
+		vTaskDelay( ( TickType_t)( 2 ) );
+
+
+	vTaskDelay( ( TickType_t)( 5 ) );
+
+	// Debo habilitar la recepcion con el RTS
+	// Primero por las dudas borro el buffer de recepcion
+	frtos_uart_ioctl( &xComAUX1,ioctl_UART_CLEAR_RX_BUFFER, NULL);
+
+	// Este delay es importante en modbus porque permite el turn-round. !!!
+	//vTaskDelay( ( TickType_t)( 2 ) );
+
+	// Habilito Recepcion ( Half Duplex )
+	//frtos_ioctl (fdAUX1, ioctl_UART_ENABLE_RX, NULL );
+
+	// RTS OFF: Habilita la recepcion del chip
+	IO_clr_AUX_RTS();
+
+	return (wBytes);
+}
+//------------------------------------------------------------------------------------
 int16_t frtos_write_modbus( const char *pvBuffer, uint16_t xBytes )
+{
+	// Hago control de flujo ya que el SP3485 debe operarse HALF-DUPLEX !!
+	// Trasmite el buffer sin considerar si tiene NULL 0x00 en el medio.
+	// Transmite en forma transparente los xBytes por poleo de modo que controlo exactamente
+	// cuando termino de transmitir c/byte.
+	// Solo opera sobre xComAUX1
+	//
+
+char cChar = '\0';
+char *p = NULL;
+int16_t wBytes = 0;
+uint8_t i;
+
+	// Deshabilito la recepcion
+	//frtos_ioctl (fdAUX1, ioctl_UART_DISABLE_RX, NULL );
+
+	// RTS ON. Habilita el sentido de trasmision del chip.
+	IO_set_AUX_RTS();
+	vTaskDelay( ( TickType_t)( 5 ) );
+
+	// Trasmito.
+	// Espero que los buffers esten vacios. ( La uart se va limpiando al trasmitir )
+	while  ( rBufferGetCount(  &xComAUX1.uart->TXringBuffer ) > 0 )
+		vTaskDelay( ( TickType_t)( 1 ) );
+
+	p = (char *)pvBuffer;
+
+	//taskENTER_CRITICAL();
+	for (i=0; i<xBytes; i++) {
+		// Voy cargando la cola de a uno.
+		cChar = *p;
+		// Delay inter chars.(Shinco, Taosonic = 2)
+		vTaskDelay( ( TickType_t)( 2 ) );
+		//_delay_us (1750);
+		USART_PutChar(xComAUX1.uart->usart, cChar);
+		p++;
+		wBytes++;	// Cuento los bytes que voy trasmitiendo
+
+		// Espero que salga
+		while ( ! USART_IsTXShiftRegisterEmpty(xComAUX1.uart->usart) )
+			;
+	}
+	//taskEXIT_CRITICAL();
+
+	// Debo habilitar la recepcion con el RTS
+	// Primero por las dudas borro el buffer de recepcion
+	frtos_uart_ioctl( &xComAUX1,ioctl_UART_CLEAR_RX_BUFFER, NULL);
+
+	// Este delay es importante en modbus porque permite el turn-round. !!!
+	vTaskDelay( ( TickType_t)( 2 ) );
+
+	// Habilito Recepcion ( Half Duplex )
+	//frtos_ioctl (fdAUX1, ioctl_UART_ENABLE_RX, NULL );
+
+	// RTS OFF: Habilita la recepcion del chip
+	IO_clr_AUX_RTS();
+
+	return (wBytes);
+}
+//------------------------------------------------------------------------------------
+int16_t frtos_write_modbus_1( const char *pvBuffer, uint16_t xBytes )
 {
 	// Hago control de flujo ya que el SP3485 debe operarse HALF-DUPLEX !!
 	// Trasmite el buffer sin considerar si tiene NULL 0x00 en el medio.
@@ -466,6 +596,9 @@ int timeout;
 		// Voy cargando la cola de a uno.
 		cChar = *p;
 		timeout = 10;	// Espero 10 ticks maximo
+
+		vTaskDelay( ( TickType_t)( 2 ) );
+
 		while( --timeout > 0) {
 
 			// Los datos se escriben solo cuando el DREIF es 1.
@@ -500,7 +633,7 @@ int timeout;
 	vTaskDelay( ( TickType_t)( 3 ) );
 
 	// Habilito Recepcion ( Half Duplex )
-	//frtos_ioctl (fdAUX1, ioctl_UART_ENABLE_RX, NULL );
+	frtos_ioctl (fdAUX1, ioctl_UART_ENABLE_RX, NULL );
 
 	// RTS OFF: Habilita la recepcion del chip
 	IO_clr_AUX_RTS();

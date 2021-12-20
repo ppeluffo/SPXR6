@@ -22,7 +22,7 @@
 
 typedef enum { APP_OFF = 0, APP_CONSIGNA, APP_PILOTO } t_applicacion;
 
-#define DF_APP ( systemVars.debug == DEBUG_APP )
+#define DF_APP ( (systemVars.debug == DEBUG_APP ) || (systemVars.debug == DEBUG_ALL ))
 
 bool aplicacion_config( char *modo );
 void aplicacion_config_status(void);

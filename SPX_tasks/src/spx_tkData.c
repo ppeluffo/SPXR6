@@ -21,6 +21,7 @@
 
 st_dataRecord_t dataRecd;
 float battery;
+uint32_t ticks;
 
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
@@ -58,16 +59,20 @@ uint32_t waiting_ticks = 0;
   	// loop
   	for( ;; ) {
 
-  		u_wdg_kick( WDG_DATA, ( systemVars.timerPoll + 60 ));
+  		//print_running_ticks("SYS: MAIN");
+  		u_wdg_kick( WDG_DATA, ( systemVars.timerPoll + 120 ));
 
   		// Espero. Da el tiempo necesario para entrar en tickless.
   		vTaskDelayUntil( &xLastWakeTime, waiting_ticks );
 
   		// Poleo
   		memset( &dataRecd,'\0',sizeof(dataRecd));
+  		//print_running_ticks("SYS: RDI");
  		data_read_inputs(&dataRecd, false);
+ 		//print_running_ticks("SYS: PDI");
  		xprintf_P(PSTR("DATA: "));
   		data_print_inputs(fdTERM, &dataRecd, 0);
+  		//print_running_ticks("SYS: BD");
   		pv_data_guardar_en_BD();
 
   		// Aviso a tkGprs que hay un frame listo. En modo continuo lo va a trasmitir enseguida.
@@ -93,7 +98,7 @@ uint32_t waiting_ticks = 0;
 void data_read_inputs(st_dataRecord_t *dst, bool f_copy )
 {
 
-int8_t xBytes = 0;
+bool status_flag;
 
 	// Solo copio el buffer. No poleo.
 	if ( f_copy ) {
@@ -110,8 +115,8 @@ int8_t xBytes = 0;
 	modbus_read (dst->modbus );
 
 	// Agrego el timestamp
-	xBytes = RTC_read_dtime( &dst->rtc );
-	if ( xBytes == -1 )
+	status_flag = RTC_read_dtime( &dst->rtc );
+	if ( ! status_flag )
 		xprintf_P(PSTR("ERROR: I2C:RTC:data_read_inputs\r\n\0"));
 
 	// Guardo pA,pB,Q forma persistente porque lo puedo requierir por la aplicacion PILOTO.
@@ -187,6 +192,37 @@ char *p;
 	p = modbus_sprintf( p, dr->modbus );
 
 	p = ainputs_battery_sprintf(p, dr->battery );
+
+	return(i);
+}
+//------------------------------------------------------------------------------------
+int16_t data_sprintf_actual_inputs( char *sbuffer)
+{
+
+int16_t i = 0;
+char *p;
+
+	// timeStamp.
+	p = sbuffer;
+	i = sprintf_P( p, PSTR("DATE:%02d"),dataRecd.rtc.year );
+	p += i;
+	i = sprintf_P( p, PSTR("%02d%02d;"),dataRecd.rtc.month, dataRecd.rtc.day );
+	p += i;
+
+	i = sprintf_P( p, PSTR("TIME:%02d"), dataRecd.rtc.hour );
+	p += i;
+	i = sprintf_P( p, PSTR("%02d%02d;"), dataRecd.rtc.min, dataRecd.rtc.sec );
+	p += i;
+
+	p = ainputs_sprintf( p, dataRecd.ainputs );
+	p = dinputs_sprintf( p, dataRecd.dinputs );
+	p = counters_sprintf( p, dataRecd.counters );
+
+	p = modbus_sprintf( p, dataRecd.modbus );
+
+	p = ainputs_battery_sprintf(p, dataRecd.battery );
+	p++;
+	*p = '\0';
 
 	return(i);
 }

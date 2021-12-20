@@ -494,9 +494,9 @@ uint16_t D = 0;
 	// Convierto el raw_value a corriente
 	I = (float) an_raw_val / INA_FACTOR;
 
-	xprintf_PD( debug, PSTR("DEBUG ANALOG READ CHANNEL: A%d (RAW=%d), I=%.03f\r\n\0"), io_channel, an_raw_val, I );
-	xprintf_PD( debug, PSTR("                         : Imin=%d, Imax=%d\r\n\0"), ainputs_conf.imin[io_channel], ainputs_conf.imax[io_channel] );
-	xprintf_PD( debug, PSTR("                         : mmin=%.03f, mmax=%.03f\r\n\0"), ainputs_conf.mmin[io_channel], ainputs_conf.mmax[io_channel] );
+	xprintf_PD( debug, PSTR("ANALOG: A%d (RAW=%d), I=%.03f\r\n\0"), io_channel, an_raw_val, I );
+	xprintf_PD( debug, PSTR("ANALOG: Imin=%d, Imax=%d\r\n\0"), ainputs_conf.imin[io_channel], ainputs_conf.imax[io_channel] );
+	xprintf_PD( debug, PSTR("ANALOG: mmin=%.03f, mmax=%.03f\r\n\0"), ainputs_conf.mmin[io_channel], ainputs_conf.mmax[io_channel] );
 
 	// Calculo la magnitud
 	P = 0;
@@ -519,8 +519,8 @@ uint16_t D = 0;
 		an_mag_val = -999.0;
 	}
 
-	xprintf_PD( debug, PSTR("                         : D=%d, P=%.03f, M=%.03f\r\n\0"), D, P, M );
-	xprintf_PD( debug, PSTR("                         : an_raw_val=%d, an_mag_val=%.03f\r\n\0"), an_raw_val, an_mag_val );
+	xprintf_PD( debug, PSTR("ANALOG: D=%d, P=%.03f, M=%.03f\r\n\0"), D, P, M );
+	xprintf_PD( debug, PSTR("ANALOG: an_raw_val=%d, an_mag_val=%.03f\r\n\0"), an_raw_val, an_mag_val );
 
 	*raw = an_raw_val;
 	*mag = an_mag_val;

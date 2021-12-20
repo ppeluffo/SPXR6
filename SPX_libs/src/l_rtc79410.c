@@ -136,6 +136,7 @@ int16_t rdBytes = 0;
 		xprintf_P(PSTR("ERROR: I2C:RTC:RTC_read_dtime\r\n\0"));
 
 	if (rdBytes != 7 ) {
+		xprintf_P(PSTR("ERROR: I2C:RTC:RTC_read_dtime less rd bytes.\r\n\0"));
 		return ( false );
 	}
 

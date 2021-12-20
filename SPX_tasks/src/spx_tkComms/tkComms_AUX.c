@@ -59,11 +59,16 @@ void aux_init(void)
 	IO_clr_AUX_PWR();
 	IO_clr_AUX_RTS();
 
+	aux_prender();
+	return;
+
 	// Si hay al menos un canal configurado o el control esta configurado, prendo.
 	if ( (systemVars.modbus_conf.channel[0].slave_address != 0x00 ) ||
 			( modbus_conf.control_channel.slave_address != 0 ) ) {
 		xprintf_P( PSTR("AUX1: power on..\r\n"));
 		aux_prender();
+	} else {
+		xprintf_P( PSTR("AUX1: power OFF !!\r\n"));
 	}
 
 }

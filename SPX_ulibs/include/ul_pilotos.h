@@ -70,7 +70,7 @@ typedef enum { MAX_TRYES=0, POUT_REACHED, PA_ERR, PB_ERR, PA_LESS_PB, BAND_ERR, 
 struct {
 	int16_t pulsos_calculados;
 	int16_t pulsos_a_aplicar;
-	int16_t pulsos_rollback;
+	int16_t total_pulsos_rollback;
 	int16_t pulse_counts;
 	uint16_t pwidth;
 	t_stepper_dir dir;
@@ -89,7 +89,9 @@ struct {
 	t_exit_conditions exit_code;
 	bool run_rollback;
 	bool accion_pendiente;
-	bool bajar_presion;
+	bool f_emergencia;
+	bool recalculo_de_pB;
+
 } PLTCB;	// Piloto Control Block
 
 uint8_t plt_app_wdg;

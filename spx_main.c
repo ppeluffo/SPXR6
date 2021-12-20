@@ -38,16 +38,19 @@
  *  SPY_init_conf_digital.py
  *  spy_utils.py
  *
- * -------------------------------------------------------------------------------------------
- * Ajustes al SPX
- *
- * G) Considerar el Caudal para el proceso.
- *    - Como leerlo
- * Bug1:
- * DATA: CTL:0;DATE:211019;TIME:145901;pA:2.49;pB:1.14;q0:nan;bt:12.22;
- * Porque el caudalimetro ( contador ) da nan si deberia dar 0 cuando no hay pulsos ?
+ *  Colores del hoover editor:
+ *  https://stackoverflow.com/questions/3571850/eclipse-change-popup-text-background-color-when-hovering-the-mouse-on-a-keyword
+ *  Preferences > C/C++ > Editor > Source hover background
  *
  * -------------------------------------------------------------------------------------------
+ *
+ * -------------------------------------------------------------------------------------------
+ *
+ *  R4.0.2h @ 2021-12-15:
+ *  - Agrega un debug ALL
+ *  - Corrige un bug que c/frame recibido modificaba la hora local y esto descontrolaba los timestamps
+ *  - Aumente el wdt de la tkData
+ *  - Sistema de manejo de SMS.
  *
  *  R4.0.2b @ 2021-10-18:
  *  - Uso una cola FIFO para setear las presiones.

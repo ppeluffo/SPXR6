@@ -281,16 +281,16 @@ char cmd_str[32];
 	// Setea con el comando CNMP los modos 2G,3G en que trabaja
 	switch(modo) {
 	case 2:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo AUTO\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set modo AUTO\r\n"));
 		break;
 	case 13:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo 2G(GSM) only\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set modo 2G(GSM) only\r\n"));
 		break;
 	case 14:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo 3G(WCDMA) only\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set modo 3G(WCDMA) only\r\n"));
 		break;
 	default:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set modo ERROR !!.\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set modo ERROR !!.\r\n"));
 		return;
 	}
 
@@ -309,16 +309,16 @@ char cmd_str[32];
 
 	switch(modo) {
 	case 0:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preference AUTO\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set preference AUTO\r\n"));
 		break;
 	case 1:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preferece 2G,3G\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set preferece 2G,3G\r\n"));
 		break;
 	case 2:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preference 3G,2G\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set preference 3G,2G\r\n"));
 		break;
 	default:
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs set preference ERROR !!.\r\n"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs set preference ERROR !!.\r\n"));
 		return;
 	}
 
@@ -375,17 +375,17 @@ void gprs_set_SAT(uint8_t modo)
 	switch(modo) {
 	case 0:
 		// Disable
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs SAT.(modo 0). Disable\r\n\0"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs SAT.(modo 0). Disable\r\n\0"));
 		FSM_sendATcmd( 5, "AT+STK=0\r" );
 		break;
 	case 1:
 		// Enable
-		xprintf_PD( DF_COMMS,  PSTR("GPRS: gprs SAT.(modo 1). Enable\r\n\0"));
+		xprintf_PD( DF_COMMS,  PSTR("COMMS: gprs SAT.(modo 1). Enable\r\n\0"));
 		FSM_sendATcmd( 5, "AT+STK=1\r" );
 		break;
 	case 2:
 		// Check. Query STK status ?
-		xprintf_P(PSTR("GPRS: query STK status ?\r\n\0"));
+		xprintf_P(PSTR("COMMS: query STK status ?\r\n\0"));
 		FSM_sendATcmd( 5, "AT+STK?\r" );
 		break;
 	default:
@@ -425,7 +425,7 @@ int8_t cmd_rsp;
 		}
 	}
 
-	xprintf_PD( DF_COMMS,  PSTR("CMD CNMP Error.\r\n"));
+	xprintf_PD( DF_COMMS,  PSTR("COMMS: CMD CNMP Error.\r\n"));
 }
 //------------------------------------------------------------------------------------
 void gprs_read_PREF(void)
@@ -455,7 +455,7 @@ int8_t cmd_rsp;
 		}
 	}
 
-	xprintf_PD( DF_COMMS,  PSTR("CMD CNAOP Error.\r\n"));
+	xprintf_PD( DF_COMMS,  PSTR("COMMS: CMD CNAOP Error.\r\n"));
 }
 //------------------------------------------------------------------------------------
 void gprs_read_BANDS(void)
@@ -585,7 +585,8 @@ int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd )
 	// El timeout es en segundos pero chequeo c/50 ms.
 
 int8_t exit_code = -1;
-int16_t ticks = (20 * timeout);	// Cuantos ticks de 50ms corresponden al timeout.
+int16_t ticks = (20 * timeout);			// Cuantos ticks de 50ms corresponden al timeout.
+//int16_t ticks = ( 1000 * timeout / 50 );	// Cuantos ticks de 50ms corresponden al timeout.
 
 	//xprintf_P(PSTR("DEBUG: timeout=%d\r\n"), timeout);
 	//xprintf_P(PSTR("DEBUG: cmd=%s\r\n"), cmd );

@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.2f"
-#define SPX_FW_DATE "@ 2021119"
+#define SPX_FW_REV "4.0.2h1"
+#define SPX_FW_DATE "@ 20211220"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2
@@ -143,10 +143,10 @@ struct {
 	bool sgn_poll_now;
 } system_signals;
 
-typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP, DEBUG_MODBUS } t_debug;
+typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP, DEBUG_MODBUS, DEBUG_SMS, DEBUG_ALL } t_debug;
 typedef enum { NONE = 0, MODBUS, ANALOG, COUNTER, DIGITAL } t_channel_type;
 
-#define DF_DATA ( systemVars.debug == DEBUG_DATA )
+#define DF_DATA ( (systemVars.debug == DEBUG_DATA ) || (systemVars.debug == DEBUG_ALL ))
 
 TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle_tkApp, xHandle_tkComms, xHandle_tkGprsRX, xHandle_tkAuxRX ;
 
@@ -213,6 +213,33 @@ typedef struct {
 	piloto_conf_t piloto_conf;
 } aplicacion_conf_t;
 
+
+/* Diccionario de mensajes de SMS
+ * Esta formado por una direccion modbus y un nombre.
+ * El 0 es fijo con el nombre FRAME.
+ *
+ * Cuando se recibe un mensaje que esta en el diccionario, sin argumentos,
+ * el datalogger hace un query a la direccion modbus asociada y devuelve
+ * un SMS con la respuesta.
+ *
+ * Si se recibe un mensaje con argumentos, estos se escriben en el PLC
+ *
+ */
+#define SMS_AUTH_NUMBER_MAX		3
+#define SMS_AUTH_NUMBER_LENGTH	12
+#define SMS_ORDERS_LENGTH 		10
+#define SMS_ORDERS_MAX			10
+
+typedef struct {
+	int8_t mb_channel;
+	char smsText[SMS_ORDERS_LENGTH];
+} t_sms_dict_element;
+
+typedef struct {
+	char sms_auth_numbers[SMS_AUTH_NUMBER_MAX][SMS_AUTH_NUMBER_LENGTH];
+	t_sms_dict_element sms_orders[SMS_ORDERS_MAX];
+} sms_conf_t;
+
 typedef struct {
 	// Variables de trabajo.
 	t_debug debug;
@@ -223,6 +250,7 @@ typedef struct {
 	comms_conf_t comms_conf;
 	aplicacion_conf_t aplicacion_conf;
 	modbus_conf_t modbus_conf;
+	sms_conf_t	sms_conf;
 	uint8_t checksum;
 } systemVarsType;
 
@@ -249,6 +277,7 @@ bool u_check_more_Rcds4Tx(void);
 void u_config_timerdial ( char *s_timerdial );
 void XPRINT_ELAPSED( uint32_t ticks );
 float ELAPSED_TIME_SECS( uint32_t ticks );
+void print_running_ticks(char *tag );
 
 // TKCTL
 uint16_t ctl_readTimeToNextPoll(void);
@@ -262,6 +291,7 @@ void ctl_read_wdt(void);
 void data_read_inputs(st_dataRecord_t *dst, bool f_copy );
 void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl);
 int16_t data_sprintf_inputs( char *sbuffer ,st_dataRecord_t *dr, uint16_t ctl );
+int16_t data_sprintf_actual_inputs( char *sbuffer);
 
 
 int32_t xcomms_time_to_next_dial(void);

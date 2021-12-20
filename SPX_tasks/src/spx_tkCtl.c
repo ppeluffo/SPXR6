@@ -221,10 +221,11 @@ char buffer[10] = { '\0','\0','\0','\0','\0','\0','\0','\0','\0','\0' } ;
 				strcpy_P(buffer, (PGM_P)pgm_read_word(&(wdg_names[wdg])));
 				xprintf_P( PSTR("CTL: RESET WDG TO: task [%s] !!\r\n"),buffer);
 
+				vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
 				// Me reseteo por watchdog
-				while(1)
-				  ;
-				//CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
+				//while(1)
+				//  ;
+				CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
 
 			}
 		}
