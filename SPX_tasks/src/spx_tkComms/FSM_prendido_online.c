@@ -91,6 +91,7 @@ int8_t tryes_substate;
 
 	state = ONLINE_ENTRY;
 	tryes_substate = 0;
+	data_frame_order_ack = true;
 
 	// loop
 	for( ;; )
@@ -1312,7 +1313,14 @@ int16_t i;
 
 	gprs_txbuffer_reset();
 	if ( frame_type == FRM_DATA ) {
-		i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
+		if ( data_frame_order_ack ) {
+			// La orden anterior fue procesada correctamente
+			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
+		} else {
+			// Indico que la orden del frame anterior no pudo ser procesada
+			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=NACK;" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
+			data_frame_order_ack = true;
+		}
 	} else {
 		i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=INIT&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
 	}
@@ -2129,9 +2137,10 @@ char *tk_codec = NULL;
 char *tk_value = NULL;
 char *delim = ",;:=><[]";
 int len;
+bool enqueue_status;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus in\r\n\0"));
-	gprs_print_RX_buffer();
+	//gprs_print_RX_buffer();
 
 	// MBUS
 	if ( gprs_check_response( 0, "MBUS") ) {
@@ -2158,9 +2167,13 @@ int len;
 			tk_codec = strsep(&stringp,delim);		// codec
 			tk_value = strsep(&stringp,delim);
 
-			modbus_write_output_register( tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type,tk_codec,tk_value );
+			enqueue_status = modbus_enqueue_output_cmd( tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type,tk_codec,tk_value );
+			// Si algun enqueue dio error, prendo la flag
+			if (enqueue_status == false ) {
+				data_frame_order_ack = false;
+			}
 
-			//xprintf_P(PSTR("RES_B=[%s][%s][%s][%s][%s]\r\n"), tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type );
+			//xprintf_P(PSTR("MBUS_DEBUG=[%s][%s][%s][%s][%s][%s]\r\n"), tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type, tk_value );
 
 			start++;
 			ts = start;
@@ -2174,7 +2187,11 @@ int len;
 		}
 	}
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out\r\n\0"));
+	if (data_frame_order_ack ) {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out\r\n\0"));
+	} else {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out NACK\r\n\0"));
+	}
 }
 //------------------------------------------------------------------------------------
 void data_process_response_PILOTO(void)

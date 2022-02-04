@@ -110,6 +110,14 @@ typedef struct {
 	bool io_status;			// Flag que indica si la operacion de lectura fue correcta o no
 } mbus_CONTROL_BLOCK_t;
 
+typedef struct {
+	modbus_channel_t channel;
+	modbus_hold_t udata;
+} mbus_queue_t;
+
+#define MBUSFIFO_STORAGE_SIZE  8
+mbus_queue_t mbusFifo_storage[MBUSFIFO_STORAGE_SIZE];
+void_ringBuffer_s mbusFIFO;
 
 void modbus_config_defaults(void);
 void modbus_config_status(void);
@@ -142,6 +150,9 @@ void modbus_test_int( char *s_nbr );
 void modbus_test_long( char *s_nbr );
 void modbus_test_float( char *s_nbr );
 
+void modbus_init_output_cmds_queue(void);
+bool modbus_enqueue_output_cmd( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value );
+void modbus_dequeue_output_cmd(void);
 void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value );
 float modbus_write_output_channel( uint8_t ch, float fvalue );
 

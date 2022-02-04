@@ -45,6 +45,15 @@
  * -------------------------------------------------------------------------------------------
  *
  * -------------------------------------------------------------------------------------------
+ *  R4.0.2h3 @ 20220202:
+ *  Frente a los problemas de desconexiones cuando recibe datos modbus, modificamos en modo BETA
+ *  la funcion data_process_response_MBUS para que solo loguee lo que parsea pero no lo aplique.
+ *  Modifico modbus_write_output_register para controlar no dejar colgado el semaforo de modbus.
+ *  Cambio el procesamiento de los mensajes: En la tkComms solo los parseo y encolo
+ *  Luego en tkData los desencolo y proceso.
+ *  Agrego un control para confirmar al servidor que los mensajes se recibieron y encolaron correctamente.
+ *  Esto le da mas robustes al sistema ya que el server se entera como anduvo la cosa.
+ *
  *
  *  R4.0.2h @ 2021-12-15:
  *  - Agrega un debug ALL

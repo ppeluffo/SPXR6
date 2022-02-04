@@ -111,6 +111,146 @@ void pv_encoder_f16_c3210(mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_encoder_f16_c1032(mbus_CONTROL_BLOCK_t *mbus_cb );
 
 //------------------------------------------------------------------------------------
+// QUEUE (OUTPUTs)
+//------------------------------------------------------------------------------------
+void modbus_init_output_cmds_queue(void)
+{
+	ringBuffer_CreateStatic ( &mbusFIFO, &mbusFifo_storage, MBUSFIFO_STORAGE_SIZE, sizeof(mbus_queue_t)  );
+}
+//------------------------------------------------------------------------------------
+bool modbus_enqueue_output_cmd( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value )
+{
+	/*
+	 * Encola un registro de salida
+	 * Convierto los datos y los dejo en un mbus_channel local.
+	 * Si hay error descarto y salgo.
+	 * Debemos crear la estructura mbus_queue_t.
+	 *
+	 */
+
+mbus_queue_t mbus_qch;
+
+	//xprintf_P(PSTR("MODBUS: OUTPUT ENQUEUE START\r\n"));
+	//xprintf_P(PSTR("MBUS_ENQUEUE=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+
+	memset( &mbus_qch, '\0', sizeof(mbus_qch));
+
+	mbus_qch.channel.slave_address = atoi(s_slaaddr);
+	mbus_qch.channel.reg_address = atoi(s_regaddr);
+	mbus_qch.channel.nro_regs = atoi(s_nro_regs);
+	mbus_qch.channel.fcode = atoi(s_fcode);
+
+	// TYPE
+	if ( strcmp ( strupr(s_type), "U16" ) == 0 ) {
+		mbus_qch.channel.type = u16;
+	} else 	if ( strcmp ( strupr(s_type), "I16" ) == 0 ) {
+		mbus_qch.channel.type = i16;
+	} else 	if ( strcmp ( strupr(s_type), "I32" ) == 0 ) {
+		mbus_qch.channel.type = i32;
+	} else 	if ( strcmp ( strupr(s_type), "U32" ) == 0 ) {
+		mbus_qch.channel.type = u32;
+	} else 	if ( strcmp ( strupr(s_type), "FLOAT" ) == 0 ) {
+		mbus_qch.channel.type = FLOAT;
+	} else {
+		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE ERROR (TYPE) !!!\r\n"));
+		xprintf_P(PSTR("MBUS_ENQUEUE=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+		return(false);
+	}
+
+	// CODEC
+	if ( strcmp ( strupr(s_codec), "C0123" ) == 0 ) {
+		mbus_qch.channel.codec = CODEC0123;
+	} else 	if ( strcmp ( strupr(s_codec), "C1032" ) == 0 ) {
+		mbus_qch.channel.codec = CODEC1032;
+	} else 	if ( strcmp ( strupr(s_codec), "C3210" ) == 0 ) {
+		mbus_qch.channel.codec = CODEC3210;
+	} else 	if ( strcmp ( strupr(s_codec), "C2301" ) == 0 ) {
+		mbus_qch.channel.codec = CODEC2301;
+	} else {
+		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE ERROR (CODEC) !!!\r\n"));
+		xprintf_P(PSTR("MBUS_ENQUEUE=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+		return(false);
+	}
+
+	mbus_qch.channel.divisor_p10 = 0;
+
+	switch ( mbus_qch.channel.type) {
+	case i16:
+		mbus_qch.udata.i16_value = atoi(s_value);
+		break;
+	case u16:
+		mbus_qch.udata.u16_value = atoi(s_value);
+		break;
+	case u32:
+		mbus_qch.udata.u32_value = atol(s_value);
+		break;
+	case i32:
+		mbus_qch.udata.i32_value = atol(s_value);
+		break;
+	case FLOAT:
+		mbus_qch.udata.float_value = atof(s_value);
+		break;
+	default:
+		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE ERROR (VALUE) !!!\r\n"));
+		xprintf_P(PSTR("MBUS_ENQUEUE=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+		return(false);
+	}
+
+	// ENCOLO !!!
+	if ( ! ringBuffer_Poke(&mbusFIFO, &mbus_qch ) ) {
+		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE [%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE FAIL\r\n"));
+		return(false);
+	}
+
+	return(true);
+
+	//xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE END\r\n"));
+}
+//------------------------------------------------------------------------------------
+void modbus_dequeue_output_cmd(void)
+{
+	/*
+	 * Saco un elemento de la cola y genero el comando modbus output correspondiente
+	 * Lo repito hasta vaciar la cola
+	 */
+
+mbus_queue_t mbus_qch;
+
+	xprintf_P(PSTR("MODBUS: DEQUEUE START\r\n"));
+
+	// Mientras hallan datos en la cola
+	while ( ringBuffer_GetCount(&mbusFIFO) > 0 ) {
+
+		// Si pude sacar uno sin problemas
+		if ( ringBuffer_Pop(&mbusFIFO, &mbus_qch ) ) {
+
+			while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
+				taskYIELD();
+
+			mbus_cb.channel.slave_address = mbus_qch.channel.slave_address;
+			mbus_cb.channel.reg_address = mbus_qch.channel.reg_address;
+			mbus_cb.channel.nro_regs = mbus_qch.channel.nro_regs;
+			mbus_cb.channel.fcode = mbus_qch.channel.fcode;
+			mbus_cb.channel.type = mbus_qch.channel.type;
+			mbus_cb.channel.codec = mbus_qch.channel.codec;
+			mbus_cb.channel.divisor_p10 = 0;
+			memcpy( &mbus_cb.udata.raw_value, &mbus_qch.udata.raw_value, 4*sizeof(uint8_t) );
+
+			modbus_io( true, &mbus_cb );
+
+			xSemaphoreGive( sem_MBUS );
+
+			modbus_print( true, &mbus_cb );
+
+			xprintf_P(PSTR("MODBUS: DEQUEUE OK\r\n"));
+		}
+	}
+
+	ringBuffer_Flush(&mbusFIFO);
+	xprintf_P(PSTR("MODBUS: DEQUEUE END\r\n"));
+}
+//------------------------------------------------------------------------------------
 // READ
 //------------------------------------------------------------------------------------
 void modbus_read( float mbus_data[] )
@@ -387,7 +527,12 @@ quit:
 //------------------------------------------------------------------------------------
 void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value )
 {
+
+bool retS = false;
+
 	xprintf_P(PSTR("MODBUS: OUTREG START\r\n"));
+
+	xprintf_P(PSTR("MBUS_DEBUG=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
 
 	if ( ! is_aux_prendido()) {
 		aux_prender();
@@ -413,7 +558,8 @@ void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_r
 	} else 	if ( strcmp ( strupr(s_type), "FLOAT" ) == 0 ) {
 		mbus_cb.channel.type = FLOAT;
 	} else {
-		return;
+		xprintf_P(PSTR("MODBUS: OUTREG ERROR TYPE !!!\r\n"));
+		goto quit;
 	}
 
 	// CODEC
@@ -426,7 +572,8 @@ void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_r
 	} else 	if ( strcmp ( strupr(s_codec), "C2301" ) == 0 ) {
 		mbus_cb.channel.codec = CODEC2301;
 	} else {
-		return;
+		xprintf_P(PSTR("MODBUS: OUTREG ERROR CODEC !!!\r\n"));
+		goto quit;
 	}
 
 	mbus_cb.channel.divisor_p10 = 0;
@@ -448,13 +595,22 @@ void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_r
 		mbus_cb.udata.float_value = atof(s_value);
 		break;
 	default:
-		return;
+		xprintf_P(PSTR("MODBUS: OUTREG ERROR VALUE !!!\r\n"));
+		goto quit;
 	}
 
-	modbus_io( true, &mbus_cb );
+	retS = true;
+	//modbus_io( true, &mbus_cb );
+
+quit:
+
 	xSemaphoreGive( sem_MBUS );
 
-	modbus_print( true, &mbus_cb );
+	if (retS) {
+		modbus_print( true, &mbus_cb );
+	} else {
+		xprintf_P(PSTR("MODBUS: OUTREG ERROR !!!\r\n"));
+	}
 	xprintf_P(PSTR("MODBUS: OUTREG END\r\n"));
 }
 //------------------------------------------------------------------------------------
@@ -544,10 +700,11 @@ void modbus_config_status(void)
 
 uint8_t i;
 
-	xprintf_P( PSTR(">Modbus: ( name,address,nro_regs,rcode,type,factor_p10 )\r\n"));
+	xprintf_P( PSTR(">Modbus: ( name,sla_addr,reg_addr,nro_regs,rcode,type,codec,factor_p10 )\r\n"));
 
 	xprintf_P( PSTR("   wpTime=%d, dib=%d\r\n"), modbus_conf.waiting_poll_time, modbus_conf.modbus_delay_inter_bytes );
-	xprintf_P( PSTR("   controlSlave=0x%02x, controlAddress=0x%02x\r\n"), modbus_conf.control_channel.slave_address,modbus_conf.control_channel.reg_address  );
+	//xprintf_P( PSTR("   controlSlave=0x%02x, controlAddress=0x%02x\r\n"), modbus_conf.control_channel.slave_address,modbus_conf.control_channel.reg_address  );
+	xprintf_P( PSTR("   controlSlave=%d, controlAddress=%d\r\n"), modbus_conf.control_channel.slave_address,modbus_conf.control_channel.reg_address  );
 
 	for ( i = 0; i < MODBUS_CHANNELS; i++ ) {
 
@@ -560,13 +717,13 @@ uint8_t i;
 			xprintf_P(PSTR("   "));
 		}
 
-		xprintf_P( PSTR("MB%02d:[%s,0x%02X,0x%04X,"),
+		xprintf_P( PSTR("MB%02d:[%s,%d,%d,"),
 				i,
 				modbus_conf.channel[i].name,
 				modbus_conf.channel[i].slave_address,
 				modbus_conf.channel[i].reg_address
 		);
-		xprintf_P( PSTR("0x%X,0x%X,"), modbus_conf.channel[i].nro_regs, modbus_conf.channel[i].fcode );
+		xprintf_P( PSTR("%d,%d,"), modbus_conf.channel[i].nro_regs, modbus_conf.channel[i].fcode );
 
 		switch(	modbus_conf.channel[i].type ) {
 		case u16:

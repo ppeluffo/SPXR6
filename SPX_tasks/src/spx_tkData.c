@@ -56,6 +56,9 @@ uint32_t waiting_ticks = 0;
  	// Al arrancar poleo a los 10s
  	waiting_ticks = (uint32_t)(10) * 1000 / portTICK_RATE_MS;
 
+ 	// Inicializo la cola de modbus
+ 	modbus_init_output_cmds_queue();
+
   	// loop
   	for( ;; ) {
 
@@ -65,14 +68,13 @@ uint32_t waiting_ticks = 0;
   		// Espero. Da el tiempo necesario para entrar en tickless.
   		vTaskDelayUntil( &xLastWakeTime, waiting_ticks );
 
+  		// Proceso modbus outputs
+  		modbus_dequeue_output_cmd();
+
   		// Poleo
   		memset( &dataRecd,'\0',sizeof(dataRecd));
-  		//print_running_ticks("SYS: RDI");
  		data_read_inputs(&dataRecd, false);
- 		//print_running_ticks("SYS: PDI");
- 		xprintf_P(PSTR("DATA: "));
   		data_print_inputs(fdTERM, &dataRecd, 0);
-  		//print_running_ticks("SYS: BD");
   		pv_data_guardar_en_BD();
 
   		// Aviso a tkGprs que hay un frame listo. En modo continuo lo va a trasmitir enseguida.
@@ -91,6 +93,7 @@ uint32_t waiting_ticks = 0;
 
  		xSemaphoreGive( sem_SYSVars );
 
+ 		xprintf_PD( DF_COMMS, PSTR("DATA: await loop\r\n\0"));
   	}
 
 }
@@ -99,6 +102,9 @@ void data_read_inputs(st_dataRecord_t *dst, bool f_copy )
 {
 
 bool status_flag;
+
+
+	//xprintf_PD( DF_COMMS, PSTR("DATA: data_read_inputs in\r\n\0"));
 
 	// Solo copio el buffer. No poleo.
 	if ( f_copy ) {
@@ -140,10 +146,13 @@ bool status_flag;
 		plt_ctl_vars.caudal = -1.0;
 	}
 
+	//xprintf_PD( DF_COMMS, PSTR("DATA: data_read_inputs out\r\n\0"));
 }
 //------------------------------------------------------------------------------------
 void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl)
 {
+
+	//xprintf_PD( DF_COMMS, PSTR("DATA: data_print_inputs in\r\n\0"));
 
 	// timeStamp.
 	xfprintf_P(fd, PSTR("CTL:%d;DATE:%02d"),ctl, dr->rtc.year );
@@ -165,6 +174,8 @@ void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl)
 	if ( fd == fdTERM ) {
 		xfprintf_P(fd, PSTR("\r\n\0") );
 	}
+
+	//xprintf_PD( DF_COMMS, PSTR("DATA: data_print_inputs out\r\n\0"));
 }
 //------------------------------------------------------------------------------------
 int16_t data_sprintf_inputs( char *sbuffer ,st_dataRecord_t *dr, uint16_t ctl )
