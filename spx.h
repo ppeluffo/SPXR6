@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.3"
-#define SPX_FW_DATE "@ 20220204"
+#define SPX_FW_REV "4.0.3c"
+#define SPX_FW_DATE "@ 20220222"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2
@@ -252,6 +252,7 @@ typedef struct {
 	modbus_conf_t modbus_conf;
 	sms_conf_t	sms_conf;
 	uint8_t checksum;
+
 } systemVarsType;
 
 systemVarsType systemVars;

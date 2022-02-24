@@ -24,6 +24,9 @@ int8_t state = APAGADO;
 	xCOMMS_stateVars.errores_comms = 0;
 	xCOMMS_stateVars.modem_starts = 0;
 
+//	systemVars.max_rcsd_in_bd = 30;
+//	systemVars.min_rcsd_in_bd = 10;
+
 	xprintf_P( PSTR("starting tkComms..\r\n\0"));
 
 	vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );

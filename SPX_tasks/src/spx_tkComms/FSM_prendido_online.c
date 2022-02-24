@@ -80,6 +80,8 @@ bool f_send_init_frame_sms;
 
 bool reset_datalogger;
 
+void DEBUG_del_bd(uint16_t max_rcsd_in_bd, uint16_t min_rcsd_in_bd );
+
 //------------------------------------------------------------------------------------
 int8_t tkXComms_PRENDIDO_ONLINE(void)
 {
@@ -1151,8 +1153,9 @@ uint32_t init_ticks = sysTicks;
 	snprintf_P( str_sendCmd, sizeof(str_sendCmd), PSTR("AT+CIPSEND=0,%d\r"),size);
 	FSM_sendATcmd( 0, str_sendCmd );
 	// Espero el prompt 1000 ms.
-	if ( ! gprs_check_response( 10, ">") ) {
+	if ( ! gprs_check_response( 20, ">") ) {
 		xprintf_PD( DF_COMMS, PSTR("COMMS: send_txbuffer out. (SEND ERROR No prompt) (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+		gprs_print_RX_buffer();
 		return(false);
 	}
 
@@ -1984,6 +1987,7 @@ FAT_t fat;
 	 * Borro los registros transmitidos
 	 */
 	if ( gprs_check_response( 0, "OK") ) {
+
 		memset ( &fat, '\0', sizeof( FAT_t));
 		// Borro los registros.
 		while (  u_check_more_Rcds4Del(&fat) ) {
@@ -1992,6 +1996,8 @@ FAT_t fat;
 			FAT_read(&fat);
 			xprintf_PD( DF_COMMS, PSTR("COMMS: mem wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d \r\n\0"), fat.wrPTR, fat.rdPTR, fat.delPTR, fat.rcds4wr, fat.rcds4rd, fat.rcds4del );
 		}
+
+		//DEBUG_del_bd( systemVars.max_rcsd_in_bd, systemVars.min_rcsd_in_bd );
 	}
 
 	if ( gprs_check_response( 0, "RESET") ) {
@@ -2270,6 +2276,37 @@ char *delim = ",;:=><";
 //	plt_producer_stepper_online_handler(tk_rev, tk_direccion);
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_stepper out\r\n\0"));
+}
+//------------------------------------------------------------------------------------
+void DEBUG_del_bd(uint16_t max_rcsd_in_bd, uint16_t min_rcsd_in_bd )
+{
+	/*
+	 * En modo testing borramos los registros de modo de mantener entre min
+	 * y max de 'rcsd_in_bd' siempre.
+	 *
+	 */
+
+FAT_t fat;
+
+	xprintf_PD( DF_COMMS, PSTR("COMMS: bd erase START.\r\n") );
+
+	memset ( &fat, '\0', sizeof( FAT_t));
+	FAT_read( &fat);
+
+/*
+	// Borro los registros.
+	if ( fat.rcds4del >  max_rcsd_in_bd ) {
+		// Alacance el maximo de registros a tener en la base.
+		// Comienzo a borrar.
+		while ( fat.rcds4del >  min_rcsd_in_bd ) {
+			FF_deleteRcd();
+			FAT_read( &fat);
+			xprintf_PD( DF_COMMS, PSTR("COMMS: mem wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d \r\n\0"), fat.wrPTR, fat.rdPTR, fat.delPTR, fat.rcds4wr, fat.rcds4rd, fat.rcds4del );
+		}
+	}
+	xprintf_PD( DF_COMMS, PSTR("COMMS: bd erase END.\r\n") );
+*/
+
 }
 //------------------------------------------------------------------------------------
 

@@ -43,6 +43,9 @@
  *  Preferences > C/C++ > Editor > Source hover background
  *
  * -------------------------------------------------------------------------------------------
+ * R4.0.3c @ 20220222:
+ * Incremento el tamano de los buffers de RX del GPRS de 512 a 576 bytes tanto a nivel del
+ * driver como de la aplicacion tkComms
  *
  * -------------------------------------------------------------------------------------------
  *  R4.0.2h3 @ 20220202:

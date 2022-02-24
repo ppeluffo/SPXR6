@@ -60,13 +60,14 @@ struct {
 	uint16_t ptr;
 } gprs_txbuffer;
 
-#define GPRS_RXBUFFER_LEN	512
+#define GPRS_RXBUFFER_LEN	576
 struct {
 	char buffer[GPRS_RXBUFFER_LEN];
 	uint16_t ptr;
 } gprs_rxbuffer;
 
-#define MAX_DATA_WINDOW_SIZE	 10
+#define MAX_DATA_WINDOW_SIZE	5
+
 
 #define MAX_TRYES_SOCKET_CLOSE	1
 

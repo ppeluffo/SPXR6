@@ -198,8 +198,8 @@ mbus_queue_t mbus_qch;
 
 	// ENCOLO !!!
 	if ( ! ringBuffer_Poke(&mbusFIFO, &mbus_qch ) ) {
-		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE [%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
-		xprintf_P(PSTR("MODBUS: OUTREG ENQUEUE FAIL\r\n"));
+		xprintf_PD(DF_MBUS, PSTR("MODBUS: OUTREG ENQUEUE [%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+		xprintf_PD(DF_MBUS, PSTR("MODBUS: OUTREG ENQUEUE FAIL\r\n"));
 		return(false);
 	}
 
@@ -217,7 +217,7 @@ void modbus_dequeue_output_cmd(void)
 
 mbus_queue_t mbus_qch;
 
-	xprintf_P(PSTR("MODBUS: DEQUEUE START\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE START\r\n"));
 
 	// Mientras hallan datos en la cola
 	while ( ringBuffer_GetCount(&mbusFIFO) > 0 ) {
@@ -243,12 +243,12 @@ mbus_queue_t mbus_qch;
 
 			modbus_print( true, &mbus_cb );
 
-			xprintf_P(PSTR("MODBUS: DEQUEUE OK\r\n"));
+			xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE OK\r\n"));
 		}
 	}
 
 	ringBuffer_Flush(&mbusFIFO);
-	xprintf_P(PSTR("MODBUS: DEQUEUE END\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE END\r\n"));
 }
 //------------------------------------------------------------------------------------
 // READ
@@ -465,7 +465,7 @@ float modbus_write_output_channel( uint8_t ch, float fvalue )
 
 float pvalue = 0.0;
 
-	xprintf_P(PSTR("MODBUS: OUTCH START\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: OUTCH START\r\n"));
 
 	// Si el canal no esta configurado, salgo
 	if ( strcmp ( modbus_conf.channel[ch].name, "X" ) == 0 ) {
@@ -530,9 +530,9 @@ void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_r
 
 bool retS = false;
 
-	xprintf_P(PSTR("MODBUS: OUTREG START\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: OUTREG START\r\n"));
 
-	xprintf_P(PSTR("MBUS_DEBUG=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
+	xprintf_PD(DF_MBUS, PSTR("MBUS_DEBUG=[%s][%s][%s][%s][%s][%s][%s]\r\n"), s_slaaddr, s_regaddr, s_nro_regs, s_fcode, s_type, s_codec, s_value );
 
 	if ( ! is_aux_prendido()) {
 		aux_prender();
@@ -611,7 +611,7 @@ quit:
 	} else {
 		xprintf_P(PSTR("MODBUS: OUTREG ERROR !!!\r\n"));
 	}
-	xprintf_P(PSTR("MODBUS: OUTREG END\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: OUTREG END\r\n"));
 }
 //------------------------------------------------------------------------------------
 void modbus_report_status(uint8_t bit_pos, uint8_t bit_value )
@@ -628,7 +628,7 @@ void modbus_report_status(uint8_t bit_pos, uint8_t bit_value )
 
 static uint16_t status_word = 0x00;
 
-	xprintf_P(PSTR("MODBUS: REPORT STATUS START\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: REPORT STATUS START\r\n"));
 
 	if (  modbus_conf.control_channel.slave_address == 0 ) {
 		goto quit;
@@ -668,7 +668,7 @@ static uint16_t status_word = 0x00;
 
 quit:
 
-	xprintf_P(PSTR("MODBUS: REPORT STATUS END\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: REPORT STATUS END\r\n"));
 }
 // CONFIGURACION
 //------------------------------------------------------------------------------------
@@ -991,7 +991,7 @@ void modbus_test_genpoll(char *arg_ptr[16] )
 	// TX: (len=8):[0x09][0x03][0x10][0x16][0x00][0x02][0x20][0x47]
 
 
-	xprintf_P(PSTR("MODBUS: GENPOLL START\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: GENPOLL START\r\n"));
 
 	if ( ! is_aux_prendido()) {
 		aux_prender();
@@ -1048,7 +1048,7 @@ void modbus_test_genpoll(char *arg_ptr[16] )
 	xSemaphoreGive( sem_MBUS );
 	//
 	modbus_print( true, &mbus_cb );
-	xprintf_P(PSTR("MODBUS: GENPOLL END\r\n"));
+	xprintf_PD(DF_MBUS, PSTR("MODBUS: GENPOLL END\r\n"));
 
 }
 
