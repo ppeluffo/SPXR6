@@ -9,7 +9,7 @@
 #include "l_printf.h"
 
 
-#define PRINTF_BUFFER_SIZE        256U
+#define PRINTF_BUFFER_SIZE        384U
 
 static uint8_t stdout_buff[PRINTF_BUFFER_SIZE];
 

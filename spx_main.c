@@ -42,6 +42,17 @@
  *  https://stackoverflow.com/questions/3571850/eclipse-change-popup-text-background-color-when-hovering-the-mouse-on-a-keyword
  *  Preferences > C/C++ > Editor > Source hover background
  *
+  * -------------------------------------------------------------------------------------------
+ * R4.0.3d @ 20220224:
+ * Aumento el xprintf buffer a 384 de modo de poder imprimir todo el gprsbuffer
+ * Si hay luegar para 2 frames, los cargo y transmito juntos.
+ * Resultados:
+ *
+ * Frente a problemas en el servidor cuando transmite varios frames de datos, lo limito a 1 solo.
+ * Resultados: Funciona bien.
+ * Como hago ahora abro_socket, transmito, proceso respuesta, cierro_socket.
+ * Esto hace que en c/frame tome uno 10s de proceso.
+ *
  * -------------------------------------------------------------------------------------------
  * R4.0.3c @ 20220222:
  * Incremento el tamano de los buffers de RX del GPRS de 512 a 576 bytes tanto a nivel del

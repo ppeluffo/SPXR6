@@ -763,6 +763,15 @@ float time = 1.0 * ( sysTicks - ticks ) / 1000;
 	xprintf_PD( DF_COMMS,  PSTR("COMMS: elapsed time: %0.3f\r\n"), time );
 }
 //------------------------------------------------------------------------------------
+void XPRINT_ELAPSED_wTAG( char tag, uint32_t ticks )
+{
+
+float time = 1.0 * ( sysTicks - ticks ) / 1000;
+
+	//xprintf_PD( DF_COMMS,  PSTR("elapsed ticks: %lu\r\n"), ( sysTicks - ticks ) );
+	xprintf_PD( DF_COMMS,  PSTR("COMMS: [%c] elapsed time: %0.3f\r\n"), tag, time );
+}
+//------------------------------------------------------------------------------------
 float ELAPSED_TIME_SECS( uint32_t ticks )
 {
 

@@ -169,5 +169,7 @@ bool aux_rxbuffer_copyto ( uint8_t *dst_buffer, uint8_t *size, int8_t max_size )
 void aux_print_RX_buffer( bool ascii_mode );
 uint8_t aux_get_RX_buffer_ptr(void);
 
+bool test_xmit_window_data( void );
+
 
 #endif /* SRC_SPX_TASKS_SPX_TKCOMMS_TKCOMMS_H_ */

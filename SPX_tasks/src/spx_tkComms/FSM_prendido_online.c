@@ -777,26 +777,30 @@ uint32_t init_ticks = sysTicks;
 	// Envio el comando hasta 3 veces.
 	// Si no responde mando un AT.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
-
-		cmd_rsp = FSM_sendATcmd( 10, strapn );
+		XPRINT_ELAPSED_wTAG('A', init_ticks);
+		cmd_rsp = FSM_sendATcmd( 5, strapn );
+		XPRINT_ELAPSED_wTAG('B', init_ticks);
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			// Respondio al comando: Espero el resultado del sockopen.
 			// Espero la respuesta del socket abierto
-			for ( timeout = 0; timeout < 45; timeout++) {
+			for ( timeout = 0; timeout < 15; timeout++) {
 				vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
 				if ( gprs_check_response( 0, "+CIPOPEN: 0,0" ) ) {
 					gprs_print_RX_buffer();
 					xprintf_PD( DF_COMMS,  PSTR("COMMS: socketOPEN out (open) OK (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+					XPRINT_ELAPSED_wTAG('C', init_ticks);
 					return ( sock_OPEN );
 				}
 			}
+			XPRINT_ELAPSED_wTAG('D', init_ticks);
 
 		} else 	if (cmd_rsp	== ATRSP_ERROR ) {
 			// Puede haber dado error porque ya esta abierto
 			if ( gprs_check_response( 0, "+CIPOPEN:") ) {
 				gprs_print_RX_buffer();
 				xprintf_PD( DF_COMMS,  PSTR("COMMS: socketOPEN out (open) OK (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+				XPRINT_ELAPSED_wTAG('E', init_ticks);
 				return ( sock_OPEN );
 			}
 		}
@@ -812,6 +816,7 @@ uint32_t init_ticks = sysTicks;
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
 	gprs_print_RX_buffer();
 	xprintf_PD( DF_COMMS, PSTR("COMMS: socketOPEN out (unknown) ERROR (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+	XPRINT_ELAPSED_wTAG('F', init_ticks);
 	return( sock_UNKNOWN );
 
 }
@@ -1220,7 +1225,7 @@ uint32_t init_ticks = sysTicks;
 
 }
 //------------------------------------------------------------------------------------
-bool xmit_window_data( void )
+bool xmit_window_data_ori( void )
 {
 	/*
 	 * Transmite un frame de datos multiparte.
@@ -1277,6 +1282,188 @@ uint8_t registros_trasmitidos = 0;
 		return (ret_code);
 
 	return(ret_code);
+}
+//------------------------------------------------------------------------------------
+bool xmit_window_data_1frame( void )
+{
+	/*
+	 * VER01: Cargo en el buffer de transmision 1 solo frame de datos
+	 */
+
+size_t bRead;
+FAT_t fat;
+st_dataRecord_t dataRecord;
+bool ret_code = false;
+uint16_t i;
+
+	// Para que no se resetee x wdg si hay muchos datos pendientes.
+
+	u_wdg_kick(WDG_COMMS, 120);
+
+	FF_rewind();
+	if ( datos_pendientes_transmitir() > 0 ) {
+		// Header
+		i = prepare_header(FRM_DATA);
+		// Datos
+		memset ( &fat, '\0', sizeof(FAT_t));
+		memset ( &dataRecord, '\0', sizeof( st_dataRecord_t));
+		bRead = FF_readRcd( &dataRecord, sizeof(st_dataRecord_t));
+		if ( bRead == 0 )
+			return(false);
+		FAT_read(&fat);
+		data_sprintf_inputs( &gprs_txbuffer.buffer[i] , &dataRecord, fat.rdPTR );
+		i = strnlen(gprs_txbuffer.buffer, GPRS_TXBUFFER_LEN );
+		// Tail
+		i +=  prepare_tail(i);
+		ret_code = send_txbuffer();
+	}
+
+	return(ret_code);
+}
+//------------------------------------------------------------------------------------
+bool xmit_window_data( void )
+{
+	/*
+	 * VER01: Cargo en el buffer de transmision hasta 2 frames si hay lugar
+	 *
+	 */
+
+size_t bRead;
+FAT_t fat;
+st_dataRecord_t dataRecord;
+bool ret_code = false;
+uint16_t i;
+uint16_t datos_pendientes;
+uint16_t freespace = 0;
+uint16_t payload_length;
+uint8_t header_length;
+
+	// Para que no se resetee x wdg si hay muchos datos pendientes.
+
+	u_wdg_kick(WDG_COMMS, 120);
+
+	FF_rewind();
+	datos_pendientes = datos_pendientes_transmitir();
+
+	if ( datos_pendientes > 0 ) {
+		// Header
+		i = prepare_header(FRM_DATA);
+		header_length = i;
+		freespace = GPRS_TXBUFFER_LEN - header_length;
+		//xprintf_P(PSTR("FRAME_A: [i=%d][fsp=%d]\r\n"),i, freespace);
+		//
+		// Primer Frame
+		// Datos
+		memset ( &fat, '\0', sizeof(FAT_t));
+		memset ( &dataRecord, '\0', sizeof( st_dataRecord_t));
+		bRead = FF_readRcd( &dataRecord, sizeof(st_dataRecord_t));
+		if ( bRead == 0 )
+			return(false);
+		FAT_read(&fat);
+		data_sprintf_inputs( &gprs_txbuffer.buffer[i] , &dataRecord, fat.rdPTR );
+		i = strnlen(gprs_txbuffer.buffer, GPRS_TXBUFFER_LEN );
+		// Este i tiene el primer frame + header
+		payload_length = i - header_length;
+		freespace = GPRS_TXBUFFER_LEN - i;
+		//xprintf_P(PSTR("FRAME_B=[i=%d][fsp=%d]\r\n"), i, freespace );
+		//xprintf_P(PSTR("FRAME_B=[%s]\r\n"), gprs_txbuffer.buffer );
+		//
+		// Siguientes frames
+		while  (  ( datos_pendientes > 1 ) && ( freespace > (payload_length + 45) ) ) {
+			// Agrego otro frame
+			memset ( &fat, '\0', sizeof(FAT_t));
+			memset ( &dataRecord, '\0', sizeof( st_dataRecord_t));
+			bRead = FF_readRcd( &dataRecord, sizeof(st_dataRecord_t));
+			FAT_read(&fat);
+			data_sprintf_inputs( &gprs_txbuffer.buffer[i] , &dataRecord, fat.rdPTR );
+			i = strnlen(gprs_txbuffer.buffer, GPRS_TXBUFFER_LEN );
+			freespace = GPRS_TXBUFFER_LEN - i;
+			//xprintf_P(PSTR("FRAME_C=[i=%d][fsp=%d]\r\n"), i, freespace );
+			//xprintf_P(PSTR("FRAME_C=[%s]\r\n"),gprs_txbuffer.buffer );
+		}
+		// Tail
+		i +=  prepare_tail(i);
+		//xprintf_P(PSTR("FRAME_D=[i=%d][%s]\r\n"), i, gprs_txbuffer.buffer );
+		ret_code = send_txbuffer();
+
+	}
+
+	return(ret_code);
+}
+//------------------------------------------------------------------------------------
+bool test_xmit_window_data( void )
+{
+	/*
+	 * VER02: Pruebo transitir al menos 2 frames de datos
+	 * VER01: Cargo en el buffer de transmision 1 solo frame de datos
+	 * 	// Preparo el frame
+		i = prepare_header(FRM_AUTH);
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:AUTH;UID:%s;" ),NVMEE_readID() );
+		i +=  prepare_tail(i);
+		ret_code = send_txbuffer();
+	 */
+
+size_t bRead;
+FAT_t fat;
+st_dataRecord_t dataRecord;
+bool ret_code = false;
+uint16_t i;
+uint16_t datos_pendientes;
+uint16_t freespace = 0;
+uint16_t payload_length;
+uint8_t header_length;
+
+	// Para que no se resetee x wdg si hay muchos datos pendientes.
+
+	u_wdg_kick(WDG_COMMS, 120);
+
+	FF_rewind();
+	datos_pendientes = datos_pendientes_transmitir();
+	xprintf_P(PSTR("DATOS PENDIENTES=%d\r\n"), datos_pendientes);
+
+	if ( datos_pendientes > 0 ) {
+		// Header
+		i = prepare_header(FRM_DATA);
+		header_length = i;
+		freespace = GPRS_TXBUFFER_LEN - header_length;
+		xprintf_P(PSTR("FRAME_A: [i=%d][fsp=%d]\r\n"),i, freespace);
+		//
+		// Primer Frame
+		// Datos
+		memset ( &fat, '\0', sizeof(FAT_t));
+		memset ( &dataRecord, '\0', sizeof( st_dataRecord_t));
+		bRead = FF_readRcd( &dataRecord, sizeof(st_dataRecord_t));
+		if ( bRead == 0 )
+			return(false);
+		FAT_read(&fat);
+		data_sprintf_inputs( &gprs_txbuffer.buffer[i] , &dataRecord, fat.rdPTR );
+		i = strnlen(gprs_txbuffer.buffer, GPRS_TXBUFFER_LEN );
+		// Este i tiene el primer frame + header
+		payload_length = i - header_length;
+		freespace = GPRS_TXBUFFER_LEN - i;
+		xprintf_P(PSTR("FRAME_B=[i=%d][fsp=%d]\r\n"), i, freespace );
+		xprintf_P(PSTR("FRAME_B=[%s]\r\n"), gprs_txbuffer.buffer );
+		//
+		// Siguientes frames
+		while  (  ( datos_pendientes > 1 ) && ( freespace > (payload_length + 45) ) ) {
+			// Agrego otro frame
+			memset ( &fat, '\0', sizeof(FAT_t));
+			memset ( &dataRecord, '\0', sizeof( st_dataRecord_t));
+			bRead = FF_readRcd( &dataRecord, sizeof(st_dataRecord_t));
+			FAT_read(&fat);
+			data_sprintf_inputs( &gprs_txbuffer.buffer[i] , &dataRecord, fat.rdPTR );
+			i = strnlen(gprs_txbuffer.buffer, GPRS_TXBUFFER_LEN );
+			freespace = GPRS_TXBUFFER_LEN - i;
+			xprintf_P(PSTR("FRAME_C=[i=%d][fsp=%d]\r\n"), i, freespace );
+			xprintf_P(PSTR("FRAME_C=[%s]\r\n"),gprs_txbuffer.buffer );
+		}
+		// Tail
+		i +=  prepare_tail(i);
+		xprintf_P(PSTR("FRAME_D=[i=%d][%s]\r\n"), i, gprs_txbuffer.buffer );
+
+	}
+	xprintf_P(PSTR("TEST end\r\n"));
+
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES AUXILIARES

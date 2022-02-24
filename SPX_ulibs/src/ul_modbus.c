@@ -47,6 +47,7 @@
 #include "tkComms.h"
 
 #define DF_MBUS ( (systemVars.debug == DEBUG_MODBUS ) || (systemVars.debug == DEBUG_ALL ))
+//#define DF_MBUS (systemVars.debug == DEBUG_MODBUS )
 
 const uint8_t auchCRCHi[] PROGMEM = {
 		0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81,
@@ -237,11 +238,11 @@ mbus_queue_t mbus_qch;
 			mbus_cb.channel.divisor_p10 = 0;
 			memcpy( &mbus_cb.udata.raw_value, &mbus_qch.udata.raw_value, 4*sizeof(uint8_t) );
 
-			modbus_io( true, &mbus_cb );
+			modbus_io( DF_MBUS, &mbus_cb );
 
 			xSemaphoreGive( sem_MBUS );
 
-			modbus_print( true, &mbus_cb );
+			modbus_print( DF_MBUS, &mbus_cb );
 
 			xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE OK\r\n"));
 		}
@@ -490,7 +491,7 @@ float pvalue = 0.0;
 	mbus_cb.channel.divisor_p10 = 0;
 	mbus_cb.udata.float_value = fvalue;
 
-	modbus_io( true, &mbus_cb );
+	modbus_io( DF_MBUS, &mbus_cb );
 
 	// Si hubo un error, pongo un NaN y salgo
 	if (mbus_cb.io_status == false) {
@@ -520,7 +521,7 @@ float pvalue = 0.0;
 quit:
 
 	xSemaphoreGive( sem_MBUS );
-	modbus_print( true, &mbus_cb );
+	modbus_print( DF_MBUS, &mbus_cb );
 	xprintf_P(PSTR("MODBUS: OUTCH END\r\n"));
 	return(pvalue);
 }
@@ -607,7 +608,7 @@ quit:
 	xSemaphoreGive( sem_MBUS );
 
 	if (retS) {
-		modbus_print( true, &mbus_cb );
+		modbus_print( DF_MBUS, &mbus_cb );
 	} else {
 		xprintf_P(PSTR("MODBUS: OUTREG ERROR !!!\r\n"));
 	}
@@ -661,10 +662,10 @@ static uint16_t status_word = 0x00;
 	mbus_cb.udata.u16_value = status_word;
 
 	// Transmito
-	modbus_io( true, &mbus_cb );
+	modbus_io( DF_MBUS, &mbus_cb );
 	xSemaphoreGive( sem_MBUS );
 
-	modbus_print( true, &mbus_cb );
+	modbus_print( DF_MBUS, &mbus_cb );
 
 quit:
 

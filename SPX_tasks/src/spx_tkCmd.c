@@ -38,7 +38,7 @@ static void cmdStatusFunction(void);
 static void cmdConfigFunction(void);
 static void cmdKillFunction(void);
 
-//static void cmdRbTestFunction(void);
+static void cmdTestFunction(void);
 
 #define WR_CMD 0
 #define RD_CMD 1
@@ -82,7 +82,7 @@ uint8_t ticks = 0;
 	FRTOS_CMD_register( "status", cmdStatusFunction );
 	FRTOS_CMD_register( "config", cmdConfigFunction );
 	FRTOS_CMD_register( "kill", cmdKillFunction );
-//	FRTOS_CMD_register( "rb", cmdRbTestFunction );
+	FRTOS_CMD_register( "test", cmdTestFunction );
 
 	// Fijo el timeout del READ
 	ticks = 5;
@@ -119,6 +119,16 @@ uint8_t ticks = 0;
 		}
 
 	}
+}
+//------------------------------------------------------------------------------------
+static void cmdTestFunction(void)
+{
+
+	// Probamos el armado del buffer de transmision
+	FRTOS_CMD_makeArgv();
+	test_xmit_window_data();
+
+
 }
 //------------------------------------------------------------------------------------
 /*

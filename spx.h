@@ -72,8 +72,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.3c"
-#define SPX_FW_DATE "@ 20220222"
+#define SPX_FW_REV "4.0.3d"
+#define SPX_FW_DATE "@ 20220224"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2
@@ -277,6 +277,7 @@ bool u_check_more_Rcds4Del ( FAT_t *fat );
 bool u_check_more_Rcds4Tx(void);
 void u_config_timerdial ( char *s_timerdial );
 void XPRINT_ELAPSED( uint32_t ticks );
+void XPRINT_ELAPSED_wTAG( char tag, uint32_t ticks );
 float ELAPSED_TIME_SECS( uint32_t ticks );
 void print_running_ticks(char *tag );
 

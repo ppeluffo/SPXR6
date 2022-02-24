@@ -93,7 +93,7 @@ uint32_t waiting_ticks = 0;
 
  		xSemaphoreGive( sem_SYSVars );
 
- 		xprintf_PD( DF_COMMS, PSTR("DATA: await loop\r\n\0"));
+ 		//xprintf_PD( DF_COMMS, PSTR("DATA: await loop\r\n\0"));
   	}
 
 }
