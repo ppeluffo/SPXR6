@@ -19,6 +19,8 @@
 
 #include "l_printf.h"
 #include "l_counters.h"
+#include "l_drv8814.h"
+#include "l_steppers.h"
 
 #include "ul_utils.h"
 
@@ -38,13 +40,11 @@ counters_conf_t counters_conf;
 
 bool debug_counters;
 
-void counters_setup_outofrtos(void);
 void counters_init(void);
 void counters_config_defaults(void);
 bool counters_config_channel( uint8_t channel,char *s_name, char *s_magpp, char *s_pw, char *s_period, char *s_sensing );
 bool counters_config_hw( char *s_type );
 void counters_clear(void);
-void counters_run(void);
 void counters_read(float cnt[]);
 void counters_print(file_descriptor_t fd, float cnt[] );
 char *counters_sprintf( char *sbuffer, float cnt[] );

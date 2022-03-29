@@ -71,6 +71,8 @@ struct {
 
 #define MAX_TRYES_SOCKET_CLOSE	1
 
+#define  SOCKET_OPEN_TIMEOUT_secs 15
+
 //------------------------------------------------------------------------------------
 
 #define AUX_TXBUFFER_LEN	16
@@ -107,10 +109,6 @@ int32_t pubcomms_awaittime_for_dial(void);
 int8_t FSM_sendATcmd( const uint8_t timeout, char *cmd );
 
 #define SEC_CHECK_RSP	10
-
-//------------------------------------------------------------------------------------
-// Flag que indica si el la orden enviada por el dataframe pudo ser ejecutada o no
-bool data_frame_order_ack;
 
 //------------------------------------------------------------------------------------
 

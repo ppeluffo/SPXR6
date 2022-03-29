@@ -42,7 +42,43 @@
  *  https://stackoverflow.com/questions/3571850/eclipse-change-popup-text-background-color-when-hovering-the-mouse-on-a-keyword
  *  Preferences > C/C++ > Editor > Source hover background
  *
-  * -------------------------------------------------------------------------------------------
+ * -------------------------------------------------------------------------------------------
+
+ * R4.0.4a @ 20220329:
+ * Agrego la aplicacion de GENPULSOS para poder generar los pulsos en las dosificadoras de
+ * Colonia.
+ * - Creo la aplicacion ( tkApp, tkCmd(help, config, status, save, reload) )
+ * - Modifico tkData para que al arrancar toma nota de los canales pA,pB,Q que se usan en
+ * las aplicaciones de piloto y genpulsos.
+ * - Agrego las funciones de poder preguntar los valores.
+ * - Elimino estas funciones de ul_pilotos para que use estas funciones.
+ *
+ * BUG001: Cuando transmito una ventana con varios frames, completo la ventana pero relleno con 0.
+ * GET /cgi-bin/SPY/spy.py?DLGID=MER005&TYPE=DATA&VER=4.0.3d&PLOAD=
+ * CTL:1910;DATE:220325;TIME:045120;PMP:1.08;bt:12.78;
+ * CTL:1911;DATE:220325;TIME:045219;PMP:1.09;bt:12.82;
+ * CTL:1912;DATE:220325;TIME:045318;PMP:1.10;bt:12.81;
+ * CTL:1912;DATE:000000;TIME:000000;PMP:0.00;bt:0.00; <<<<<<<<<<<<
+ * CTL:1912;DATE:000000;TIME:000000;PMP:0.00;bt:0.00  <<<<<<<<<<<<
+ *
+ * GET /cgi-bin/SPY/spy.py?DLGID=PABLO&TYPE=DATA&VER=4.0.4b&PLOAD=
+ * CTL:5;DATE:010101;TIME:000509;pA:-2.50;pB:-2.50;q0:0.000;bt:9.79;
+ * CTL:6;DATE:010101;TIME:000608;pA:-2.50;pB:-2.50;q0:0.000;bt:9.86;
+ * CTL:6;DATE:000000;TIME:000000;pA:0.00;pB:0.00;q0:0.000;bt:0.00; <<<<<<<<<<<
+ * CTL:6;DATE:000000;TIME:000000;pA:0.00;pB:0.00;q0:0.000;bt:0.00  <<<<<<<<<<<
+ *
+ * BUG002: En los contadores: Cuando no hay pulsos y aparecen cuenta un -1.
+ * Hago un cambio en la forma de procesar los pulsos, tomando una base de tiempo de ticks.
+ * -------------------------------------------------------------------------------------------
+ * R4.0.3f @ 20220308:
+ * - Cuando recibe un frame modbus del server, chequea si los formatos están bien.
+ * - Luego chequea el resultado de la operación de IO.
+ * - Si alguno anduvo mal responde un NACK
+ * - Si ambos anduvieron bien responde un ACK
+ * - Si no hubo operacion de MODBUS, no responde nada.
+ *  Todo el manejo de la flag se hace dentro del modulo de modbus.
+ *
+ * -------------------------------------------------------------------------------------------
  * R4.0.3d @ 20220224:
  * Aumento el xprintf buffer a 384 de modo de poder imprimir todo el gprsbuffer
  * Si hay luegar para 2 frames, los cargo y transmito juntos.
@@ -195,7 +231,6 @@ int main( void )
 	consigna_init();
 
 	piloto_setup_outofrtos();
-	counters_setup_outofrtos();
 
 	// Creamos las tareas
 	start_byte = 0x00;

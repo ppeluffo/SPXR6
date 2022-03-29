@@ -9,6 +9,7 @@
 #include <tkComms.h>
 #include <tkComms_sms.h>
 #include "tkApp.h"
+#include "ul_pilotos.h"
 
 typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_MODBUS_LOW, ONLINE_MODBUS_MED, ONLINE_MODBUS_HIGH, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT, ONLINE_SMS } t_states_prendido_online;
 typedef enum { SF_ENTRY, SF_SOCK_STATUS, SF_SOCK_OPEN, SF_NET_STATUS, SF_SEND, SF_RSP, SF_EXIT } t_sendFrames_states;
@@ -93,7 +94,8 @@ int8_t tryes_substate;
 
 	state = ONLINE_ENTRY;
 	tryes_substate = 0;
-	data_frame_order_ack = true;
+	SET_MBUS_STATUS_FLAG_NONE();
+	INIT_MBUS_TAG();
 
 	// loop
 	for( ;; )
@@ -777,30 +779,30 @@ uint32_t init_ticks = sysTicks;
 	// Envio el comando hasta 3 veces.
 	// Si no responde mando un AT.
 	for ( tryes = 0; tryes < 3; tryes++ ) {
-		XPRINT_ELAPSED_wTAG('A', init_ticks);
+		XPRINT_ELAPSED_wTAG( DF_COMMS, 'A', init_ticks);
 		cmd_rsp = FSM_sendATcmd( 5, strapn );
-		XPRINT_ELAPSED_wTAG('B', init_ticks);
+		XPRINT_ELAPSED_wTAG( DF_COMMS, 'B', init_ticks);
 
 		if (cmd_rsp	== ATRSP_OK ) {
 			// Respondio al comando: Espero el resultado del sockopen.
 			// Espero la respuesta del socket abierto
-			for ( timeout = 0; timeout < 15; timeout++) {
+			for ( timeout = 0; timeout < SOCKET_OPEN_TIMEOUT_secs; timeout++) {
 				vTaskDelay( (portTickType)( 1000 / portTICK_RATE_MS ) );
 				if ( gprs_check_response( 0, "+CIPOPEN: 0,0" ) ) {
 					gprs_print_RX_buffer();
 					xprintf_PD( DF_COMMS,  PSTR("COMMS: socketOPEN out (open) OK (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-					XPRINT_ELAPSED_wTAG('C', init_ticks);
+					XPRINT_ELAPSED_wTAG( DF_COMMS, 'C', init_ticks);
 					return ( sock_OPEN );
 				}
 			}
-			XPRINT_ELAPSED_wTAG('D', init_ticks);
+			XPRINT_ELAPSED_wTAG( DF_COMMS, 'D', init_ticks);
 
 		} else 	if (cmd_rsp	== ATRSP_ERROR ) {
 			// Puede haber dado error porque ya esta abierto
 			if ( gprs_check_response( 0, "+CIPOPEN:") ) {
 				gprs_print_RX_buffer();
 				xprintf_PD( DF_COMMS,  PSTR("COMMS: socketOPEN out (open) OK (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-				XPRINT_ELAPSED_wTAG('E', init_ticks);
+				XPRINT_ELAPSED_wTAG( DF_COMMS, 'E', init_ticks);
 				return ( sock_OPEN );
 			}
 		}
@@ -816,7 +818,7 @@ uint32_t init_ticks = sysTicks;
 	// No puedo en 3 veces responder la secuencia CPAS,AT: Salgo a apagar y prender.
 	gprs_print_RX_buffer();
 	xprintf_PD( DF_COMMS, PSTR("COMMS: socketOPEN out (unknown) ERROR (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-	XPRINT_ELAPSED_wTAG('F', init_ticks);
+	XPRINT_ELAPSED_wTAG( DF_COMMS, 'F', init_ticks);
 	return( sock_UNKNOWN );
 
 }
@@ -1374,6 +1376,10 @@ uint8_t header_length;
 			memset ( &fat, '\0', sizeof(FAT_t));
 			memset ( &dataRecord, '\0', sizeof( st_dataRecord_t));
 			bRead = FF_readRcd( &dataRecord, sizeof(st_dataRecord_t));
+			if ( bRead == 0 )	{// Si no tengo mas datos, salgo: Corrige el BUG001
+				xprintf_PD( DF_COMMS, PSTR("DEBUG: No more frames in windown\r\n"));
+				break;
+			}
 			FAT_read(&fat);
 			data_sprintf_inputs( &gprs_txbuffer.buffer[i] , &dataRecord, fat.rdPTR );
 			i = strnlen(gprs_txbuffer.buffer, GPRS_TXBUFFER_LEN );
@@ -1502,16 +1508,19 @@ int16_t prepare_header( int8_t frame_type )
 int16_t i;
 
 	gprs_txbuffer_reset();
+	// Frames de DATA
 	if ( frame_type == FRM_DATA ) {
-		if ( data_frame_order_ack ) {
+		if (IS_MBUS_STATUS_FLAG_ACK() ) {
+			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=ACK:%d;" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV, modbus_get_mbtag() );
+		} else if ( IS_MBUS_STATUS_FLAG_NACK() ) {
 			// La orden anterior fue procesada correctamente
-			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
+			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=NACK:%d;" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV, modbus_get_mbtag() );
 		} else {
-			// Indico que la orden del frame anterior no pudo ser procesada
-			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=NACK;" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
-			data_frame_order_ack = true;
+			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
 		}
+
 	} else {
+		// Frames de INIT / CONTROL
 		i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=INIT&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
 	}
 	return(i);
@@ -1975,6 +1984,7 @@ static bool process_rsp_app(void)
 	//	PLOAD=CLASS:APP;OFF;
 	//  PLOAD=CLASS:APP;CONSIGNA;HHMM1:530;HHMM2:2330;
 	//  PLOAD=CLASS:APP;PILOTO;PPR:3000;PWIDTH:20;SLOT0:0530,1.20;SLOT1:0630,2.30;SLOT2:0730,3.10;SLOT3:1230,2.50;SLOT4:2330,2.70
+	//  PLOAD=CLASS:APP;GENPULSOS;PULSOSXMT3:100;PULSOWIDTH:10;
 
 char *ts = NULL;
 char localStr[32] = { 0 };
@@ -1995,6 +2005,25 @@ char str_base[8];
 	if ( gprs_check_response( 0, "APP;OFF") ) {
 		systemVars.aplicacion_conf.aplicacion = APP_OFF;
 		save_flag = true;
+
+	} else if ( gprs_check_response( 0, "GENPULSOS") ) {
+		systemVars.aplicacion_conf.aplicacion = APP_GENPULSOS;
+		save_flag = true;
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "PULSOSXMT3");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);		// PULSOSXMT3
+		token = strsep(&stringp,delim);		// 100
+		genpulsos_config_pulsosXmt3( token );
+		ts = strstr( gprs_rxbuffer.buffer, "PULSOWIDTH");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);		// PULSOWIDTH
+		token = strsep(&stringp,delim);		// 10
+		genpulsos_config_pulsoWidth( token );
+		save_flag = true;
+		xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig GENPULSOS\r\n"));
 
 	} else if ( gprs_check_response( 0, "CONSIGNA") ) {
 		systemVars.aplicacion_conf.aplicacion = APP_CONSIGNA;
@@ -2314,6 +2343,10 @@ void data_process_response_MBUS(void)
 	 *    hgetall PTEST01
 	 *    hset PTEST01 MODBUS "NUL"
 	 *
+	 * Version 4.0.4:
+	 * Junto al frame MBUS tambien viene MBTAG:xxx.
+	 * Se debe extraer el tag xxx y devolverlo en los ACK o NACKs
+	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;MBTAG:132;MBUS=[1,2091,2,16,FLOAT,c3210,435.92]</h1></body></html>
 	 *
 	 */
 
@@ -2321,6 +2354,7 @@ char *ts = NULL;
 char *start, *end;
 char localStr[64] = { 0 };
 char *stringp = NULL;
+char *tk_mbtag = NULL;
 char *tk_slaaddr = NULL;
 char *tk_regaddr = NULL;
 char *tk_nro_regs = NULL;
@@ -2334,6 +2368,19 @@ bool enqueue_status;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus in\r\n\0"));
 	//gprs_print_RX_buffer();
+
+	// MBTAG
+	if ( gprs_check_response( 0, "MBTAG") ) {
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "MBTAG");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		tk_mbtag = strsep(&stringp,delim);		// MBTAG
+		tk_mbtag = strsep(&stringp,delim);		// tag
+
+		modbus_set_mbtag(tk_mbtag);
+		xprintf_PD( DF_COMMS, PSTR("COMMS: get MBTAG=%d\r\n"), atoi(tk_mbtag));
+	}
 
 	// MBUS
 	if ( gprs_check_response( 0, "MBUS") ) {
@@ -2361,9 +2408,10 @@ bool enqueue_status;
 			tk_value = strsep(&stringp,delim);
 
 			enqueue_status = modbus_enqueue_output_cmd( tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type,tk_codec,tk_value );
-			// Si algun enqueue dio error, prendo la flag
-			if (enqueue_status == false ) {
-				data_frame_order_ack = false;
+			if ( enqueue_status ) {
+				SET_MBUS_STATUS_FLAG_ACK();
+			} else {
+				SET_MBUS_STATUS_FLAG_NACK();
 			}
 
 			//xprintf_P(PSTR("MBUS_DEBUG=[%s][%s][%s][%s][%s][%s]\r\n"), tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type, tk_value );
@@ -2380,9 +2428,9 @@ bool enqueue_status;
 		}
 	}
 
-	if (data_frame_order_ack ) {
-		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out\r\n\0"));
-	} else {
+	if ( IS_MBUS_STATUS_FLAG_ACK() ) {
+		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out ACK\r\n\0"));
+	} else if ( IS_MBUS_STATUS_FLAG_NACK() ){
 		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out NACK\r\n\0"));
 	}
 }

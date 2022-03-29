@@ -15,7 +15,6 @@ static void pv_ctl_check_wdg(void);
 static void pv_ctl_ticks(void);
 static void pv_ctl_daily_reset(void);
 static void pv_ctl_check_terminal_present(void);
-static void pv_ctl_fire_counters(void);
 
 #define MAX_TIMERS	2
 #define TIME_TO_NEXT_POLL	0
@@ -72,7 +71,7 @@ uint8_t i;
 		pv_ctl_check_terminal_present();
 		pv_ctl_wink_led();
 		pv_ctl_daily_reset();
-		pv_ctl_fire_counters();
+
 
 		// Para entrar en tickless.
 		// Cada 5s hago un chequeo de todo. En particular esto determina el tiempo
@@ -270,19 +269,6 @@ static uint32_t ticks_to_reset = 86400 / TKCTL_DELAY_S ; // ticks en 1 dia.
 	CCPWrite( &RST.CTRL, RST_SWRST_bm );   /* Issue a Software Reset to initilize the CPU */
 
 
-}
-//------------------------------------------------------------------------------------
-static void pv_ctl_fire_counters(void)
-{
-static int8_t time_to_fire_counters = 6;
-
-	if ( time_to_fire_counters == 0 )
-		return;
-
-	if ( --time_to_fire_counters ==  0 ) {
-		counters_run();
-		xprintf_P( PSTR("COUNTERS: Enabled\r\n\0") );
-	}
 }
 //------------------------------------------------------------------------------------
 // FUNCIONES PUBLICAS

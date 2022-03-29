@@ -156,5 +156,27 @@ void modbus_dequeue_output_cmd(void);
 void modbus_write_output_register( char *s_slaaddr,char *s_regaddr,char *s_nro_regs,char *s_fcode, char *s_type,char *s_codec, char *s_value );
 float modbus_write_output_channel( uint8_t ch, float fvalue );
 
+//------------------------------------------------------------------------------------
+// Flag que indica si el la orden enviada por el dataframe pudo ser ejecutada o no
+typedef enum { MB_NONE=0, MB_ACK, MB_NACK } t_modbus_responses;
+
+t_modbus_responses modbus_cmd_status_flag;
+
+#define SET_MBUS_STATUS_FLAG_NONE()	( modbus_cmd_status_flag = MB_NONE )
+#define SET_MBUS_STATUS_FLAG_NACK()	( modbus_cmd_status_flag = MB_NACK )
+#define SET_MBUS_STATUS_FLAG_ACK()	( modbus_cmd_status_flag = MB_ACK )
+
+#define IS_MBUS_STATUS_FLAG_NONE()	( modbus_cmd_status_flag == MB_NONE )
+#define IS_MBUS_STATUS_FLAG_ACK()	( modbus_cmd_status_flag == MB_ACK )
+#define IS_MBUS_STATUS_FLAG_NACK()	( modbus_cmd_status_flag == MB_NACK )
+
+int16_t mbus_tag;
+
+#define INIT_MBUS_TAG()	(mbus_tag = -1 )
+#define MBUS_TAG_VALID() ( mbus_tag != -1 )
+
+void modbus_set_mbtag( char *s_mbtag);
+int16_t modbus_get_mbtag( void );
+
 
 #endif /* SPX_ULIBS_INCLUDE_UL_MODBUS_H_ */

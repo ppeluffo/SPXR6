@@ -668,6 +668,37 @@ bool retS = false;
 
 	FRTOS_CMD_makeArgv();
 
+
+	// GENPULSOS
+	// config genpulsos pulsexmt3 {val}
+	if (!strcmp_P( strupr(argv[1]), PSTR("GENPULSOS")) ) {
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("PULSOSXMT3")) ) {
+			retS = genpulsos_config_pulsosXmt3( argv[3] );
+			retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+			return;
+		}
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("ANCHOPULSO")) ) {
+			retS = genpulsos_config_pulsoWidth( argv[3] );
+			retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+			return;
+		}
+
+		if (!strcmp_P( strupr(argv[2]), PSTR("CAUDAL")) ) {
+			genpulsos_config_caudal( argv[3] );
+			pv_snprintfP_OK();
+			return;
+		}
+
+		//testing {on|off}\r\n
+		if (!strcmp_P( strupr(argv[2]), PSTR("TESTING")) ) {
+			retS = genpulsos_config_testing( argv[3] );
+			retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+			return;
+		}
+	}
+
 	// SMS
 	// sms auth {pos, number}
 	if ( strcmp_P ( strupr( argv[1]), PSTR("SMS\0")) == 0 ) {
@@ -1001,10 +1032,12 @@ static void cmdHelpFunction(void)
 
 		xprintf_P( PSTR("  analog {0..%d} aname imin imax mmin mmax offset\r\n\0"),( ANALOG_CHANNELS - 1 ) );
 
-		xprintf_P( PSTR("  aplicacion {off,consigna,piloto}\r\n\0"));
+		xprintf_P( PSTR("  aplicacion {off,consigna,piloto,genpulsos}\r\n\0"));
 		xprintf_P( PSTR("  consigna {diurna,nocturna} hhmm\r\n\0"));
 		xprintf_P( PSTR("  piloto slot {idx} {hhmm} {pout}\r\n\0"));
 		xprintf_P( PSTR("         ppr, pwidth \r\n\0"));
+		xprintf_P( PSTR("  genpulsos pulsosXmt3 {value}, anchopulso {value_MS}, caudal {val}\r\n"));
+		xprintf_P( PSTR("            testing {on|off}\r\n"));
 
 		xprintf_P( PSTR("  modbus waittime {ms}, chcontrol {sla,reg_addr}\r\n\0"));
 		xprintf_P( PSTR("  modbus channel {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10\r\n"), ( MODBUS_CHANNELS - 1));

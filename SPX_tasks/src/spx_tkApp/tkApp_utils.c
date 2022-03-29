@@ -26,6 +26,12 @@ bool aplicacion_config( char *modo )
 		return(true);
 	}
 
+	if ( strcmp_P( strupr(modo), PSTR("GENPULSOS"))  == 0 )  {
+		systemVars.aplicacion_conf.aplicacion = APP_GENPULSOS;
+		return(true);
+	}
+
+
 	return(false);
 }
 //------------------------------------------------------------------------------------
@@ -36,6 +42,9 @@ void aplicacion_config_status(void)
 
 	if ( systemVars.aplicacion_conf.aplicacion == APP_OFF ) {
 		xprintf_P( PSTR("  modo: OFF\r\n"));
+
+	} else 	if ( systemVars.aplicacion_conf.aplicacion == APP_GENPULSOS ) {
+		genpulsos_config_status();
 
 	} else 	if ( systemVars.aplicacion_conf.aplicacion == APP_CONSIGNA ) {
 		consigna_config_status();
@@ -51,6 +60,7 @@ void aplicacion_config_defaults(void)
 	systemVars.aplicacion_conf.aplicacion = APP_OFF;
 	consigna_config_defaults();
 	piloto_config_defaults();
+	genpulsos_config_defaults();
 
 }
 //------------------------------------------------------------------------------------
@@ -76,6 +86,9 @@ int16_t free_size = sizeof(hash_buffer);
 			hash = u_hash(hash, *p++);
 		}
 		return(hash);
+
+	} else if ( systemVars.aplicacion_conf.aplicacion == APP_GENPULSOS ) {
+		return( genpulsos_hash() );
 
 	} else if ( systemVars.aplicacion_conf.aplicacion == APP_CONSIGNA ) {
 		return( consigna_hash() );

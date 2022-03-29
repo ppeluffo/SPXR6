@@ -26,6 +26,8 @@ void COUNTERS_init( uint8_t cnt, t_counters_hw_type type, t_sensing_edge edge );
 void COUNTERS_disable_interrupt( uint8_t cnt );
 void COUNTERS_enable_interrupt( uint8_t cnt );
 
+int8_t CNT_read(uint8_t cnt);
+
 // API end
 //------------------------------------------------------------------------------------
 

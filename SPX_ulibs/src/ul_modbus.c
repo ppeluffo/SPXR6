@@ -213,10 +213,13 @@ void modbus_dequeue_output_cmd(void)
 {
 	/*
 	 * Saco un elemento de la cola y genero el comando modbus output correspondiente
-	 * Lo repito hasta vaciar la cola
+	 * Lo repito hasta vaciar la cola.
+	 * En cada operacion, mbus_cb.io_status indica con T/F el resultado.
+	 *
 	 */
 
 mbus_queue_t mbus_qch;
+bool io_status = true;
 
 	xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE START\r\n"));
 
@@ -240,6 +243,14 @@ mbus_queue_t mbus_qch;
 
 			modbus_io( DF_MBUS, &mbus_cb );
 
+			/*
+			 * En retS almaceno el resultado de todas las operaciones.
+			 * Una sola fallida me indica el error de todas.
+			 */
+			if (mbus_cb.io_status == false ) {
+				io_status = false;
+			}
+
 			xSemaphoreGive( sem_MBUS );
 
 			modbus_print( DF_MBUS, &mbus_cb );
@@ -249,6 +260,15 @@ mbus_queue_t mbus_qch;
 	}
 
 	ringBuffer_Flush(&mbusFIFO);
+
+	/*
+	 * Veo como responderle al server por las operaciones modbus.
+	 * Si el io_status == True, el valor de la flag queda como lo dejo el enqueue.
+	 */
+	if ( io_status == false ) {
+		SET_MBUS_STATUS_FLAG_NACK();
+	}
+
 	xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE END\r\n"));
 }
 //------------------------------------------------------------------------------------
@@ -981,6 +1001,17 @@ exit_error:
 
 }
 //------------------------------------------------------------------------------------
+void modbus_set_mbtag( char *s_mbtag)
+{
+	mbus_tag = atoi(s_mbtag);
+}
+//------------------------------------------------------------------------------------
+int16_t modbus_get_mbtag( void )
+{
+	return(mbus_tag);
+}
+//------------------------------------------------------------------------------------
+
 // FUNCIONES DE TEST
 //------------------------------------------------------------------------------------
 void modbus_test_genpoll(char *arg_ptr[16] )
@@ -1226,7 +1257,10 @@ int i;
 //------------------------------------------------------------------------------------
 void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb )
 {
-	//
+	/*
+	 * En mbus_cb.io_status tenemos el resultado de la operacion
+	 */
+
 	mbus_cb->io_status = false;
 	//
 	pv_modbus_make_ADU (mbus_cb);
@@ -1875,3 +1909,4 @@ uint8_t payload_ptr = 7;
 	return;
 }
 //------------------------------------------------------------------------------------
+

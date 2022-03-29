@@ -26,6 +26,7 @@
 #define SGN_SMS					0x05
 #define SGN_WAKEUP				0x06
 #define SGN_POLL_NOW			0x07
+#define SGN_DOSIFICADORA		0x08
 
 #define PARAMNAME_LENGTH	7
 
@@ -61,5 +62,24 @@ typedef struct {
 } st_time_t;
 
 char hash_buffer[64];
+
+// Estructura de datos de caudal para los pilotos
+typedef struct {
+	int8_t pA_channel;
+	int8_t pB_channel;
+	int8_t Q_channel;
+	int8_t Q_module;
+	float pA;
+	float pB;
+	float caudal;
+} ctlapp_vars_t;
+
+ctlapp_vars_t ctlapp_vars;
+
+#define PRESIONES_NO_CONFIGURADAS() ( (ctlapp_vars.pA_channel != -1) || (ctlapp_vars.pB_channel != -1) )
+#define MIDO_CAUDAL() ( ctlapp_vars.Q_channel != -1 )
+#define get_pA()  ( ctlapp_vars.pA )
+#define get_pB()  ( ctlapp_vars.pB )
+#define get_Q()  ( ctlapp_vars.caudal)
 
 #endif /* SPX_ULIBS_INCLUDE_UL_UTILS_H_ */

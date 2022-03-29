@@ -323,6 +323,9 @@ uint16_t ee_wr_addr;
 	// Copio la configuracion de aplicacion:pilotos al systemVars.
 	memcpy( &systemVars.aplicacion_conf.piloto_conf,  &piloto_conf, sizeof(piloto_conf));
 
+	// Copio la configuracion de aplicacion:genpulsos al systemVars.
+	memcpy( &systemVars.aplicacion_conf.genpulsos_conf,  &genpulsos_conf, sizeof(genpulsos_conf));
+
 	// Copio la configuracion de modbus al systemVars.
 	memcpy( &systemVars.modbus_conf,  &modbus_conf, sizeof(modbus_conf));
 
@@ -375,9 +378,11 @@ uint16_t ee_rd_addr;
 	// Copio la configuracion de aplicacion:pilotos
 	memcpy( &piloto_conf,  &systemVars.aplicacion_conf.piloto_conf, sizeof(piloto_conf));
 
+	// Copio la configuracion de aplicacion:genpulsos
+	memcpy( &genpulsos_conf,  &systemVars.aplicacion_conf.genpulsos_conf, sizeof(genpulsos_conf));
+
 	// Copio la configuracion de modbus
 	memcpy( &modbus_conf,  &systemVars.modbus_conf, sizeof(modbus_conf));
-
 
 	if ( calculated_checksum != stored_checksum ) {
 		xprintf_P( PSTR("ERROR: Checksum systemVars failed: calc[0x%0x], sto[0x%0x]\r\n"), calculated_checksum, stored_checksum );
@@ -577,6 +582,9 @@ bool retS = false;
 	case SGN_POLL_NOW:
 		retS = system_signals.sgn_poll_now;
 		break;
+	case SGN_DOSIFICADORA:
+		retS = system_signals.dosificadora;
+		break;
 	default:
 		break;
 	}
@@ -617,6 +625,10 @@ bool retS = false;
 		system_signals.sgn_poll_now = true;
 		retS = true;
 		break;
+	case SGN_DOSIFICADORA:
+		system_signals.dosificadora = true;
+		retS = true;
+		break;
 	default:
 		retS = false;
 		break;
@@ -654,6 +666,9 @@ bool retS = false;
 		system_signals.sgn_poll_now = false;
 		retS = true;
 		break;
+	case SGN_DOSIFICADORA:
+		system_signals.dosificadora = false;
+		retS = true;
 	default:
 		retS = false;
 		break;
@@ -763,10 +778,13 @@ float time = 1.0 * ( sysTicks - ticks ) / 1000;
 	xprintf_PD( DF_COMMS,  PSTR("COMMS: elapsed time: %0.3f\r\n"), time );
 }
 //------------------------------------------------------------------------------------
-void XPRINT_ELAPSED_wTAG( char tag, uint32_t ticks )
+void XPRINT_ELAPSED_wTAG( bool debug_flag, char tag, uint32_t ticks )
 {
 
 float time = 1.0 * ( sysTicks - ticks ) / 1000;
+
+	if ( ! debug_flag )
+		return;
 
 	//xprintf_PD( DF_COMMS,  PSTR("elapsed ticks: %lu\r\n"), ( sysTicks - ticks ) );
 	xprintf_PD( DF_COMMS,  PSTR("COMMS: [%c] elapsed time: %0.3f\r\n"), tag, time );

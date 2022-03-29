@@ -13,6 +13,14 @@
  *  Cuando el timer expira vuelve a leer el pin y si esta en 1 incrementa el contador.
  *  Arranca otro timer de periodo que es el que rearma la interrupcion.
  *
+ *  R4.0.4a @ 2022-03-25:
+ *  Usamos una sola base de tiempos ( timer ) que genera un tick c/10ms.
+ *  La interrupcion me indica que llego un flanco con lo que inicializo el contador y comienzo a contar ticks
+ *  En el tick 2 (20ms) leo la entrada de nuevo. Si cambio entonces fue un falso disparo. Rearmo todo y salgo.
+ *  Si se mantiene el nivel, entonces es un pulso real. Calculo el caudal.
+ *  Sigo contando ticks.
+ *  En el tick 5 (50ms) rearmo la interrupcion. ( tiempo minimo de ancho de pulso a contar ).
+ *
  *  R4.0.2b @ 2021-10-18:
  *  Cuando arrancan los contadores, si el nombre es q{x),Q{x},CAU{x},CAUDAL{x} entonces mido caudal y debo hacer
  *  un manejo de tiempos diferente.
@@ -25,81 +33,39 @@
 
 #include "ul_counters.h"
 
-StaticTimer_t counter_xTimerBuffer0A,counter_xTimerBuffer0B, counter_xTimerBuffer1A,counter_xTimerBuffer1B;
-TimerHandle_t counter_xTimer0A, counter_xTimer0B, counter_xTimer1A, counter_xTimer1B;
+StaticTimer_t counter_xTimerBuffer;
+TimerHandle_t counter_xTimer;
 
 // Estructura de control de los contadores.
 typedef struct {
-	float cnt;
-	bool f_count_running;
 	bool f_mide_caudal;
-	BaseType_t xHigherPriorityTaskWoken;
-	uint32_t ticks_start;
-	uint32_t ticks_end;
+	float caudal;
+	uint32_t ticks_count;
+	uint16_t ctlTicks_count;
+	uint16_t pulse_count;
+	bool pulse;
+
 } t_counter_s;
 
 t_counter_s CNTCB[2];
 
-static void pv_counters_TimerCallback0A( TimerHandle_t xTimer );
-static void pv_counters_TimerCallback0B( TimerHandle_t xTimer );
-static void pv_counters_TimerCallback1A( TimerHandle_t xTimer );
-static void pv_counters_TimerCallback1B( TimerHandle_t xTimer );
+static void pv_counters_TimerCallback( TimerHandle_t xTimer );
+void pv_counters_restore_int(uint8_t cnt);
+void pv_process_counter(uint8_t i);
 
-//------------------------------------------------------------------------------------
-void counters_setup_outofrtos(void)
-{
-	// Configura los timers que generan el delay de medida del ancho de pulso
-	// y el periodo.
-	// Se deben crear antes que las tarea y que arranque el scheduler
+#define UPULSE_RUN_BITPOS		4
+#define UPULSE_RUN_PORT		PORTB
+#define RMETER_config_IO_UPULSE_RUN()	PORT_SetPinAsOutput( &UPULSE_RUN_PORT, UPULSE_RUN_BITPOS)
+#define RMETER_set_UPULSE_RUN()			PORT_SetOutputBit( &UPULSE_RUN_PORT, UPULSE_RUN_BITPOS)
+#define RMETER_clr_UPULSE_RUN()			PORT_ClearOutputBit( &UPULSE_RUN_PORT, UPULSE_RUN_BITPOS)
 
-	CNTCB[0].f_count_running = false;
-	CNTCB[1].f_count_running = false;
-
-	// Counter de debounce de pulsos en linea A
-	// Mide el tiempo minimo que el pulso está arriba
-	// Mide el pulse_width
-	counter_xTimer0A = xTimerCreateStatic ("CNT0A",
-			pdMS_TO_TICKS( 10 ),
-			pdFALSE,
-			( void * ) 0,
-			pv_counters_TimerCallback0A,
-			&counter_xTimerBuffer0A
-			);
-
-	// Mide el periodo del pulso en la linea A.
-	counter_xTimer1A = xTimerCreateStatic ("CNT1A",
-			pdMS_TO_TICKS( 90 ),
-			pdFALSE,
-			( void * ) 0,
-			pv_counters_TimerCallback1A,
-			&counter_xTimerBuffer1A
-			);
-
-
-	// Counter de debounce de pulsos en linea B
-	// Mide el tiempo minimo que el pulso está arriba
-	counter_xTimer0B = xTimerCreateStatic ("CNT0B",
-			pdMS_TO_TICKS( 10 ),
-			pdFALSE,
-			( void * ) 0,
-			pv_counters_TimerCallback0B,
-			&counter_xTimerBuffer0B
-			);
-
-
-	counter_xTimer1B = xTimerCreateStatic ("CNT1B",
-			pdMS_TO_TICKS( 90 ),
-			pdFALSE,
-			( void * ) 0,
-			pv_counters_TimerCallback1B,
-			&counter_xTimerBuffer1B
-			);
-
-	debug_counters = false;
-}
 //------------------------------------------------------------------------------------
 void counters_init(void)
 {
+
+uint8_t i;
+char lname[PARAMNAME_LENGTH];
+
 	// Configuro los timers con el timeout dado por el tiempo de minimo pulse width.
 	// Esto lo debo hacer aqui porque ya lei el systemVars y tengo los valores.
 	// Esto arranca el timer por lo que hay que apagarlos
@@ -114,172 +80,168 @@ void counters_init(void)
 		xprintf_P(PSTR("COUNTERS ERROR!! C1: periodo debe ser mayor que el ancho\r\n\0"));
 	}
 
-	// CNT0 (PA)
-	// Pulse-width
-	xTimerChangePeriod( counter_xTimer0A, counters_conf.pwidth[0], 10 );
-	xTimerStop(counter_xTimer0A, 10);
-
-	// Period
-	xTimerChangePeriod( counter_xTimer1A, ( counters_conf.period[0] - counters_conf.pwidth[0]) , 10 );
-	xTimerStop(counter_xTimer1A, 10);
-
-	// CNT1 (PB)
-	// Pulse-width
-	xTimerChangePeriod( counter_xTimer0B, counters_conf.pwidth[1], 10 );
-	xTimerStop(counter_xTimer0B, 10);
-
-	// Period
-	xTimerChangePeriod( counter_xTimer1B, ( counters_conf.period[1] - counters_conf.pwidth[1]) , 10 );
-	xTimerStop(counter_xTimer1B, 10);
-
+	// Configuro el HW
 	COUNTERS_init(0, counters_conf.hw_type, counters_conf.sensing_edge[0] );
 	COUNTERS_init(1, counters_conf.hw_type, counters_conf.sensing_edge[1] );
 
+	for ( uint8_t i=0;i<2;i++) {
+		CNTCB[i].caudal = 0.0;
+		CNTCB[i].ticks_count = 0;
+		CNTCB[i].ctlTicks_count = 0;
+		CNTCB[i].pulse_count = 0;
+		CNTCB[i].pulse = false;
+	}
+
+	// Determino si mido caudal
+	CNTCB[0].f_mide_caudal = false;
+	CNTCB[1].f_mide_caudal = false;
+	for (i=0; i<COUNTER_CHANNELS; i++) {
+
+		strncpy(lname, counters_conf.name[i], PARAMNAME_LENGTH );
+		strupr(lname);
+
+		if ( ( lname[0] == 'q') && ( isdigit(lname[1]) ) ) {
+			CNTCB[i].f_mide_caudal = true;
+			continue;
+		}
+
+		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
+			CNTCB[i].f_mide_caudal = true;
+			continue;
+		}
+
+		if ( strstr ( lname, "CAU" ) ) {
+			CNTCB[i].f_mide_caudal = true;
+			continue;
+		}
+	}
+
+	// Habilito las interrupciones externas.
+	pv_counters_restore_int(0);
+	pv_counters_restore_int(1);
+
+	// Arranco los ticks
+	counter_xTimer = xTimerCreateStatic ("CNTA",
+			pdMS_TO_TICKS( 10 ),
+			pdTRUE,
+			( void * ) 0,
+			pv_counters_TimerCallback,
+			&counter_xTimerBuffer
+			);
+
+	debug_counters = false;
+	//RMETER_config_IO_UPULSE_RUN();
+
+	xTimerStart(counter_xTimer, 10);
+
+	if ( CNTCB[0].f_mide_caudal ) {
+		xprintf_P(PSTR("Counter 0 mide caudal.\r\n"));
+	}
+	if ( CNTCB[1].f_mide_caudal ) {
+		xprintf_P(PSTR("Counter 1 mide caudal.\r\n"));
+	}
 }
 //------------------------------------------------------------------------------------
-static void pv_counters_TimerCallback0A( TimerHandle_t xTimer )
+static void pv_counters_TimerCallback( TimerHandle_t xTimer )
+
 {
 	// Funcion de callback de la entrada de contador A.
 	// Controla el pulse_width de la entrada A
 	// Leo la entrada y si esta aun en X, incremento el contador y
 	// prendo el timer xTimer1X que termine el debounce.
 
-uint8_t confirm_value = 0;
+	//RMETER_set_UPULSE_RUN();
+	//vTaskDelay( ( TickType_t)( 1 ) );
+	//RMETER_clr_UPULSE_RUN();
 
-	if ( counters_conf.sensing_edge[0] == RISING_EDGE ) {
-		confirm_value = 1;
-	}
+	pv_process_counter(0);
+	pv_process_counter(1);
 
-	if ( CNT_read_CNT0() == confirm_value ) {
-		CNTCB[0].cnt++;
+}
+//------------------------------------------------------------------------------------
+void pv_process_counter(uint8_t i)
+{
 
-		// En el primer pulso guardo el timestamp
-		if ( CNTCB[0].cnt == 1) {
-			CNTCB[0].ticks_start = getSysTicks();
+uint8_t input_val;
+
+	CNTCB[i].ticks_count++;
+
+	// Si estoy dentro de un pulso externo
+	if ( CNTCB[i].pulse == true ) {
+
+		CNTCB[i].ctlTicks_count++;		// Controlo los ticks de debounce y de restore ints.
+
+		// Controlo el periodo de debounce. (2ticks = 20ms)
+		if ( CNTCB[i].ctlTicks_count == counters_conf.pwidth[i]/10 ) {
+			// Leo la entrada para ver si luego de un tdebounce esta en el mismo nivel.(pulso valido)
+			input_val = CNT_read(i);
+			if ( (counters_conf.sensing_edge[i] == RISING_EDGE ) && ( input_val == 1) ) {
+				CNTCB[i].pulse_count++;
+			} else 	if ( (counters_conf.sensing_edge[i] == FALLING_EDGE ) && ( input_val == 0) ) {
+				CNTCB[i].pulse_count++;
+			} else {
+				// Falso disparo: rearmo y salgo
+				CNTCB[i].pulse = false;
+				pv_counters_restore_int(i);
+				return;
+			}
+
+			// Estoy dentro de un pulso bien formado
+			// 1 pulso -------> ticks_counts * 10 mS
+			// magpp (mt3) ---> ticks_counts * 10 mS
+			if ( CNTCB[i].f_mide_caudal ) {
+				// Calculo el caudal
+				// Tengo 1 pulso en N ticks.
+				if ( CNTCB[i].ticks_count > 0 ) {
+					CNTCB[i].caudal =  (( counters_conf.magpp[i] * 3600000) /  ( CNTCB[i].ticks_count * 10)  ); // En mt3/h
+				} else {
+					CNTCB[i].ticks_count = 1;
+					CNTCB[i].caudal = 0;
+				}
+				//xprintf_P( PSTR("COUNTERS: DEBUG Q%d=%0.3f,TICKS=%d\r\n"), i, CNTCB[i].caudal, CNTCB[i].ticks_count );
+				xprintf_PD( debug_counters, PSTR("COUNTERS: Q%d=%0.3f, pulses=%d\r\n"), i, CNTCB[i].caudal, CNTCB[i].pulse_count );
+			} else {
+				//xprintf_P( PSTR("COUNTERS: C%d=%d (PULSES)\r\n"), i, CNTCB[i].pulse_count );
+				xprintf_PD( debug_counters, PSTR("COUNTERS: C%d=%d (PULSES)\r\n"), i, CNTCB[i].pulse_count );
+			}
+			// Reinicio los ticks
+			CNTCB[i].ticks_count = 0;
+
 		}
-		CNTCB[0].ticks_end = getSysTicks();
 
-		xTimerStart( counter_xTimer1A, 1 );
-		xprintf_PD( debug_counters, PSTR("COUNTERS: DEBUG *C0=%0.3f,C1=%0.3f\r\n\0"), CNTCB[0].cnt, CNTCB[1].cnt );
-		// xprintf_P( PSTR("COUNTERS: DEBUG *C0=%0.3f start=%lu, end=%lu\r\n"), CNTCB[0].cnt, CNTCB[0].ticks_start, CNTCB[0].ticks_end );
-		//xprintf_P( PSTR("COUNTERS: DEBUG *C1=%0.3f(%lu, %lu)\r\n"), CNTCB[0].cnt, CNTCB[1].ticks_start, CNTCB[1].ticks_end );
+		// Cuando se cumple el periodo minimo del pulso, rearmo para el proximo
+		if ( CNTCB[i].ctlTicks_count == counters_conf.period[i]/10 ) {
+			//xprintf_P( PSTR("COUNTERS: DEBUG C0=%d,CTL=%d, TICKS=%d\r\n"), CNTCB[i].pulse_count, CNTCB[i].ctlTicks_count, CNTCB[i].ticks_count );
+			CNTCB[i].pulse = false;
+			pv_counters_restore_int(i);
+		}
+	}
+}
+//------------------------------------------------------------------------------------
+void pv_counters_restore_int(uint8_t cnt)
+{
+	if ( cnt == 0 ) {
+		PORTA.INT0MASK = PIN2_bm;
+		PORTA.INTCTRL = PORT_INT0LVL0_bm;
+		PORTA.INTFLAGS = PORT_INT0IF_bm;
 		return;
 	}
 
-	// No se cumplio el pulse_width minimo. No cuento el pulso y rearmo el sistema
-	// para poder volver a interrumpir
-	PORTA.INT0MASK = PIN2_bm;
-	PORTA.INTCTRL = PORT_INT0LVL0_bm;
-	PORTA.INTFLAGS = PORT_INT0IF_bm;
-
-}
-//------------------------------------------------------------------------------------
-static void pv_counters_TimerCallback1A( TimerHandle_t xTimer )
-{
-	// Se cumplio es period de la linea A (CNT0)
-	// Habilito a volver a interrumpir
-	PORTA.INT0MASK = PIN2_bm;
-	PORTA.INTCTRL = PORT_INT0LVL0_bm;
-	PORTA.INTFLAGS = PORT_INT0IF_bm;
-
-}
-//------------------------------------------------------------------------------------
-static void pv_counters_TimerCallback0B( TimerHandle_t xTimer )
-{
-
-	//IO_clr_LED_KA();
-
-	// Mido el pulse_width de la linea B (CNT1)
-
-uint8_t confirm_value = 0;
-
-	if ( counters_conf.sensing_edge[1] == RISING_EDGE ) {
-		confirm_value = 1;
-	}
-
-	if ( CNT_read_CNT1() == confirm_value ) {
-		CNTCB[1].cnt++;
-		// En el primer pulso guardo el timestamp
-		if ( CNTCB[1].cnt == 1) {
-			CNTCB[1].ticks_start = getSysTicks();
-		}
-
-		CNTCB[1].ticks_end = getSysTicks();
-		xTimerStart( counter_xTimer1B, 1 );
-		xprintf_PD( debug_counters, PSTR("COUNTERS: DEBUG C0=%0.3f,*C1=%0.3f\r\n\0"), CNTCB[0].cnt, CNTCB[1].cnt );
+	if ( cnt == 1 ) {
+		PORTB.INT0MASK = PIN2_bm;
+		PORTB.INTCTRL = PORT_INT0LVL0_bm;
+		PORTB.INTFLAGS = PORT_INT0IF_bm;
 		return;
-	}
-
-	PORTB.INT0MASK = PIN2_bm;
-	PORTB.INTCTRL = PORT_INT0LVL0_bm;
-	PORTB.INTFLAGS = PORT_INT0IF_bm;
-
-
-}
-//------------------------------------------------------------------------------------
-static void pv_counters_TimerCallback1B( TimerHandle_t xTimer )
-{
-
-	// Rearmo la interrupcion para el proximo
-	//IO_clr_LED_KA();
-	PORTB.INT0MASK = PIN2_bm;
-	PORTB.INTCTRL = PORT_INT0LVL0_bm;
-	PORTB.INTFLAGS = PORT_INT0IF_bm;
-
-
-}
-//------------------------------------------------------------------------------------
-void counters_run(void)
-{
-	// Activa una flag de c/counter para que la interupccion arranque
-	// a contar
-
-char lname[PARAMNAME_LENGTH];
-uint8_t i;
-
-	CNTCB[0].f_count_running = true;
-	if ( strcmp ( counters_conf.name[0], "X" ) == 0 ) {
-		CNTCB[0].f_count_running = false;
-	}
-
-	CNTCB[1].f_count_running = true;
-	if ( strcmp ( counters_conf.name[1], "X" ) == 0 ) {
-		CNTCB[1].f_count_running = false;
-	}
-
-	CNTCB[0].cnt = 0;
-	CNTCB[1].cnt = 0;
-
-	/*
-	 * Vemos si medimos caudal
-	 * El nombre debe ser q o Q con un nro o empezar con cau o CAU
-	 */
-
-	for (i=0; i<2; i++) {
-		CNTCB[i].f_mide_caudal = false;
-		strncpy(lname, counters_conf.name[i], PARAMNAME_LENGTH );
-		strupr(lname);
-
-		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
-			CNTCB[i].f_mide_caudal = true;
-		}
-
-		if ( strstr ( lname, "CAU" ) ) {
-			CNTCB[i].f_mide_caudal = true;
-		}
-
-		if ( CNTCB[i].f_mide_caudal ) {
-			xprintf_P(PSTR("COUNTERS: C%d mide caudal.\r\n"), i);
-		}
 	}
 
 }
 //------------------------------------------------------------------------------------
 void counters_clear(void)
 {
-	CNTCB[0].cnt = 0;
-	CNTCB[1].cnt = 0;
-
+	CNTCB[0].pulse_count = 0;
+	CNTCB[1].pulse_count = 0;
+	CNTCB[0].caudal = 0.0;
+	CNTCB[1].caudal = 0.0;
 }
 //------------------------------------------------------------------------------------
 void counters_read(float cnt[])
@@ -289,25 +251,15 @@ void counters_read(float cnt[])
 	 */
 
 uint8_t i;
-float ticks_in_seconds;
 
 	for (i=0; i<2; i++ ) {
 
 		if ( CNTCB[0].f_mide_caudal ) {
-			// Convierto los pulsos a caudal instantaneo ( en el timerpoll ).
-			// Ojo que ahora magpp debe ser el volumen real por pulso !!!
-			ticks_in_seconds = portTICK_RATE_MS * ( CNTCB[i].ticks_end - CNTCB[i].ticks_start ) / 1000;
-			if ( ticks_in_seconds > 0.0 ) {
-				cnt[i] = ( 3600 * ( CNTCB[i].cnt - 1 ) * counters_conf.magpp[i] ) / ticks_in_seconds ;
-			} else {
-				cnt[i] = 0;
-			}
-
+			cnt[i] = CNTCB[i].caudal;
 		} else {
-			cnt[i] = CNTCB[i].cnt * counters_conf.magpp[i];
+			cnt[i] = CNTCB[i].pulse_count * counters_conf.magpp[i];
 		}
 	}
-
 
 }
 //------------------------------------------------------------------------------------
@@ -540,13 +492,11 @@ ISR ( PORTA_INT0_vect )
 	// Esta ISR se activa cuando el contador D2 (PA2) genera un flaco se subida.
 	// Si el contador es de HS solo cuenta
 
-	if ( ! CNTCB[0].f_count_running )
-		return;
+	// Indico que estoy dentro de un pulso
+	// e inicializo el contador de control
+	CNTCB[0].pulse = true;
+	CNTCB[0].ctlTicks_count = 0;
 
-	// Sino es de LS por lo que arranca un debounce.
-	// Prende un timer de debounce para volver a polear el pin y ver si se cumple el pwidth.
-	while ( xTimerStartFromISR( counter_xTimer0A, &CNTCB[0].xHigherPriorityTaskWoken ) != pdPASS )
-		;
 	// Deshabilita la interrupcion por ahora ( enmascara )
 	PORTA.INT0MASK = 0x00;
 	PORTA.INTCTRL = 0x00;
@@ -557,12 +507,9 @@ ISR( PORTB_INT0_vect )
 {
 	// Esta ISR se activa cuando el contador D1 (PB2) genera un flaco se subida.
 
-	if ( ! CNTCB[1].f_count_running)
-		return;
+	CNTCB[1].pulse = true;
+	CNTCB[1].ctlTicks_count = 0;
 
-	// Aseguro arrancar el timer
-	while ( xTimerStartFromISR( counter_xTimer0B, &CNTCB[1].xHigherPriorityTaskWoken ) != pdPASS )
-		;
 	PORTB.INT0MASK = 0x00;
 	PORTB.INTCTRL = 0x00;
 	//PORTF.OUTTGL = 0x80;	// Toggle A2

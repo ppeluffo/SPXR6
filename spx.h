@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <frtos_cmd.h>
 #include <inttypes.h>
+#include <ul_genpulsos.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -72,8 +73,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.3d"
-#define SPX_FW_DATE "@ 20220224"
+#define SPX_FW_REV "4.0.4a"
+#define SPX_FW_DATE "@ 20220329"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2
@@ -141,6 +142,7 @@ struct {
 	bool sgn_reset_comms_device;
 	bool sgn_sms;
 	bool sgn_poll_now;
+	bool dosificadora;
 } system_signals;
 
 typedef enum { DEBUG_NONE = 0, DEBUG_COUNTER, DEBUG_DATA, DEBUG_COMMS, DEBUG_APP, DEBUG_MODBUS, DEBUG_SMS, DEBUG_ALL } t_debug;
@@ -211,6 +213,7 @@ typedef struct {
 	int8_t aplicacion;
 	consigna_conf_t consigna_conf;
 	piloto_conf_t piloto_conf;
+	genpulsos_conf_t genpulsos_conf;
 } aplicacion_conf_t;
 
 
@@ -257,18 +260,6 @@ typedef struct {
 
 systemVarsType systemVars;
 
-// Estructura de datos de caudal para los pilotos
-typedef struct {
-	int8_t pA_channel;
-	int8_t pB_channel;
-	int8_t Q_channel;
-	int8_t Q_module;
-	float pA;
-	float pB;
-	float caudal;
-} plt_vars_t;
-
-plt_vars_t plt_ctl_vars;
 
 // UTILS
 void xCOMMS_config_defaults( char *opt );
@@ -277,7 +268,7 @@ bool u_check_more_Rcds4Del ( FAT_t *fat );
 bool u_check_more_Rcds4Tx(void);
 void u_config_timerdial ( char *s_timerdial );
 void XPRINT_ELAPSED( uint32_t ticks );
-void XPRINT_ELAPSED_wTAG( char tag, uint32_t ticks );
+void XPRINT_ELAPSED_wTAG(  bool debug_flag, char tag, uint32_t ticks );
 float ELAPSED_TIME_SECS( uint32_t ticks );
 void print_running_ticks(char *tag );
 
@@ -294,7 +285,6 @@ void data_read_inputs(st_dataRecord_t *dst, bool f_copy );
 void data_print_inputs(file_descriptor_t fd, st_dataRecord_t *dr, uint16_t ctl);
 int16_t data_sprintf_inputs( char *sbuffer ,st_dataRecord_t *dr, uint16_t ctl );
 int16_t data_sprintf_actual_inputs( char *sbuffer);
-
 
 int32_t xcomms_time_to_next_dial(void);
 

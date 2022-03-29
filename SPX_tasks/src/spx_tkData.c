@@ -23,6 +23,9 @@ st_dataRecord_t dataRecd;
 float battery;
 uint32_t ticks;
 
+static void pv_check_inputs_conf(void);
+
+
 //------------------------------------------------------------------------------------
 // PROTOTIPOS
 static void pv_data_guardar_en_BD(void);
@@ -42,12 +45,6 @@ uint32_t waiting_ticks = 0;
 	dinputs_init();
 	counters_init();
 
-	// Inicializo las variables del piloto
-	plt_ctl_vars.pA_channel = -1;
-	plt_ctl_vars.pB_channel = -1;
-	plt_ctl_vars.Q_channel = -1;
-	plt_ctl_vars.Q_module = -1;
-
 	xprintf_P( PSTR("starting tkData..\r\n\0"));
 
 	// Initialise the xLastWakeTime variable with the current time.
@@ -58,6 +55,9 @@ uint32_t waiting_ticks = 0;
 
  	// Inicializo la cola de modbus
  	modbus_init_output_cmds_queue();
+
+	// Inicializo las variables de intercambio con las aplicaciones.
+	pv_check_inputs_conf();
 
   	// loop
   	for( ;; ) {
@@ -81,6 +81,8 @@ uint32_t waiting_ticks = 0;
   		if ( ! MODO_DISCRETO ) {
  			SPX_SEND_SIGNAL( SGN_FRAME_READY );
   		}
+
+  		SPX_SEND_SIGNAL( SGN_DOSIFICADORA );
 
     		// Calculo el tiempo para una nueva espera
   		while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
@@ -125,25 +127,34 @@ bool status_flag;
 	if ( ! status_flag )
 		xprintf_P(PSTR("ERROR: I2C:RTC:data_read_inputs\r\n\0"));
 
-	// Guardo pA,pB,Q forma persistente porque lo puedo requierir por la aplicacion PILOTO.
-	plt_ctl_vars.pA = dst->ainputs[plt_ctl_vars.pA_channel];
-	plt_ctl_vars.pB = dst->ainputs[plt_ctl_vars.pB_channel];
+	// Guardo pA,pB,Q forma persistente porque lo puedo requierir por la alguna aplicacion.
+	if ( ctlapp_vars.pA_channel != -1 ) {
+		ctlapp_vars.pA = dst->ainputs[ctlapp_vars.pA_channel];
+	} else {
+		ctlapp_vars.pA = 0.0;
+	}
 
-	switch ( plt_ctl_vars.Q_module ) {
+	if ( ctlapp_vars.pB_channel != -1 ) {
+		ctlapp_vars.pB = dst->ainputs[ctlapp_vars.pB_channel];
+	} else {
+		ctlapp_vars.pB = 0.0;
+	}
+
+	switch ( ctlapp_vars.Q_module ) {
 	case NONE:
-		plt_ctl_vars.caudal = -1.0;
+		ctlapp_vars.caudal = 0.0;
 		break;
 	case MODBUS:
-		plt_ctl_vars.caudal = dst->modbus[plt_ctl_vars.Q_channel];
+		ctlapp_vars.caudal = dst->modbus[ctlapp_vars.Q_channel];
 		break;
 	case ANALOG:
-		plt_ctl_vars.caudal = dst->ainputs[plt_ctl_vars.Q_channel];
+		ctlapp_vars.caudal = dst->ainputs[ctlapp_vars.Q_channel];
 		break;
 	case COUNTER:
-		plt_ctl_vars.caudal = dst->counters[plt_ctl_vars.Q_channel];
+		ctlapp_vars.caudal = dst->counters[ctlapp_vars.Q_channel];
 		break;
 	default:
-		plt_ctl_vars.caudal = -1.0;
+		ctlapp_vars.caudal = 0.0;
 	}
 
 	//xprintf_PD( DF_COMMS, PSTR("DATA: data_read_inputs out\r\n\0"));
@@ -264,6 +275,113 @@ FAT_t fat;
 		// Stats de memoria
 		FAT_read(&fat);
 		xprintf_P( PSTR("DATA: MEM [wr=%d,rd=%d,del=%d]\0"), fat.wrPTR,fat.rdPTR,fat.delPTR );
+	}
+
+}
+//------------------------------------------------------------------------------------
+static void pv_check_inputs_conf(void)
+{
+	/*
+	 *  Se fija si en la configuracion del equipo hay algun canal con el
+	 *  nombre pA y pB.
+	 *  Tambien determino si mide o no caudal y en que canal
+	 */
+
+uint8_t i;
+char lname[PARAMNAME_LENGTH];
+
+
+	// Pa, Pb
+	ctlapp_vars.pA_channel = -1;
+	ctlapp_vars.pB_channel = -1;
+
+	for ( i = 0; i < ANALOG_CHANNELS; i++) {
+		strncpy(lname, ainputs_conf.name[i], PARAMNAME_LENGTH );
+		strupr(lname);
+
+		if ( ! strcmp_P( lname, PSTR("PA") ) ) {
+			ctlapp_vars.pA_channel = i;
+
+		}
+		if ( ! strcmp_P( lname, PSTR("PB") ) ) {
+			ctlapp_vars.pB_channel = i;
+
+		}
+	};
+	xprintf_P(PSTR("pA channel=%d\r\n"), ctlapp_vars.pA_channel);
+	xprintf_P(PSTR("pB channel=%d\r\n"), ctlapp_vars.pB_channel);
+
+	// CAUDAL
+	ctlapp_vars.Q_module = NONE;
+	ctlapp_vars.Q_channel = -1;
+
+	// Canales analogicos
+	for (i=0; i<ANALOG_CHANNELS; i++) {
+
+		strncpy(lname, ainputs_conf.name[i], PARAMNAME_LENGTH );
+		strupr(lname);
+
+		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
+			ctlapp_vars.Q_module = ANALOG;
+			ctlapp_vars.Q_channel = i;
+			goto quit;
+		}
+
+		if ( strstr ( lname, "CAU" ) ) {
+			ctlapp_vars.Q_module = ANALOG;
+			ctlapp_vars.Q_channel = i;
+			goto quit;
+		}
+	}
+
+	// Canales contadores
+	for (i=0; i<COUNTER_CHANNELS; i++) {
+
+		strncpy(lname, counters_conf.name[i], PARAMNAME_LENGTH );
+		strupr(lname);
+
+		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
+			ctlapp_vars.Q_module = COUNTER;
+			ctlapp_vars.Q_channel = i;
+			goto quit;
+		}
+
+		if ( strstr ( lname, "CAU" ) ) {
+			ctlapp_vars.Q_module = COUNTER;
+			ctlapp_vars.Q_channel = i;
+			goto quit;
+		}
+	}
+
+	// Canales modbus
+	for (i=0; i<MODBUS_CHANNELS; i++) {
+
+		strncpy(lname, modbus_conf.channel[i].name, PARAMNAME_LENGTH );
+		strupr(lname);
+
+		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
+			ctlapp_vars.Q_module = MODBUS;
+			ctlapp_vars.Q_channel = i;
+			goto quit;
+		}
+
+		if ( strstr ( lname, "CAU" ) ) {
+			ctlapp_vars.Q_module = MODBUS;
+			ctlapp_vars.Q_channel = i;
+			goto quit;
+		}
+	}
+
+quit:
+
+	if ( ctlapp_vars.Q_module == MODBUS ) {
+		xprintf_P(PSTR("CAUDAL: Canal %d MODBUS\r\n"), ctlapp_vars.Q_channel );
+	} else if ( ctlapp_vars.Q_module == ANALOG ) {
+		xprintf_P(PSTR("CAUDAL: Canal %d ANALOG\r\n"), ctlapp_vars.Q_channel );
+	} else 	if ( ctlapp_vars.Q_module == COUNTER ) {
+		xprintf_P(PSTR("CAUDAL: Canal %d COUNTER\r\n"), ctlapp_vars.Q_channel );
+	} else {
+		xprintf_P(PSTR("CAUDAL: No hay canales configurados\r\n"));
 	}
 
 }

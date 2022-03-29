@@ -134,3 +134,15 @@ void COUNTERS_enable_interrupt( uint8_t cnt )
 	}
 }
 //------------------------------------------------------------------------------------
+int8_t CNT_read(uint8_t cnt)
+{
+uint8_t retVal = -1;
+
+	if ( cnt == 0 ) {
+		retVal = CNT_read_CNT0();
+	} else if ( cnt == 1 ) {
+		retVal = CNT_read_CNT1();
+	}
+	return(retVal);
+}
+//------------------------------------------------------------------------------------

@@ -105,7 +105,6 @@ void plt_pulse_TimerCallback( TimerHandle_t xTimer );
 bool plt_leer_slot_actual( int8_t *slot_id );
 bool FSM_piloto_ajustar_presion( void );
 
-bool plt_check_inputs_conf(void);
 void plt_read_inputs( int8_t samples, uint16_t intervalo_secs );
 
 
@@ -133,8 +132,6 @@ void plt_dyncontrol_init(void);
 void plt_dyncontrol_update(void);
 bool plt_dyncontrol_pass(void);
 
-#define  mido_caudal ( plt_ctl_vars.Q_module != NONE )
-
 /*
  * -----------------------------------------------------------------------------------
  * Funcion de servicio
@@ -160,7 +157,7 @@ int8_t state;
 	xprintf_P(PSTR("PILOTO\r\n"));
 
 	// Vemos si tengo una configuracion que permita trabajar ( definidos canales de presiones )
-	if ( ! plt_check_inputs_conf() ) {
+	if ( PRESIONES_NO_CONFIGURADAS() ) {
 		xprintf_P(PSTR("PILOTOS: No tengo canales pA/pB configurados. EXIT !!\r\n"));
 		return;
 	}
@@ -358,7 +355,7 @@ bool borrar_request = false;
 	PLTCB.pError = PERROR;
 
 	// Si la presion esta en la banda, salgo y borro el request
-	if ( plt_ctl_pB_alcanzada( plt_ctl_vars.pB, PLTCB.pRef )) {
+	if ( plt_ctl_pB_alcanzada( get_pB(), PLTCB.pRef )) {
 		xprintf_PD(DF_APP, PSTR("PILOTO: Presion en banda.\r\n") );
 		borrar_request = true;	// Para borrar el request
 		goto quit;
@@ -567,8 +564,8 @@ bool ajuste_al_alza = false;
 	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), PLTCB.pA );
 	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
-	if ( mido_caudal ) {
-		xprintf_P(PSTR("PILOTO: Q=%.03f\r\n"), plt_ctl_vars.caudal );
+	if ( MIDO_CAUDAL() ) {
+		xprintf_P(PSTR("PILOTO: Q=%.03f\r\n"), get_Q() );
 	}
 	xprintf_P(PSTR("PILOTO: pError=%.03f\r\n"), PLTCB.pError );
 
@@ -962,18 +959,18 @@ bool plt_ctl_Caudal_minimo( float Qmin )
 bool retS = false;
 
 
-	if ( ! mido_caudal ) {
+	if ( ! MIDO_CAUDAL() ) {
 		// No mido caudal.
 		xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (No mido)\r\n") );
 		retS = true;
 
 	} else {
 		// Mido caudal.
-		if ( plt_ctl_vars.caudal < Qmin ) {
-			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal ERROR (%.03f) < 1.0\r\n"), plt_ctl_vars.caudal );
+		if ( get_Q() < Qmin ) {
+			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal ERROR (%.03f) < 1.0\r\n"), get_Q() );
 			retS = false;
 		} else {
-			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (%.03f)\r\n"),plt_ctl_vars.caudal );
+			xprintf_PD(DF_APP, PSTR("PILOTO: Check Caudal OK (%.03f)\r\n"),get_Q() );
 			retS = true;
 		}
 	}
@@ -1063,16 +1060,16 @@ bool ajuste_al_alza = false;
 	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
 	xprintf_P(PSTR("PILOTO: conditions4start start\r\n"));
 
-	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), plt_ctl_vars.pA );
-	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), plt_ctl_vars.pB );
+	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), get_pA() );
+	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), get_pB() );
 	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
-	if ( mido_caudal ) {
-		xprintf_P(PSTR("PILOTO: Q=%.03f\r\n"), plt_ctl_vars.caudal );
+	if ( MIDO_CAUDAL() ) {
+		xprintf_P(PSTR("PILOTO: Q=%.03f\r\n"), get_Q() );
 	}
 	xprintf_P(PSTR("PILOTO: pError=%.03f\r\n"), PLTCB.pError );
 
 	// Determino si ajusto al alza o a la baja.
-	if ( PLTCB.pRef > plt_ctl_vars.pB ) {
+	if ( PLTCB.pRef > get_pB() ) {
 		xprintf_PD(DF_APP, PSTR("PILOTO: Ajuste al alza.\r\n") );
 		ajuste_al_alza = true;
 	} else {
@@ -1081,17 +1078,17 @@ bool ajuste_al_alza = false;
 	}
 
 	// Condiciones comunes (alza, baja)
-	if ( ! plt_ctl_limites_pA( plt_ctl_vars.pA, PA_MIN, PA_MAX )) {
+	if ( ! plt_ctl_limites_pA( get_pA(), PA_MIN, PA_MAX )) {
 		ajustar = false;
 		goto quit;
 	}
 
-	if ( ! plt_ctl_limites_pB( plt_ctl_vars.pB, PB_MIN, PB_MAX ) ) {
+	if ( ! plt_ctl_limites_pB( get_pB(), PB_MIN, PB_MAX ) ) {
 		ajustar = false;
 		goto quit;
 	}
 
-	if ( ! plt_ctl_pA_mayor_pB( plt_ctl_vars.pA, plt_ctl_vars.pB ) ) {
+	if ( ! plt_ctl_pA_mayor_pB( get_pA(), get_pB() ) ) {
 		ajustar = false;
 		goto quit;
 	}
@@ -1101,7 +1098,7 @@ bool ajuste_al_alza = false;
 	if ( ajuste_al_alza ) {
 		// Band gap:
 		// 1. No hay margen de regulacion
-		if ( ! plt_ctl_band_gap_suficiente(plt_ctl_vars.pA, plt_ctl_vars.pB, PLTCB.pRef )) {
+		if ( ! plt_ctl_band_gap_suficiente(get_pA(), get_pB(), PLTCB.pRef )) {
 			//xprintf_P(PSTR("PILOTO: Check bandgap ERROR: (pA-pB) < %.02f gr.!!\r\n"), DELTA_PA_PB );
 			ajustar = false;
 		}
@@ -1161,120 +1158,6 @@ void plt_pulse_TimerCallback( TimerHandle_t xTimer )
 		stepper_sleep();
 		stepper_pwr_off();
 	}
-
-}
-//------------------------------------------------------------------------------------
-bool plt_check_inputs_conf(void)
-{
-	/*
-	 *  Se fija si en la configuracion del equipo hay algun canal con el
-	 *  nombre pA y pB.
-	 *  Si no los hay entonces retorna FALSE
-	 *  Tambien determino si mide o no caudal.
-	 */
-
-uint8_t i;
-bool sRet = false;
-char lname[PARAMNAME_LENGTH];
-
-
-	PLTCB.pA_channel = -1;
-	PLTCB.pB_channel = -1;
-
-	for ( i = 0; i < ANALOG_CHANNELS; i++) {
-		strncpy(lname, ainputs_conf.name[i], PARAMNAME_LENGTH );
-		strupr(lname);
-
-		if ( ! strcmp_P( lname, PSTR("PA") ) ) {
-			PLTCB.pA_channel = i;
-			xprintf_P(PSTR("PILOTO: pAchannel=%d\r\n"), PLTCB.pA_channel);
-		}
-		if ( ! strcmp_P( lname, PSTR("PB") ) ) {
-			PLTCB.pB_channel = i;
-			xprintf_P(PSTR("PILOTO: pBchannel=%d\r\n"), PLTCB.pB_channel);
-		}
-	};
-
-	if ( (PLTCB.pA_channel != -1) && (PLTCB.pB_channel != -1) )
-		sRet = true;
-
-	// En plt_ctl_vars indicamos que canales miden c/variable.
-	plt_ctl_vars.pA_channel = PLTCB.pA_channel;
-	plt_ctl_vars.pB_channel = PLTCB.pB_channel;
-
-	// CAUDAL
-	plt_ctl_vars.Q_module = NONE;
-	plt_ctl_vars.Q_channel = -1;
-
-	// Canales analogicos
-	for (i=0; i<ANALOG_CHANNELS; i++) {
-
-		strncpy(lname, ainputs_conf.name[i], PARAMNAME_LENGTH );
-		strupr(lname);
-
-		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
-			plt_ctl_vars.Q_module = ANALOG;
-			plt_ctl_vars.Q_channel = i;
-			goto quit;
-		}
-
-		if ( strstr ( lname, "CAU" ) ) {
-			plt_ctl_vars.Q_module = ANALOG;
-			plt_ctl_vars.Q_channel = i;
-			goto quit;
-		}
-	}
-
-	// Canales contadores
-	for (i=0; i<COUNTER_CHANNELS; i++) {
-
-		strncpy(lname, counters_conf.name[i], PARAMNAME_LENGTH );
-		strupr(lname);
-
-		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
-			plt_ctl_vars.Q_module = COUNTER;
-			plt_ctl_vars.Q_channel = i;
-			goto quit;
-		}
-
-		if ( strstr ( lname, "CAU" ) ) {
-			plt_ctl_vars.Q_module = COUNTER;
-			plt_ctl_vars.Q_channel = i;
-			goto quit;
-		}
-	}
-
-	// Canales modbus
-	for (i=0; i<MODBUS_CHANNELS; i++) {
-
-		strncpy(lname, modbus_conf.channel[i].name, PARAMNAME_LENGTH );
-		strupr(lname);
-
-		if ( ( lname[0] == 'Q') && ( isdigit(lname[1]) ) ) {
-			plt_ctl_vars.Q_module = MODBUS;
-			plt_ctl_vars.Q_channel = i;
-			goto quit;
-		}
-
-		if ( strstr ( lname, "CAU" ) ) {
-			plt_ctl_vars.Q_module = MODBUS;
-			plt_ctl_vars.Q_channel = i;
-			goto quit;
-		}
-	}
-
-quit:
-
-	if ( plt_ctl_vars.Q_module == MODBUS ) {
-		xprintf_P(PSTR("CAUDAL: Canal %d MODBUS\r\n"), plt_ctl_vars.Q_channel );
-	} else if ( plt_ctl_vars.Q_module == ANALOG ) {
-		xprintf_P(PSTR("CAUDAL: Canal %d ANALOG\r\n"), plt_ctl_vars.Q_channel );
-	} else 	if ( plt_ctl_vars.Q_module == COUNTER ) {
-		xprintf_P(PSTR("CAUDAL: Canal %d COUNTER\r\n"), plt_ctl_vars.Q_channel );
-	} else {
-		xprintf_P(PSTR("CAUDAL: No hay canales configurados\r\n"));
-	}
-	return(sRet);
 
 }
 //------------------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 #ifndef SPX_TASKS_INCLUDE_TKAPP_H_
 #define SPX_TASKS_INCLUDE_TKAPP_H_
 
+
 #include "spx.h"
 
 #include "stdlib.h"
@@ -19,8 +20,9 @@
 
 #include "ul_consignas.h"
 #include "ul_pilotos.h"
+#include "ul_genpulsos.h"
 
-typedef enum { APP_OFF = 0, APP_CONSIGNA, APP_PILOTO } t_applicacion;
+typedef enum { APP_OFF = 0, APP_CONSIGNA, APP_PILOTO, APP_GENPULSOS } t_applicacion;
 
 #define DF_APP ( (systemVars.debug == DEBUG_APP ) || (systemVars.debug == DEBUG_ALL ))
 

@@ -8,6 +8,8 @@
 #include "tkApp.h"
 
 void tkApp_off( uint8_t app_wdt );
+void tkApp_genpulsos( uint8_t app_wdt );
+
 //------------------------------------------------------------------------------------
 void tkApp(void * pvParameters)
 {
@@ -28,6 +30,9 @@ void tkApp(void * pvParameters)
 
 	} else if ( systemVars.aplicacion_conf.aplicacion == APP_PILOTO ) {
 		FSM_piloto_app_service( WDG_APP );
+
+	}  else if ( systemVars.aplicacion_conf.aplicacion == APP_GENPULSOS ) {
+		tkApp_genpulsos( WDG_APP );
 	}
 
 	// Default
@@ -48,6 +53,32 @@ void tkApp_off( uint8_t app_wdt )
 		u_wdg_kick( app_wdt, 120);
 		vTaskDelay( ( TickType_t)( 25000 / portTICK_RATE_MS ) );
 
+	}
+}
+//------------------------------------------------------------------------------------
+void tkApp_genpulsos( uint8_t app_wdt )
+{
+	/* El trabajo lo hace la funcion del callback de un timer.
+	 * Esta funcion solo configura y arranca el timer.
+	 * El tiempo de espera es de 5s ya que esta función no es para lowpower.
+	 * Procesa las señales que le envia la tkDatos al finalizar un poleo para
+	 * que pueda recalcular en base al caudal el periodo de los pulsos.
+	 */
+
+	xprintf_P( PSTR("GENPULSOS\r\n"));
+
+	genpulsos_init();
+
+	for( ;; )
+	{
+		u_wdg_kick( app_wdt, 120);
+		vTaskDelay( ( TickType_t)( 5000 / portTICK_RATE_MS ) );
+
+		// Si recibo una senal de datos ready: Salgo
+		if ( SPX_SIGNAL( SGN_DOSIFICADORA )) {
+			SPX_CLEAR_SIGNAL( SGN_DOSIFICADORA );
+			genpulsos_ajustar_litrosXtimertick( DF_APP );
+		}
 	}
 }
 //------------------------------------------------------------------------------------
