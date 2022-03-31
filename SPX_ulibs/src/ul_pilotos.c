@@ -156,6 +156,8 @@ int8_t state;
 	vTaskDelay( ( TickType_t)( 30000 / portTICK_RATE_MS ) );
 	xprintf_P(PSTR("PILOTO\r\n"));
 
+	xprintf_P(PSTR("pA_channel: %d\r\n"), ctlapp_vars.pA_channel);
+	xprintf_P(PSTR("pB_channel: %d\r\n"), ctlapp_vars.pB_channel);
 	// Vemos si tengo una configuracion que permita trabajar ( definidos canales de presiones )
 	if ( PRESIONES_NO_CONFIGURADAS() ) {
 		xprintf_P(PSTR("PILOTOS: No tengo canales pA/pB configurados. EXIT !!\r\n"));
@@ -238,8 +240,8 @@ s_jobOrder jobOrder;
 		if ( slot_actual != slot ) {
 			// Cambio el slot.
 			slot_actual = slot;
-			xprintf_P(PSTR("PILOTO: Inicio de ciclo.\r\n"));
-			xprintf_P(PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
+			xprintf_PD( DF_APP, PSTR("PILOTO: Inicio de ciclo.\r\n"));
+			xprintf_PD( DF_APP, PSTR("PILOTO: slot=%d, pRef=%.03f\r\n"), slot_actual, piloto_conf.pltSlots[slot_actual].presion);
 
 			// Un nuevo slot borra todo lo anterior.
 			ringBuffer_Flush(&pFIFO);
@@ -809,28 +811,30 @@ void plt_print_parametros( void )
 {
 	// Muestro en pantalla los parametros calculados de ajuste de presion.
 
-	xprintf_P(PSTR("-----------------------------\r\n"));
+	if ( DF_APP ) {
+		xprintf_P(PSTR("-----------------------------\r\n"));
 
-	xprintf_P(PSTR("PILOTO: loops=%d\r\n"), PLTCB.loops );
-	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), PLTCB.pA );
-	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
-	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"),   PLTCB.pRef );
-	xprintf_P(PSTR("PILOTO: deltaP=%.03f\r\n"), ( PLTCB.pB - PLTCB.pRef));
-	xprintf_P(PSTR("PILOTO: pulses calc=%d\r\n"), PLTCB.pulsos_calculados );
-	xprintf_P(PSTR("PILOTO: pulses apply=%d\r\n"), PLTCB.pulsos_a_aplicar );
+		xprintf_P(PSTR("PILOTO: loops=%d\r\n"), PLTCB.loops );
+		xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), PLTCB.pA );
+		xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), PLTCB.pB );
+		xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"),   PLTCB.pRef );
+		xprintf_P(PSTR("PILOTO: deltaP=%.03f\r\n"), ( PLTCB.pB - PLTCB.pRef));
+		xprintf_P(PSTR("PILOTO: pulses calc=%d\r\n"), PLTCB.pulsos_calculados );
+		xprintf_P(PSTR("PILOTO: pulses apply=%d\r\n"), PLTCB.pulsos_a_aplicar );
 
-	xprintf_P(PSTR("PILOTO: dync_pB0=%.03f\r\n"), PLTCB.dync_pB0 );
-	xprintf_P(PSTR("PILOTO: dync_pulsos=%d\r\n"), PLTCB.dync_pulsos );
+		xprintf_P(PSTR("PILOTO: dync_pB0=%.03f\r\n"), PLTCB.dync_pB0 );
+		xprintf_P(PSTR("PILOTO: dync_pulsos=%d\r\n"), PLTCB.dync_pulsos );
 
-	xprintf_P(PSTR("PILOTO: pulses rollback=%d\r\n"), PLTCB.total_pulsos_rollback );
+		xprintf_P(PSTR("PILOTO: pulses rollback=%d\r\n"), PLTCB.total_pulsos_rollback );
 
-	xprintf_P(PSTR("PILOTO: pwidth=%d\r\n"), PLTCB.pwidth );
-	if ( PLTCB.dir == STEPPER_FWD ) {
-		xprintf_P(PSTR("PILOTO: dir=Forward\r\n"));
-	} else {
-		xprintf_P(PSTR("PILOTO: dir=Reverse\r\n"));
+		xprintf_P(PSTR("PILOTO: pwidth=%d\r\n"), PLTCB.pwidth );
+		if ( PLTCB.dir == STEPPER_FWD ) {
+			xprintf_P(PSTR("PILOTO: dir=Forward\r\n"));
+		} else {
+			xprintf_P(PSTR("PILOTO: dir=Reverse\r\n"));
+		}
+		xprintf_P(PSTR("-----------------------------\r\n"));
 	}
-	xprintf_P(PSTR("-----------------------------\r\n"));
 }
 //------------------------------------------------------------------------------------
 void plt_process_output( void )
@@ -1057,16 +1061,16 @@ bool plt_ctl_conditions4start( void )
 bool ajustar = true;
 bool ajuste_al_alza = false;
 
-	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
-	xprintf_P(PSTR("PILOTO: conditions4start start\r\n"));
+	xprintf_PD(DF_APP, PSTR("PILOTO: --------------------------------\r\n"));
+	xprintf_PD(DF_APP, PSTR("PILOTO: conditions4start start\r\n"));
 
-	xprintf_P(PSTR("PILOTO: pA=%.03f\r\n"), get_pA() );
-	xprintf_P(PSTR("PILOTO: pB=%.03f\r\n"), get_pB() );
-	xprintf_P(PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
+	xprintf_PD(DF_APP, PSTR("PILOTO: pA=%.03f\r\n"), get_pA() );
+	xprintf_PD(DF_APP, PSTR("PILOTO: pB=%.03f\r\n"), get_pB() );
+	xprintf_PD(DF_APP, PSTR("PILOTO: pRef=%.03f\r\n"), PLTCB.pRef );
 	if ( MIDO_CAUDAL() ) {
-		xprintf_P(PSTR("PILOTO: Q=%.03f\r\n"), get_Q() );
+		xprintf_PD(DF_APP, PSTR("PILOTO: Q=%.03f\r\n"), get_Q() );
 	}
-	xprintf_P(PSTR("PILOTO: pError=%.03f\r\n"), PLTCB.pError );
+	xprintf_PD(DF_APP, PSTR("PILOTO: pError=%.03f\r\n"), PLTCB.pError );
 
 	// Determino si ajusto al alza o a la baja.
 	if ( PLTCB.pRef > get_pB() ) {
@@ -1127,8 +1131,8 @@ quit:
 		xprintf_PD( DF_APP, PSTR("PILOTO: PRE-Condiciones. No se modifica pB.!!\r\n"));
 	}
 
-	xprintf_P(PSTR("PILOTO: conditions4start end.\r\n"));
-	xprintf_P(PSTR("PILOTO: --------------------------------\r\n"));
+	xprintf_PD(DF_APP, PSTR("PILOTO: conditions4start end.\r\n"));
+	xprintf_PD(DF_APP, PSTR("PILOTO: --------------------------------\r\n"));
 	return(ajustar);
 }
 //------------------------------------------------------------------------------------

@@ -43,7 +43,7 @@
  *  Preferences > C/C++ > Editor > Source hover background
  *
  * -------------------------------------------------------------------------------------------
-
+ *
  * R4.0.4a @ 20220329:
  * Agrego la aplicacion de GENPULSOS para poder generar los pulsos en las dosificadoras de
  * Colonia.
@@ -69,6 +69,14 @@
  *
  * BUG002: En los contadores: Cuando no hay pulsos y aparecen cuenta un -1.
  * Hago un cambio en la forma de procesar los pulsos, tomando una base de tiempo de ticks.
+ *
+ * issue01: La aplicacion PILOTOS no detecta los sensores de presion.
+ *          Estaba mal evaluada la condicion en PRESIONES_NO_CONFIGURADAS()
+ *
+ * issue02: Los modbus muchas veces dan error en la configuracion. Puede que sea un problema
+ *          del driver de la uart porque parece como que se come caracteres.
+ *          La solucion es 'marcar' los canales que no se configuraron y pedir reconfiguracion
+ *          solo de estos.
  * -------------------------------------------------------------------------------------------
  * R4.0.3f @ 20220308:
  * - Cuando recibe un frame modbus del server, chequea si los formatos están bien.

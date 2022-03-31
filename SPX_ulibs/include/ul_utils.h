@@ -76,7 +76,7 @@ typedef struct {
 
 ctlapp_vars_t ctlapp_vars;
 
-#define PRESIONES_NO_CONFIGURADAS() ( (ctlapp_vars.pA_channel != -1) || (ctlapp_vars.pB_channel != -1) )
+#define PRESIONES_NO_CONFIGURADAS() ( (ctlapp_vars.pA_channel == -1) || (ctlapp_vars.pB_channel == -1) )
 #define MIDO_CAUDAL() ( ctlapp_vars.Q_channel != -1 )
 #define get_pA()  ( ctlapp_vars.pA )
 #define get_pB()  ( ctlapp_vars.pB )

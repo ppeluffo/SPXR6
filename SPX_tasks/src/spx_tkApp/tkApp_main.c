@@ -36,7 +36,7 @@ void tkApp(void * pvParameters)
 	}
 
 	// Default
-	xprintf_P( PSTR("\r\nAPP: ERROR. Set to off.\r\n"));
+	xprintf_P( PSTR("\r\nAPP: ERROR. Running APP off.\r\n"));
 	tkApp_off( WDG_APP );
 }
 //------------------------------------------------------------------------------------
