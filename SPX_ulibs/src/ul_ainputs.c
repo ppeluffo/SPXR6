@@ -158,7 +158,8 @@ bool ainputs_read( float ain[], float *battery, bool debug )
 bool retS = false;
 
 	while ( xSemaphoreTake( sem_AINPUTS, ( TickType_t ) 5 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	pv_ainputs_prender_sensores();
 	// Leo.
@@ -307,7 +308,8 @@ float mag;
 uint16_t raw;
 
 	while ( xSemaphoreTake( sem_AINPUTS, ( TickType_t ) 5 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	pv_ainputs_prender_sensores();
 	// Fake read

@@ -170,4 +170,6 @@ uint8_t aux_get_RX_buffer_ptr(void);
 bool test_xmit_window_data( void );
 
 
+void comms_idle_task(void);
+
 #endif /* SRC_SPX_TASKS_SPX_TKCOMMS_TKCOMMS_H_ */

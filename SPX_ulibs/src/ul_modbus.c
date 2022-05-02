@@ -220,17 +220,21 @@ void modbus_dequeue_output_cmd(void)
 
 mbus_queue_t mbus_qch;
 bool io_status = true;
+bool process_queue = false;		// Indico si hay comandos encolados que procese.
 
 	xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE START\r\n"));
 
 	// Mientras hallan datos en la cola
 	while ( ringBuffer_GetCount(&mbusFIFO) > 0 ) {
 
+		 process_queue = true;
+
 		// Si pude sacar uno sin problemas
 		if ( ringBuffer_Pop(&mbusFIFO, &mbus_qch ) ) {
 
 			while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-				taskYIELD();
+				//taskYIELD();
+				vTaskDelay( ( TickType_t)( 1 ) );
 
 			mbus_cb.channel.slave_address = mbus_qch.channel.slave_address;
 			mbus_cb.channel.reg_address = mbus_qch.channel.reg_address;
@@ -265,8 +269,14 @@ bool io_status = true;
 	 * Veo como responderle al server por las operaciones modbus.
 	 * Si el io_status == True, el valor de la flag queda como lo dejo el enqueue.
 	 */
-	if ( io_status == false ) {
-		SET_MBUS_STATUS_FLAG_NACK();
+	if (  ! process_queue  ) {
+		SET_MBUS_STATUS_FLAG_NONE();
+	} else {
+		if ( io_status == false ) {
+			SET_MBUS_STATUS_FLAG_NACK();
+		} else {
+			SET_MBUS_STATUS_FLAG_ACK();
+		}
 	}
 
 	xprintf_PD(DF_MBUS, PSTR("MODBUS: DEQUEUE END\r\n"));
@@ -433,7 +443,8 @@ float pvalue = 0.0;
 
 	// Para acceder al bus debo tomar el semaforo.
 	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	// Preparo el registro con los datos del canal
 	// Son operaciones de READ que siempre devuelven floats.
@@ -500,7 +511,8 @@ float pvalue = 0.0;
 	}
 
 	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	mbus_cb.channel.slave_address = modbus_conf.channel[ch].slave_address;	// sla_address
 	mbus_cb.channel.reg_address = modbus_conf.channel[ch].reg_address;		// reg_address
@@ -560,7 +572,8 @@ bool retS = false;
 	}
 
 	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	mbus_cb.channel.slave_address = atoi(s_slaaddr);
 	mbus_cb.channel.reg_address = atoi(s_regaddr);
@@ -661,7 +674,8 @@ static uint16_t status_word = 0x00;
 
 
 	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	mbus_cb.channel.slave_address = modbus_conf.control_channel.slave_address;
 	mbus_cb.channel.reg_address = modbus_conf.control_channel.reg_address;
@@ -1011,7 +1025,6 @@ int16_t modbus_get_mbtag( void )
 	return(mbus_tag);
 }
 //------------------------------------------------------------------------------------
-
 // FUNCIONES DE TEST
 //------------------------------------------------------------------------------------
 void modbus_test_genpoll(char *arg_ptr[16] )
@@ -1035,7 +1048,8 @@ void modbus_test_genpoll(char *arg_ptr[16] )
 	}
 
 	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	mbus_cb.channel.slave_address = atoi(arg_ptr[3]);
 	mbus_cb.channel.reg_address = atoi(arg_ptr[4]);
@@ -1103,7 +1117,8 @@ uint8_t i;
 	}
 
 	while ( xSemaphoreTake( sem_MBUS, ( TickType_t ) 10 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	memset( mbus_cb.tx_buffer, '\0', MBUS_TXMSG_LENGTH );
 	for (i=0; i < nro_bytes; i++) {
@@ -1348,7 +1363,7 @@ uint16_t crc;
 		default:
 			return;
 		}
-		size = 11;
+		size = mbus_cb->tx_size;
 
 	} else {
 		// Codigo no implementado
@@ -1838,37 +1853,62 @@ void pv_encoder_f6_c1032(mbus_CONTROL_BLOCK_t *mbus_cb )
 void pv_encoder_f16_c0123(mbus_CONTROL_BLOCK_t *mbus_cb )
 {
 
-uint8_t payload_ptr = 7;
-
+	// Qty.of registers ( 2 bytes ). 1 registro = 2 bytes
 	mbus_cb->tx_buffer[4] = 0;
-	mbus_cb->tx_buffer[5] = 2;
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[5] = 1;
+	} else {
+		mbus_cb->tx_buffer[5] = 2;
+	}
 	//
 	// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
-	mbus_cb->tx_buffer[6] = 4;
+	mbus_cb->tx_buffer[6] = 2 * mbus_cb->tx_buffer[5];
+
 	// LA POSICION ES FIJA EN WRITE: LA ACEPTADA POR LOS PLC KINCO
 	// El PCL recibe los bytes en diferente orden !!!.
-	mbus_cb->tx_buffer[ payload_ptr + 0 ] = mbus_cb->udata.raw_value[0];	// DATA
-	mbus_cb->tx_buffer[ payload_ptr + 1 ] = mbus_cb->udata.raw_value[1];
-	mbus_cb->tx_buffer[ payload_ptr + 2 ] = mbus_cb->udata.raw_value[2];
-	mbus_cb->tx_buffer[ payload_ptr + 3 ] = mbus_cb->udata.raw_value[3];
-
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[0];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[1];
+		mbus_cb->tx_size = 9;
+	} else {
+		// Son 4 bytes.
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[0];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[1];
+		mbus_cb->tx_buffer[ 9 ] = mbus_cb->udata.raw_value[2];
+		mbus_cb->tx_buffer[ 10 ] = mbus_cb->udata.raw_value[3];
+		mbus_cb->tx_size = 11;
+	}
 	return;
 }
 //------------------------------------------------------------------------------------
 void pv_encoder_f16_c2301(mbus_CONTROL_BLOCK_t *mbus_cb )
 {
 
-uint8_t payload_ptr = 7;
 
+	// Qty.of registers ( 2 bytes ). 1 registro = 2 bytes
 	mbus_cb->tx_buffer[4] = 0;
-	mbus_cb->tx_buffer[5] = 2;
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[5] = 1;
+	} else {
+		mbus_cb->tx_buffer[5] = 2;
+	}
 	//
 	// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
-	mbus_cb->tx_buffer[6] = 4;
-	mbus_cb->tx_buffer[ payload_ptr + 0 ] = mbus_cb->udata.raw_value[2];	// DATA
-	mbus_cb->tx_buffer[ payload_ptr + 1 ] = mbus_cb->udata.raw_value[3];
-	mbus_cb->tx_buffer[ payload_ptr + 2 ] = mbus_cb->udata.raw_value[0];
-	mbus_cb->tx_buffer[ payload_ptr + 3 ] = mbus_cb->udata.raw_value[1];
+	mbus_cb->tx_buffer[6] = 2 * mbus_cb->tx_buffer[5];
+
+	// LA POSICION ES FIJA EN WRITE: LA ACEPTADA POR LOS PLC KINCO
+	// El PCL recibe los bytes en diferente orden !!!.
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[0];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[1];
+		mbus_cb->tx_size = 9;
+	} else {
+		mbus_cb->tx_buffer[ 7]  = mbus_cb->udata.raw_value[2];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[3];
+		mbus_cb->tx_buffer[ 9 ] = mbus_cb->udata.raw_value[0];
+		mbus_cb->tx_buffer[ 10 ] = mbus_cb->udata.raw_value[1];
+		mbus_cb->tx_size = 11;
+	}
 
 	return;
 }
@@ -1876,17 +1916,31 @@ uint8_t payload_ptr = 7;
 void pv_encoder_f16_c3210(mbus_CONTROL_BLOCK_t *mbus_cb )
 {
 
-uint8_t payload_ptr = 7;
-
+	// Qty.of registers ( 2 bytes ). 1 registro = 2 bytes
 	mbus_cb->tx_buffer[4] = 0;
-	mbus_cb->tx_buffer[5] = 2;
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[5] = 1;
+	} else {
+		mbus_cb->tx_buffer[5] = 2;
+	}
 	//
 	// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
-	mbus_cb->tx_buffer[6] = 4;
-	mbus_cb->tx_buffer[ payload_ptr + 0 ] = mbus_cb->udata.raw_value[3];	// DATA
-	mbus_cb->tx_buffer[ payload_ptr + 1 ] = mbus_cb->udata.raw_value[2];
-	mbus_cb->tx_buffer[ payload_ptr + 2 ] = mbus_cb->udata.raw_value[1];
-	mbus_cb->tx_buffer[ payload_ptr + 3 ] = mbus_cb->udata.raw_value[0];
+	mbus_cb->tx_buffer[6] = 2 * mbus_cb->tx_buffer[5];
+
+	// LA POSICION ES FIJA EN WRITE: LA ACEPTADA POR LOS PLC KINCO
+	// El PCL recibe los bytes en diferente orden !!!.
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[1];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[0];
+		mbus_cb->tx_size = 9;
+	} else {
+		// Son 4 bytes.
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[3];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[2];
+		mbus_cb->tx_buffer[ 9 ] = mbus_cb->udata.raw_value[1];
+		mbus_cb->tx_buffer[ 10 ] = mbus_cb->udata.raw_value[0];
+		mbus_cb->tx_size = 11;
+	}
 
 	return;
 }
@@ -1894,17 +1948,31 @@ uint8_t payload_ptr = 7;
 void pv_encoder_f16_c1032(mbus_CONTROL_BLOCK_t *mbus_cb )
 {
 
-uint8_t payload_ptr = 7;
-
+	// Qty.of registers ( 2 bytes ). 1 registro = 2 bytes
 	mbus_cb->tx_buffer[4] = 0;
-	mbus_cb->tx_buffer[5] = 2;
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[5] = 1;
+	} else {
+		mbus_cb->tx_buffer[5] = 2;
+	}
 	//
 	// Byte count ,1 byte ( 1 float = 4 bytes , 2 x N => N=2)
-	mbus_cb->tx_buffer[6] = 4;
-	mbus_cb->tx_buffer[ payload_ptr + 0 ] = mbus_cb->udata.raw_value[1];	// DATA
-	mbus_cb->tx_buffer[ payload_ptr + 1 ] = mbus_cb->udata.raw_value[0];
-	mbus_cb->tx_buffer[ payload_ptr + 2 ] = mbus_cb->udata.raw_value[3];
-	mbus_cb->tx_buffer[ payload_ptr + 3 ] = mbus_cb->udata.raw_value[2];
+	mbus_cb->tx_buffer[6] = 2 * mbus_cb->tx_buffer[5];
+
+	// LA POSICION ES FIJA EN WRITE: LA ACEPTADA POR LOS PLC KINCO
+	// El PCL recibe los bytes en diferente orden !!!.
+	if ( ( mbus_cb->channel.type == u16 ) || ( mbus_cb->channel.type == i16) ) {
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[1];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[0];
+		mbus_cb->tx_size = 9;
+	} else {
+		// Son 4 bytes.
+		mbus_cb->tx_buffer[ 7 ] = mbus_cb->udata.raw_value[1];	// DATA
+		mbus_cb->tx_buffer[ 8 ] = mbus_cb->udata.raw_value[0];
+		mbus_cb->tx_buffer[ 9 ] = mbus_cb->udata.raw_value[3];
+		mbus_cb->tx_buffer[ 10 ] = mbus_cb->udata.raw_value[2];
+		mbus_cb->tx_size = 11;
+	}
 
 	return;
 }

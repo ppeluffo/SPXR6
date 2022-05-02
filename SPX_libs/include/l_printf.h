@@ -21,6 +21,7 @@
 #include "frtos-io.h"
 #include "l_iopines.h"
 
+void xprintf_test(void);
 void xprintf_init(void);
 int xprintf_P( PGM_P fmt, ...);
 int xprintf( const char *fmt, ...);

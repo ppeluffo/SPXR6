@@ -11,9 +11,9 @@
 #include "tkApp.h"
 #include "ul_pilotos.h"
 
-typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_MODBUS_LOW, ONLINE_MODBUS_MED, ONLINE_MODBUS_HIGH, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT, ONLINE_SMS } t_states_prendido_online;
+typedef enum { ONLINE_ENTRY, ONLINE_AUTH, ONLINE_GLOBAL, ONLINE_BASE, ONLINE_ANALOG, ONLINE_DIGITAL, ONLINE_COUNTER, ONLINE_MODBUS, ONLINE_APP, ONLINE_DATA, ONLINE_ESPERA, ONLINE_EXIT, ONLINE_SMS } t_states_prendido_online;
 typedef enum { SF_ENTRY, SF_SOCK_STATUS, SF_SOCK_OPEN, SF_NET_STATUS, SF_SEND, SF_RSP, SF_EXIT } t_sendFrames_states;
-typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_MODBUS_LOW,  FRM_MODBUS_MED, FRM_MODBUS_HIGH, FRM_APP, FRM_SMS, FRM_DATA } t_frames;
+typedef enum { FRM_AUTH, FRM_GLOBAL, FRM_BASE, FRM_ANALOG, FRM_DIGITAL, FRM_COUNTER, FRM_MODBUS,  FRM_APP, FRM_SMS, FRM_DATA } t_frames;
 
 typedef enum { sock_OPEN = 0, sock_CLOSE, sock_UNKNOWN, sock_TOUT } t_socket_status;
 typedef enum { net_OPEN = 0, net_CLOSE, net_UNKNOWN, net_TOUT } t_network_status;
@@ -25,9 +25,7 @@ static bool state_online_base(void);
 static bool state_online_analog(void);
 static bool state_online_digital(void);
 static bool state_online_counter(void);
-static bool state_online_modbus_low(void);
-static bool state_online_modbus_med(void);
-static bool state_online_modbus_high(void);
+static bool state_online_modbus(void);
 static bool state_online_sms(void);
 static bool state_online_app(void);
 static bool state_online_data(void);
@@ -73,15 +71,21 @@ bool f_send_init_frame_base;
 bool f_send_init_frame_analog;
 bool f_send_init_frame_digital;
 bool f_send_init_frame_counters;
-bool f_send_init_frame_modbus_low;
-bool f_send_init_frame_modbus_med;
-bool f_send_init_frame_modbus_high;
+bool f_send_init_frame_modbus;
 bool f_send_init_frame_app;
 bool f_send_init_frame_sms;
 
 bool reset_datalogger;
 
 void DEBUG_del_bd(uint16_t max_rcsd_in_bd, uint16_t min_rcsd_in_bd );
+
+bool check_frame_integrity(void);
+
+#define MAX_MBUS_CH_LIST 4
+
+bool modbus_conf_channels[MODBUS_CHANNELS];
+int8_t modbus_ch_list[MAX_MBUS_CH_LIST];
+
 
 //------------------------------------------------------------------------------------
 int8_t tkXComms_PRENDIDO_ONLINE(void)
@@ -174,45 +178,21 @@ int8_t tryes_substate;
 
 		case ONLINE_COUNTER:
 			if ( ! f_send_init_frame_counters ) {
-				state = ONLINE_MODBUS_LOW;
+				state = ONLINE_MODBUS;
 				tryes_substate = 0;
 			} else if ( state_online_counter() ) {
-				state = ONLINE_MODBUS_LOW;
+				state = ONLINE_MODBUS;
 				tryes_substate = 0;
 			} else {
 				state = ONLINE_EXIT;
 			}
 			break;
 
-		case ONLINE_MODBUS_LOW:
-			if ( ! f_send_init_frame_modbus_low ) {
-				state = ONLINE_MODBUS_MED;
-				tryes_substate = 0;
-			} else if ( state_online_modbus_low() ) {
-				state = ONLINE_MODBUS_MED;
-				tryes_substate = 0;
-			} else {
-				state = ONLINE_EXIT;
-			}
-			break;
-
-		case ONLINE_MODBUS_MED:
-			if ( ! f_send_init_frame_modbus_med ) {
-				state = ONLINE_MODBUS_HIGH;
-				tryes_substate = 0;
-			} else if ( state_online_modbus_med() ) {
-				state = ONLINE_MODBUS_HIGH;
-				tryes_substate = 0;
-			} else {
-				state = ONLINE_EXIT;
-			}
-			break;
-
-		case ONLINE_MODBUS_HIGH:
-			if ( ! f_send_init_frame_modbus_high ) {
+		case ONLINE_MODBUS:
+			if ( ! f_send_init_frame_modbus ) {
 				state = ONLINE_SMS;
 				tryes_substate = 0;
-			} else if ( state_online_modbus_high() ) {
+			} else if ( state_online_modbus() ) {
 				state = ONLINE_SMS;
 				tryes_substate = 0;
 			} else {
@@ -405,54 +385,30 @@ uint32_t init_ticks = sysTicks;
 	return(exit_code);
 }
 //------------------------------------------------------------------------------------
-static bool state_online_modbus_low(void)
+static bool state_online_modbus(void)
 {
 bool exit_code = true;
 uint32_t init_ticks = sysTicks;
+uint8_t i;
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_LOW in\r\n"));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS in\r\n"));
 
-	if (sendFrame( FRM_MODBUS_LOW )) {
-		process_rsp_modbus();
-		socket_close();
-		exit_code = true;
+	for ( i=0; i < MODBUS_CHANNELS; i = i+4 ) {
+		modbus_ch_list[0] = i;
+		modbus_ch_list[1] = i+1;
+		modbus_ch_list[2] = i+2;
+		modbus_ch_list[3] = i+3;
+
+		// El sendFrame()->xmit_frame usa la modbus_ch_list
+		if (sendFrame( FRM_MODBUS )) {
+			process_rsp_modbus();
+			socket_close();
+		}
 	}
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_LOW out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-	return(exit_code);
-}
-//------------------------------------------------------------------------------------
-static bool state_online_modbus_med(void)
-{
-bool exit_code = true;
-uint32_t init_ticks = sysTicks;
+	// Si hay canales que no se pudieron configurar, lo reintento ahora
 
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_MED in\r\n"));
-
-	if (sendFrame( FRM_MODBUS_MED )) {
-		process_rsp_modbus();
-		socket_close();
-		exit_code = true;
-	}
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_MED out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-	return(exit_code);
-}
-//------------------------------------------------------------------------------------
-static bool state_online_modbus_high(void)
-{
-bool exit_code = true;
-uint32_t init_ticks = sysTicks;
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_HIGH in\r\n"));
-
-	if (sendFrame( FRM_MODBUS_HIGH )) {
-		process_rsp_modbus();
-		socket_close();
-		exit_code = true;
-	}
-
-	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS_HIGH out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:MODBUS out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
 	return(exit_code);
 }
 //------------------------------------------------------------------------------------
@@ -553,9 +509,19 @@ uint32_t init_ticks = sysTicks;
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:AUTH in\r\n"));
 
 	if (sendFrame( FRM_AUTH )) {
-		process_rsp_auth();
+
+		if ( ! process_rsp_auth() ) {
+			// ERROR de autorizacion. Paso a modo discreto y
+			// espero 1h.
+			systemVars.comms_conf.timerDial = 3600;
+			xprintf_P( PSTR("\r\n****************************************************************\r\n"));
+			xprintf_P( PSTR("COMMS: FATAL ERROR: El dlgid / uid no esta definido en la BD.!!!\r\n"));
+			xprintf_P( PSTR("****************************************************************\r\n"));
+			exit_code = false;
+		} else {
+			exit_code = true;
+		}
 		socket_close();
-		exit_code = true;
 	}
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: prendidoONLINE:AUTH out (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
@@ -574,9 +540,7 @@ uint32_t init_ticks = sysTicks;
 	f_send_init_frame_analog = false;
 	f_send_init_frame_digital = false;
 	f_send_init_frame_counters = false;
-	f_send_init_frame_modbus_low = false;
-	f_send_init_frame_modbus_med = false;
-	f_send_init_frame_modbus_high = false;
+	f_send_init_frame_modbus = false;
 	f_send_init_frame_app = false;
 	f_send_init_frame_sms = false;
 
@@ -731,7 +695,7 @@ int8_t cmd_rsp;
 				xprintf_PD( DF_COMMS, PSTR("COMMS: socketSTATUS out (close) OK (t=%d)\r\n\0"), tryes );
 				return ( sock_CLOSE );
 			}
-			f_send_init_frame_modbus_low = false;
+
 		} else if ( cmd_rsp == ATRSP_ERROR ) {
 			// +IP ERROR: Operation not supported
 			//
@@ -1102,21 +1066,9 @@ uint32_t init_ticks = sysTicks;
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
-	case FRM_MODBUS_LOW:
-		i = prepare_header(FRM_MODBUS_LOW);
-		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_MBUS_LOW;"));
-		i +=  prepare_tail(i);
-		ret_code = send_txbuffer();
-		break;
-	case FRM_MODBUS_MED:
-		i = prepare_header(FRM_MODBUS_MED);
-		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_MBUS_MED;"));
-		i +=  prepare_tail(i);
-		ret_code = send_txbuffer();
-		break;
-	case FRM_MODBUS_HIGH:
-		i = prepare_header(FRM_MODBUS_HIGH);
-		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_MBUS_HIGH;"));
+	case FRM_MODBUS:
+		i = prepare_header(FRM_MODBUS);
+		i += sprintf_P( &gprs_txbuffer.buffer[i], PSTR("CLASS:CONF_MBUS;DATA:[%d,%d,%d,%d];"), modbus_ch_list[0],modbus_ch_list[1],modbus_ch_list[2],modbus_ch_list[3]);
 		i +=  prepare_tail(i);
 		ret_code = send_txbuffer();
 		break;
@@ -1159,6 +1111,7 @@ uint32_t init_ticks = sysTicks;
 	size = strlen(gprs_txbuffer.buffer);
 	snprintf_P( str_sendCmd, sizeof(str_sendCmd), PSTR("AT+CIPSEND=0,%d\r"),size);
 	FSM_sendATcmd( 0, str_sendCmd );
+
 	// Espero el prompt 1000 ms.
 	if ( ! gprs_check_response( 20, ">") ) {
 		xprintf_PD( DF_COMMS, PSTR("COMMS: send_txbuffer out. (SEND ERROR No prompt) (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
@@ -1208,8 +1161,14 @@ uint32_t init_ticks = sysTicks;
 
 		if ( gprs_check_response( 0, "RECV FROM:" ) ) {
 			if ( gprs_check_response( 0, "</h1>" ) ) {
-				xprintf_PD( DF_COMMS, PSTR("COMMS: rcvd_data_response out (OK) (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
-				return(true);
+
+				if (check_frame_integrity()) {
+					xprintf_PD( DF_COMMS, PSTR("COMMS: rcvd_data_response out (OK) (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+					return(true);
+				} else {
+					xprintf_PD( DF_COMMS, PSTR("COMMS: rcvd_data_response out (ERROR CKS) (%.3f)\r\n"), ELAPSED_TIME_SECS(init_ticks));
+					return(false);
+				}
 			}
 
 		} else if ( gprs_check_response( 0, "+IPCLOSE:" ) ) {
@@ -1397,7 +1356,7 @@ uint8_t header_length;
 	return(ret_code);
 }
 //------------------------------------------------------------------------------------
-bool test_xmit_window_data( void )
+bool tesmodbus_config_channelst_xmit_window_data( void )
 {
 	/*
 	 * VER02: Pruebo transitir al menos 2 frames de datos
@@ -1516,6 +1475,7 @@ int16_t i;
 			// La orden anterior fue procesada correctamente
 			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=NACK:%d;" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV, modbus_get_mbtag() );
 		} else {
+			// IS_MBUS_STATUS_FLAG_NONE()
 			i = sprintf_P( gprs_txbuffer.buffer, PSTR("GET %s?DLGID=%s&TYPE=DATA&VER=%s&PLOAD=" ), comms_conf.serverScript, comms_conf.dlgId, SPX_FW_REV );
 		}
 
@@ -1537,6 +1497,74 @@ int16_t i;
 	return(i);
 }
 //------------------------------------------------------------------------------------
+bool check_frame_integrity(void)
+{
+	/*
+	 * Toma el frame recibido entre <h1> y ;CKS:xx<\h1> y calcula el checksum
+	 * Lo compara con el que trae el frame e indica si esta bien o no
+	 * En las versiones anteriores no trae el CKS. En este caso siempre retorno TRUE
+	 */
+
+uint8_t calculated_cks;
+uint8_t frame_cks;
+char localStr[32] = { 0 };
+char *stringp = NULL;
+char *token = NULL;
+char *delim = ",;:=><";
+char *ts = NULL;
+char *sof;
+char *eof;
+char *p;
+
+	// Paso1: Extraigo el checksum del frame:
+	if ( gprs_check_response( 0, "CKS") ) {
+		memset(localStr,'\0',sizeof(localStr));
+		ts = strstr( gprs_rxbuffer.buffer, "CKS");
+		strncpy(localStr, ts, sizeof(localStr));
+		stringp = localStr;
+		token = strsep(&stringp,delim);	    // CKS
+		token = strsep(&stringp,delim);	 	// cks_val
+		frame_cks = atoi(token);
+		//xprintf_P( PSTR("COMMS: check_frame_integrity frame=[%d]\r\n"), frame_cks );
+	} else {
+		//xprintf_P( PSTR("COMMS: check_frame_integrity. No cks.\r\n"));
+		return(true);
+	}
+
+	// Paso2: Calculo el checksum del frame
+	sof = strstr(gprs_rxbuffer.buffer, "<h1>");
+	if (sof != NULL) {
+		sof += 4;
+	} else {
+		xprintf_P( PSTR("COMMS: check_frame_integrity ERROR: No sof.\r\n"));
+		return(false);
+	}
+
+	eof = strstr(gprs_rxbuffer.buffer, "CKS");
+	if ( eof != NULL ) {
+		//eof--;
+	} else {
+		xprintf_P( PSTR("COMMS: check_frame_integrity ERROR: No eof.\r\n"));
+		return(false);
+	}
+
+	p = sof;
+	calculated_cks = 0;
+	while ( p != eof) {
+		calculated_cks = (calculated_cks + *p) % 256;
+		p++;
+	}
+
+	//xprintf_P( PSTR("COMMS: check_frame_integrity calc=[%d]\r\n"), calculated_cks );
+	if ( calculated_cks == frame_cks ) {
+		return(true);
+	}
+	xprintf_P( PSTR("COMMS: check_frame_integrity FAILED !!\r\n"));
+	xprintf_P( PSTR("COMMS: check_frame_integrity frame=[%d]\r\n"), frame_cks );
+	xprintf_P( PSTR("COMMS: check_frame_integrity calc=[%d]\r\n"), calculated_cks );
+	return(true);
+}
+//------------------------------------------------------------------------------------
 static bool process_rsp_auth(void)
 {
 	// Recibimos un frame de autorizacion que indica si los parametros UID/DLGID son
@@ -1544,6 +1572,11 @@ static bool process_rsp_auth(void)
 	// TYPE=INIT&PLOAD=CLASS:AUTH;STATUS:OK
 	// TYPE=INIT&PLOAD=CLASS:AUTH;STATUS:RECONF;DLGID:TEST01
 	// TYPE=INIT&PLOAD=CLASS:AUTH;STATUS:ERROR_DS
+
+	/*
+	 * Version 4.0.4b: Agregamos el checksum al final
+	 * <html><body><h1>TYPE=INIT&PLOAD=CLASS:AUTH;STATUS:OK;CKS:91</h1></body></html>
+	 */
 
 char localStr[32] = { 0 };
 char *stringp = NULL;
@@ -1606,9 +1639,7 @@ static bool process_rsp_global(void)
 	f_send_init_frame_analog = false;
 	f_send_init_frame_digital = false;
 	f_send_init_frame_counters = false;
-	f_send_init_frame_modbus_low = false;
-	f_send_init_frame_modbus_med = false;
-	f_send_init_frame_modbus_high = false;
+	f_send_init_frame_modbus = false;
 	f_send_init_frame_app = false;
 	f_send_init_frame_sms = false;
 
@@ -1628,16 +1659,8 @@ static bool process_rsp_global(void)
 		f_send_init_frame_counters = true;
 	}
 
-	if ( gprs_check_response( 0, "MBUS_LOW") ) {
-		f_send_init_frame_modbus_low = true;
-	}
-
-	if ( gprs_check_response( 0, "MBUS_MED") ) {
-		f_send_init_frame_modbus_med = true;
-	}
-
-	if ( gprs_check_response( 0, "MBUS_HIGH") ) {
-		f_send_init_frame_modbus_high = true;
+	if ( gprs_check_response( 0, "MBUS") ) {
+		f_send_init_frame_modbus = true;
 	}
 
 	if ( gprs_check_response( 0, "APLICACION") ) {
@@ -1902,7 +1925,7 @@ static bool process_rsp_modbus(void)
 {
 
 	/*
-	 * TYPE=INIT&PLOAD=CLASS:MODBUS;MBWT:10;MB00:T0,2069,2,3,FLOAT,0;MB01:T1,2069,2,3,FLOAT,0;MB02:T2,2062,2,3,FLOAT,0;
+	 * TYPE=INIT&PLOAD=CLASS:MBUS;MBWT:10;MB00:T0,2069,2,3,FLOAT,0;MB01:T1,2069,2,3,FLOAT,0;MB02:T2,2062,2,3,FLOAT,0;
 	 * MB03:T3,2063,2,3,FLOAT,0;MB04:T4,2064,2,3,FLOAT,0;MB05:X,0,1,3,U16,0;MB06:X,0,1,3,U16,0;MB07:X,0,1,3,U16,0;
 	 * MB08:X,0,1,3,U16,0;MB09:X,0,1,3,U16,0;MB10:X,0,1,3,U16,0;MB11:X,0,1,3,U16,0;MB12:X,0,1,3,U16,0;MB13:X,0,1,3,U16,0;
 	 * MB14:X,0,1,3,U16,0;MB15:X,0,1,3,U16,0;MB16:X,0,1,3,U16,0;MB17:X,0,1,3,U16,0;MB18:X,0,1,3,U16,0;MB19:X,0,1,3,U16,0;
@@ -1926,6 +1949,7 @@ char *delim = ",;:=><";
 bool save_flag = false;
 uint8_t ch;
 char str_base[8];
+bool retS = false;
 
 	xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus in\r\n\0"));
 	gprs_print_RX_buffer();
@@ -1950,6 +1974,7 @@ char str_base[8];
 		snprintf_P( str_base, sizeof(str_base), PSTR("MB%02d\0"), ch );
 
 		if ( gprs_check_response( 0, str_base ) ) {
+			retS = false;
 			memset(localStr,'\0',sizeof(localStr));
 			ts = strstr( gprs_rxbuffer.buffer, str_base);
 			strncpy(localStr, ts, sizeof(localStr));
@@ -1967,8 +1992,15 @@ char str_base[8];
 
 			xprintf_PD( DF_COMMS, PSTR("COMMS: Reconfig MB%02d\r\n"), ch );
 			//xprintf_PD( DF_COMMS, PSTR("COMMS: %s,%s,%s,%s,%s,%s,%s,%s\r\n"), tk_name, tk_sla, tk_address, tk_size, tk_fcode, tk_type, tk_codec, tk_pow10 );
-			modbus_config_channel( ch, tk_name, tk_sla, tk_address, tk_size, tk_fcode, tk_type, tk_codec, tk_pow10 );
-			save_flag = true;
+			retS = modbus_config_channel( ch, tk_name, tk_sla, tk_address, tk_size, tk_fcode, tk_type, tk_codec, tk_pow10 );
+			if ( retS ) {
+				save_flag = true;
+				/*
+				 * Lo marco como que ya lo configure para no pedir mas su configuracion.
+				 */
+				modbus_conf_channels[ch] = true;
+
+			}
 		}
 	}
 
@@ -2346,7 +2378,7 @@ void data_process_response_MBUS(void)
 	 * Version 4.0.4:
 	 * Junto al frame MBUS tambien viene MBTAG:xxx.
 	 * Se debe extraer el tag xxx y devolverlo en los ACK o NACKs
-	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;MBTAG:132;MBUS=[1,2091,2,16,FLOAT,c3210,435.92]</h1></body></html>
+	 * <html><body><h1>TYPE=DATA&PLOAD=RX_OK:22;CLOCK:2103151132;MBTAG:132;MBUS:[1,2091,2,16,FLOAT,c3210,435.92]</h1></body></html>
 	 *
 	 */
 
@@ -2370,6 +2402,8 @@ bool enqueue_status;
 	//gprs_print_RX_buffer();
 
 	// MBTAG
+	INIT_MBUS_TAG();
+
 	if ( gprs_check_response( 0, "MBTAG") ) {
 		memset(localStr,'\0',sizeof(localStr));
 		ts = strstr( gprs_rxbuffer.buffer, "MBTAG");
@@ -2381,6 +2415,7 @@ bool enqueue_status;
 		modbus_set_mbtag(tk_mbtag);
 		xprintf_PD( DF_COMMS, PSTR("COMMS: get MBTAG=%d\r\n"), atoi(tk_mbtag));
 	}
+
 
 	// MBUS
 	if ( gprs_check_response( 0, "MBUS") ) {
@@ -2408,11 +2443,16 @@ bool enqueue_status;
 			tk_value = strsep(&stringp,delim);
 
 			enqueue_status = modbus_enqueue_output_cmd( tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type,tk_codec,tk_value );
+
+			/*
 			if ( enqueue_status ) {
 				SET_MBUS_STATUS_FLAG_ACK();
+				xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out ACK\r\n\0"));
 			} else {
 				SET_MBUS_STATUS_FLAG_NACK();
+				xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out NACK\r\n\0"));
 			}
+			*/
 
 			//xprintf_P(PSTR("MBUS_DEBUG=[%s][%s][%s][%s][%s][%s]\r\n"), tk_slaaddr, tk_regaddr, tk_nro_regs, tk_fcode, tk_type, tk_value );
 
@@ -2428,11 +2468,6 @@ bool enqueue_status;
 		}
 	}
 
-	if ( IS_MBUS_STATUS_FLAG_ACK() ) {
-		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out ACK\r\n\0"));
-	} else if ( IS_MBUS_STATUS_FLAG_NACK() ){
-		xprintf_PD( DF_COMMS, PSTR("COMMS: process_rsp_modbus out NACK\r\n\0"));
-	}
 }
 //------------------------------------------------------------------------------------
 void data_process_response_PILOTO(void)

@@ -167,6 +167,7 @@ bool ret = false;
 bool rBufferPokeFromISR( ringBuffer_s *rB, char *cChar )
 {
 
+
 bool ret = false;
 
 	// Si el buffer esta vacio ajusto los punteros
@@ -174,6 +175,11 @@ bool ret = false;
 		rB->head = rB->tail = 0;
 	}
 
+	/*
+	 * Si la cola esta llena no guardo.
+	 */
+
+	/*
 	if ( rB->count < rB->length ) {
 		rB->buff[rB->head] = *cChar;
 		++rB->count;
@@ -181,9 +187,19 @@ bool ret = false;
 		rB->head = ( rB->head  + 1 ) % ( rB->length );
 		ret = true;
     }
+	*/
 
-	// Indico que estan llegando datos
-	rB->arriving = true;
+	/*
+	 * Si la cola esta llena, sobreescribo
+	 */
+
+	rB->buff[rB->head] = *cChar;
+	++rB->count;
+	rB->head = ( rB->head  + 1 ) % ( rB->length );
+	if ( rB->tail == rB->head ) {
+		rB->tail = ( rB->tail  + 1 ) % ( rB->length );
+		ret = true;
+    }
 
 	return(ret);
 
@@ -193,16 +209,6 @@ bool rBufferPop( ringBuffer_s *rB, char *cChar )
 {
 
 bool ret = false;
-
-	// Voy a leer un dato. Si estan llegando, espero.
-	if ( rB->arriving == true ) {
-		rB->arriving = false;
-		vTaskDelay( ( TickType_t)50 );
-		// Si siguen llegando, me voy
-		if ( rB->arriving == true ) {
-			return(false);
-		}
-	}
 
 	taskENTER_CRITICAL();
 
@@ -259,7 +265,7 @@ void rBufferCreateStatic ( ringBuffer_s *rB, uint8_t *storage_area, uint16_t siz
 	rB->tail = 0;	// end
 	rB->count = 0;
 	rB->length = size;
-	rB->arriving = false;
+	//rB->arriving = false;
 }
 //------------------------------------------------------------------------------------
 uint16_t rBufferGetCount( ringBuffer_s *rB )
@@ -290,7 +296,7 @@ bool rBufferReachHighWaterMark( ringBuffer_s *rB )
 {
 bool retS = false;
 
-	if ( rB->count  > (int)(0.8 * rB->length ))
+	if ( rB->count  > (int)(0.9 * rB->length ))
 		retS = true;
 
 	return(retS);

@@ -509,6 +509,7 @@ static void prvSetupTimerInterrupt(void) {
 
     //enable interrupt and set low level
     TC0_SetOverflowIntLevel(tickTimer, TC_OVFINTLVL_LO_gc);
+
     //enable low level interrupts
     PMIC_EnableLowLevel();
 }

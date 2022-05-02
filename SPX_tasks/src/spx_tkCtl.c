@@ -205,7 +205,8 @@ char buffer[10] = { '\0','\0','\0','\0','\0','\0','\0','\0','\0','\0' } ;
 
 		// Si algun WDG no se borro, me reseteo
 		while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
-			taskYIELD();
+			//taskYIELD();
+			vTaskDelay( ( TickType_t)( 1 ) );
 
 		for ( wdg = 0; wdg < NRO_WDGS; wdg++ ) {
 
@@ -311,7 +312,8 @@ uint8_t wdg = 0;
 char buffer[10] = { '\0','\0','\0','\0','\0','\0','\0','\0','\0','\0' } ;
 
 	while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	for ( wdg = 0; wdg < NRO_WDGS; wdg++ ) {
 		memset(buffer,'\0', sizeof(buffer));

@@ -6,6 +6,7 @@
  */
 
 #include "drv_uart_spx.h"
+#include "drv_dma_spx.h"
 
 //----------------------------------------------------------------------------------------
 uart_control_t *drv_uart_init( uart_id_t iUART, uint32_t baudrate )
@@ -27,6 +28,7 @@ uart_control_t *pUart = NULL;
 		rBufferCreateStatic( &uart_gprs.TXringBuffer, &gprs_txStorage[0], GPRS_TXSTORAGE_SIZE );
 		// Asigno el identificador
 		uart_gprs.uart_id = iUART_GPRS;
+
 		uart_gprs.usart = &USARTE0;
 		// Devuelvo la direccion de uart_gprs para que la asocie al dispositvo GPRS el frtos.
 		pUart = (uart_control_t *)&uart_gprs;
@@ -358,9 +360,19 @@ uint8_t ctl = 0x00;
 
 	// Habilito la interrupcion de Recepcion ( low level )
 	// low level, RXint enabled
-	USARTE0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
-	USARTE0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
+	/*
+		USARTE0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
+		USARTE0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
+	*/
+
 	//USARTE0.CTRLA = ( USARTE0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+	// Ponemos el nivel de interrupcion HIGH
+	// La primera parte pone hace un clear de los bits a setear y el | los setea.
+	// En este caso de la uart no seria necesario pero sigo las recomendaciones de la AVR1000.
+	//USARTE0.CTRLA |= USART_RXCINTLVL_HI_gc;
+	//USARTE0.CTRLA = ( USARTE0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+	USARTE0.CTRLA = ( USARTE0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_HI_gc;
+
 
 	return;
 }
@@ -371,7 +383,7 @@ ISR(USARTE0_DRE_vect)
 char cChar = ' ';
 int8_t res = false;
 
-	res = rBufferPop( &uart_gprs.TXringBuffer, (char *)&cChar );
+	res = rBufferPopFromISR( &uart_gprs.TXringBuffer, (char *)&cChar );
 
 	if( res == true ) {
 		// Send the next character queued for Tx
@@ -385,13 +397,15 @@ int8_t res = false;
 ISR(USARTE0_RXC_vect)
 {
 
+	/*
+	 * Leo y guardo en el buffer.
+	 * Al guardar, si este esta lleno pierdo el dato.
+	 */
+
 char cChar = ' ';
 
 	cChar = USARTE0.DATA;
-
-	if( rBufferPokeFromISR( &uart_gprs.RXringBuffer, &cChar ) ) {
-		taskYIELD();
-	}
+	rBufferPokeFromISR( &uart_gprs.RXringBuffer, &cChar );
 }
 //----------------------------------------------------------------------------------------
 // UART AUX1:
@@ -425,9 +439,14 @@ uint8_t ctl = 0;
 
 	// Habilito la interrupcion de Recepcion ( low level )
 	// low level, RXint enabled
-	USARTC0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
-	USARTC0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
-	//USARTC0.CTRLA = USARTE0.CTRLA | USART_RXCINTLVL_LO_gc;
+	//USARTC0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
+	//USARTC0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
+	//USARTC0.CTRLA |= USART_RXCINTLVL_HI_gc;
+	//USARTC0.CTRLA = ( USARTC0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_HI_gc;
+	USARTC0.CTRLA = ( USARTC0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+
+	//configure_dma_channel_for_AUX();
+	//DMA_EnableChannel( DMA_AUX_Channel );
 
 	return;
 
@@ -440,7 +459,7 @@ ISR(USARTC0_DRE_vect)
 char cChar = ' ';
 int8_t res = false;
 
-	res = rBufferPop( &uart_aux1.TXringBuffer, (char *)&cChar );
+	res = rBufferPopFromISR( &uart_aux1.TXringBuffer, (char *)&cChar );
 
 	if( res == true ) {
 		// Send the next character queued for Tx
@@ -450,27 +469,6 @@ int8_t res = false;
 		drv_uart_interruptOff(uart_aux1.uart_id);
 	}
 }
-//----------------------------------------------------------------------------------------
-/*
-ISR(USARTC0_TXC_vect)
-{
-
-	// La interrupcion TXC indica que el DATA y Transmitter shift register estan vacios.
-
-char cChar = ' ';
-int8_t res = false;
-
-	res = rBufferPop( &uart_aux1.TXringBuffer, (char *)&cChar );
-
-	if( res == true ) {
-		// Send the next character queued for Tx
-		USARTC0.DATA = cChar;
-	} else {
-		// Queue empty, nothing to send.
-		drv_uart_interruptOff(uart_aux1.uart_id);
-	}
-}
-*/
 //----------------------------------------------------------------------------------------
 ISR(USARTC0_RXC_vect)
 {
@@ -478,10 +476,7 @@ ISR(USARTC0_RXC_vect)
 char cChar;
 
 	cChar = USARTC0.DATA;
-
-	if( rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar ) ) {
-		taskYIELD();
-	}
+	rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar );
 }
 //----------------------------------------------------------------------------------------
 // UART TERM:
@@ -514,20 +509,28 @@ uint8_t baudA, baudB, ctl;
 
 	// Habilito la interrupcion de Recepcion ( low level )
 	// low level, RXint enabled
-	USARTF0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
-	USARTF0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
-	//USARTF0.CTRLA = ( USARTF0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+	//USARTF0.CTRLA |= _BV(4);	// RXCINTLVL_0 = 1
+	//USARTF0.CTRLA &= ~(_BV(5));	// RXCINTLVL_1 = 0
+	USARTF0.CTRLA = ( USARTF0.CTRLA & ~USART_RXCINTLVL_gm ) | USART_RXCINTLVL_LO_gc;
+
+	//configure_dma_channel_for_TERM();
 
 	return;
 }
 //----------------------------------------------------------------------------------------
 ISR(USARTF0_DRE_vect)
 {
+	/*
+	 * ISR de trasmision de TERM uart.
+	 * Oficia como consumidor de la cola de TXringBuffer.
+	 * El productor es FRTOS_uart_write()
+	 *
+	 */
 
 char cChar;
 int8_t res = false;
 
-	res = rBufferPop( &uart_term.TXringBuffer, (char *)&cChar );
+	res = rBufferPopFromISR( &uart_term.TXringBuffer, (char *)&cChar );
 
 	if( res == true ) {
 		// Send the next character queued for Tx
@@ -537,25 +540,7 @@ int8_t res = false;
 		drv_uart_interruptOff(uart_term.uart_id);
 	}
 }
-//----------------------------------------------------------------------------------------
-/*
-ISR(USARTF0_TXC_vect)
-{
 
-char cChar;
-int8_t res = false;
-
-	res = rBufferPop( &uart_term.TXringBuffer, (char *)&cChar );
-
-	if( res == true ) {
-		// Send the next character queued for Tx
-		USARTF0.DATA = cChar;
-	} else {
-		// Queue empty, nothing to send.
-		drv_uart_interruptOff(uart_term.uart_id);
-	}
-}
-*/
 //----------------------------------------------------------------------------------------
 ISR(USARTF0_RXC_vect)
 {
@@ -563,10 +548,7 @@ ISR(USARTF0_RXC_vect)
 char cChar;
 
 	cChar = USARTF0.DATA;
-
-	if( rBufferPokeFromISR( &uart_term.RXringBuffer, &cChar ) ) {
-		taskYIELD();
-	}
+	rBufferPokeFromISR( &uart_term.RXringBuffer, &cChar );
 }
 //----------------------------------------------------------------------------------------
 

@@ -686,7 +686,8 @@ void u_config_timerdial ( char *s_timerdial )
 	//xprintf_P( PSTR("DEBUG_A TDIAL CONFIG: [%s]\r\n\0"), s_timerdial );
 
 	while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	comms_conf.timerDial = atoi(s_timerdial);
 
@@ -762,7 +763,8 @@ void u_wdg_kick (uint8_t wdg_id, uint16_t timeout_in_secs )
 	// timeout es uint16_t por lo tanto su maximo valor en segundos es de 65536 ( 18hs )
 
 	while ( xSemaphoreTake( sem_WDGS, ( TickType_t ) 5 ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 	watchdog_timers[wdg_id] = timeout_in_secs;
 

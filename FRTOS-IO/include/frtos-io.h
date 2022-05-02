@@ -30,6 +30,7 @@
 #include "drv_i2c_spx.h"
 #include "drv_uart_spx.h"
 
+
 // Identificador de los file descriptor.
 typedef enum {
 	fdTERM = 1,

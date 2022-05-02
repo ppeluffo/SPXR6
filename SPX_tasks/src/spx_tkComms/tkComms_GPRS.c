@@ -63,7 +63,8 @@ void gprs_rxbuffer_reset(void)
 	// Vacia el buffer y lo inicializa
 
 	while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 		memset( gprs_rxbuffer.buffer, '\0', GPRS_RXBUFFER_LEN);
 		gprs_rxbuffer.ptr = 0;
@@ -106,7 +107,8 @@ void gprs_rxbuffer_put( char data)
 	// Avanza sobreescribiendo el ultimo si esta lleno
 
 	while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
 		gprs_rxbuffer.buffer[ gprs_rxbuffer.ptr ] = data;
 		if ( gprs_rxbuffer.ptr < GPRS_RXBUFFER_LEN )
@@ -119,12 +121,21 @@ bool gprs_rxbuffer_put2( char data )
 {
 	// Solo inserta si hay lugar
 
-	 if(!gprs_rxbuffer_full()) {
-		 gprs_rxbuffer_put(data);
-		 return(true);
-	 }
+bool retS = false;
 
-    return(false);
+	while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
+
+		if ( gprs_rxbuffer.ptr < GPRS_RXBUFFER_LEN ) {
+			gprs_rxbuffer.buffer[ gprs_rxbuffer.ptr ] = data;
+			gprs_rxbuffer.ptr++;
+			retS = true;
+		}
+
+	xSemaphoreGive( sem_RXBUFF );
+
+    return(retS);
 }
 //------------------------------------------------------------------------------------
 void gprs_flush_RX_buffer(void)
@@ -146,15 +157,16 @@ void gprs_print_RX_buffer( void )
 	if ( ! DF_COMMS )
 		return;
 
-	xprintf_P( PSTR ("\r\nGPRS: rxbuff>\r\n\0"));
+	xprintf_P( PSTR ("\r\nGPRS: rxbuff>\r\n"));
 
 	// Imprimo todo el buffer local de RX. Sale por \0.
 	// Uso esta funcion para imprimir un buffer largo, mayor al que utiliza xprintf_P. !!!
 	while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
-		taskYIELD();
+		//taskYIELD();
+		vTaskDelay( ( TickType_t)( 1 ) );
 
-		xnprint( gprs_rxbuffer.buffer, GPRS_RXBUFFER_LEN );
-		xprintf_P( PSTR ("\r\n[%d]\r\n\0"), gprs_rxbuffer.ptr );
+	xnprint( gprs_rxbuffer.buffer, GPRS_RXBUFFER_LEN );
+	xprintf_P( PSTR ("\r\n[%d]\r\n"), gprs_rxbuffer.ptr );
 
 	xSemaphoreGive( sem_RXBUFF );
 }
@@ -173,7 +185,9 @@ int16_t local_timer = timeout;
 
 		// Busco
 		while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
-			taskYIELD();
+			//taskYIELD();
+			vTaskDelay( ( TickType_t)( 1 ) );
+
 		if  ( strstr(gprs_rxbuffer.buffer, rsp) != NULL ) {
 			retS = true;
 		}
@@ -615,7 +629,8 @@ int16_t ticks = (20 * timeout);			// Cuantos ticks de 50ms corresponden al timeo
 
 		// Chequeo respuestas:
 		while ( xSemaphoreTake( sem_RXBUFF, MSTOTAKERXBUFFSEMPH ) != pdTRUE )
-			taskYIELD();
+			//taskYIELD();
+			vTaskDelay( ( TickType_t)( 1 ) );
 
 			if  ( strstr(gprs_rxbuffer.buffer, "OK") != NULL ) {
 				// Respuesta esperada: salgo

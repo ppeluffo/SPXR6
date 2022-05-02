@@ -9,6 +9,8 @@
 #include "spx.h"
 #include "tkComms.h"
 #include "tkApp.h"
+#include "drv_dma_spx.h"
+
 
 //----------------------------------------------------------------------------------------
 // FUNCIONES DE USO PRIVADO
@@ -125,8 +127,52 @@ static void cmdTestFunction(void)
 {
 
 	// Probamos el armado del buffer de transmision
-	FRTOS_CMD_makeArgv();
-	test_xmit_window_data();
+	//FRTOS_CMD_makeArgv();
+	//test_xmit_window_data();
+
+	// Probamos el calculo de checksums de los buffers.
+
+uint8_t calculated_cks;
+
+char *sof;
+char *eof;
+char *p;
+
+char buffer[] = "html><body><h1>TYPE=INIT&PLOAD=CLASS:AUTH;STATUS:OK;CKS:150;</h1></body></html>";
+
+
+	for (uint8_t i=0; i<100;i++ )
+		xprintf_test();
+	return;
+
+	sof = strstr(buffer, "<h1>");
+	if (sof != NULL) {
+		sof += 4;
+		xprintf_P( PSTR("COMMS: check_frame_integrity SOF=%c.\r\n"),*sof);
+	} else {
+		xprintf_P( PSTR("COMMS: check_frame_integrity ERROR: No sof.\r\n"));
+		return;
+	}
+
+	eof = strstr(buffer, "CKS");
+	if ( eof != NULL ) {
+		//eof--;
+		xprintf_P( PSTR("COMMS: check_frame_integrity EOF=%c.\r\n"),*eof);
+	} else {
+		xprintf_P( PSTR("COMMS: check_frame_integrity ERROR: No eof.\r\n"));
+		return;
+	}
+
+	p = sof;
+	calculated_cks = 0;
+	while ( p != eof) {
+		xprintf_P(PSTR("%c"),*p);
+		calculated_cks = (calculated_cks + *p) % 256;
+		p++;
+	}
+	xprintf_P(PSTR("\r\n"));
+
+	xprintf_P( PSTR("COMMS: check_frame_integrity calc=[%d]\r\n"), calculated_cks );
 
 
 }
@@ -506,6 +552,14 @@ uint8_t cks;
 	// read rb
 	if (!strcmp_P( strupr(argv[1]), PSTR("RB\0")) ) {
 		piloto_read_ring_buffer();
+		return;
+	}
+
+	// DMATEST
+	// read dmatest
+	if (!strcmp_P( strupr(argv[1]), PSTR("DMATEST\0")) ) {
+		xprintf_P(PSTR("ADDR0=0x%02x\r\n"), get_dma_dst_address0());
+		xprintf_P(PSTR("AUX buffer:%s\r\n"), get_dma_aux_buffer());
 		return;
 	}
 
@@ -1556,6 +1610,8 @@ static bool pv_cmd_configMODBUS(void)
 bool pv_cmd_rwAUX(uint8_t cmd_mode )
 {
 
+uint8_t slen;
+
 	if ( cmd_mode == WR_CMD ) {
 
 		// write aux (pwr|rts) {on|off}
@@ -1593,6 +1649,10 @@ bool pv_cmd_rwAUX(uint8_t cmd_mode )
 			aux_flush_RX_buffer();
 			// RTS ON. Habilita el sentido de trasmision del chip.
 			aux_rts_on();
+			// Elimino el CR
+			//slen = strlen(argv[3]);
+			//argv[3][slen]='\0';
+
 			xfprintf_P( fdAUX1,PSTR("%s\r\0"),argv[3] );
 			xprintf_P( PSTR("sent->%s\r\n\0"),argv[3] );
 			aux_rts_off();

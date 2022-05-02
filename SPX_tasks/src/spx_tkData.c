@@ -86,7 +86,8 @@ uint32_t waiting_ticks = 0;
 
     		// Calculo el tiempo para una nueva espera
   		while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
-  			taskYIELD();
+  			//taskYIELD();
+  			vTaskDelay( ( TickType_t)( 1 ) );
 
  		// timpo real que voy a dormir esta tarea
  		waiting_ticks = (uint32_t)(systemVars.timerPoll) * 1000 / portTICK_RATE_MS;

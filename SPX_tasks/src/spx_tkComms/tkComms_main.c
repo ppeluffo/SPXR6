@@ -73,9 +73,10 @@ uint32_t ulNotifiedValue;
 
 		u_wdg_kick(WDG_COMMSRX, 60);
 
+
 		if ( xCOMMS_stateVars.gprs_prendido == true ) {
 			// Leo el UART de GPRS
-			if ( frtos_read( fdGPRS, &c, 1 ) == 1 ) {
+			while ( frtos_read( fdGPRS, &c, 1 ) == 1 ) {
 				gprs_rxbuffer_put2(c);
 			}
 
@@ -85,6 +86,13 @@ uint32_t ulNotifiedValue;
 			xTaskNotifyWait( 0x00, ULONG_MAX, &ulNotifiedValue, ((TickType_t) 10000 / portTICK_RATE_MS ) );
 
 		}
+
+		/*
+		while ( frtos_read( fdGPRS, &c, 1 ) == 1 ) {
+			gprs_rxbuffer_put2(c);
+		}
+		*/
+		vTaskDelay( ( TickType_t)( 10 / portTICK_RATE_MS ) );
 	}
 
 

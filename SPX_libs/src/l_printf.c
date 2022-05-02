@@ -16,6 +16,20 @@ static uint8_t stdout_buff[PRINTF_BUFFER_SIZE];
 xSemaphoreHandle sem_STDOUT;
 StaticSemaphore_t STDOUT_xMutexBuffer;
 
+
+void xprintf_test(void)
+{
+	while ( xSemaphoreTake( sem_STDOUT, ( TickType_t ) 5 ) != pdTRUE )
+		vTaskDelay( ( TickType_t)( 5 ) );
+
+	/*
+	// Ahora tengo en stdout_buff formateado para imprimir
+	memset(stdout_buff,'\0',PRINTF_BUFFER_SIZE);
+	strncpy(stdout_buff, "Llegaron a la hermosa y bellisima ciudad de Genova; y, desembarcandose en su recogido mandrache, despues de haber visitado una iglesia, dio el capitan con todas sus camaradas en una hosteria, donde pusieron en olvido todas las borrascas pasadas con el presente gaudeamus. Alli conocieron la suavidad del Treviano\r\n" , PRINTF_BUFFER_SIZE);
+	frtos_write(fdTERM, (char *)stdout_buff, strlen((char *)stdout_buff) );
+	*/
+	xSemaphoreGive( sem_STDOUT );
+}
 //-----------------------------------------------------------------------------------
 int xprintf_P( PGM_P fmt, ...)
 {

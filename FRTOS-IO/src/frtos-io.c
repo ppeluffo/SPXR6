@@ -79,13 +79,13 @@ int16_t xRet = -1;
 	switch(fd) {
 	case fdGPRS:
 		//xRet = frtos_uart_write( &xComGPRS, pvBuffer, xBytes );
-		xRet = frtos_uart_write_poll( &xComGPRS, pvBuffer, xBytes );
+		xRet = frtos_uart_write( &xComGPRS, pvBuffer, xBytes );
 		break;
 	case fdAUX1:
 		xRet = frtos_uart_write( &xComAUX1, pvBuffer, xBytes );
 		break;
 	case fdTERM:
-		xRet = frtos_uart_write_poll( &xComTERM, pvBuffer, xBytes );
+		xRet = frtos_uart_write( &xComTERM, pvBuffer, xBytes );
 		break;
 	case fdI2C:
 		xRet = frtos_i2c_write( &xBusI2C, pvBuffer, xBytes );
@@ -200,6 +200,8 @@ int16_t frtos_uart_write( periferico_serial_port_t *xCom, const char *pvBuffer, 
 	// Actua como si fuese rprintfStr.
 	// Debe tomar el semaforo antes de trasmitir. Los semaforos los manejamos en la capa FreeRTOS
 	// y no en la de los drivers.
+	// El semaforo esta en xprintf.
+	// Oficia como productor de datos de la cola txRingBuffer.
 
 char cChar = '\0';
 char *p = NULL;
@@ -209,21 +211,32 @@ int16_t wBytes = 0;
 	// Controlo no hacer overflow en la cola de trasmision
 	bytes2tx = xBytes;
 
-	// Trasmito.
 	// Espero que los buffers esten vacios. ( La uart se va limpiando al trasmitir )
-	while  ( rBufferGetCount( &xCom->uart->TXringBuffer ) > 0 )
+	while  ( rBufferGetCount( &xCom->uart->TXringBuffer ) > 0 ) {
 		vTaskDelay( ( TickType_t)( 1 ) );
+	}
 
 	// Cargo el buffer en la cola de trasmision.
 	p = (char *)pvBuffer;
-	while (*p && (bytes2tx-- > 0) ) {
 
-		// Voy cargando la cola de a uno.
+	while(1) {
+		// Voy  alimentando el txRingBuffer de a uno.
 		cChar = *p;
+		bytes2tx--;
 		rBufferPoke( &xCom->uart->TXringBuffer, &cChar  );
-		//rBufferPoke( &uart_usb.TXringBuffer, &cChar  );
 		p++;
 		wBytes++;	// Cuento los bytes que voy trasmitiendo
+
+		// Si tengo un fin de pvBuffer, salgo
+		if ( *p == '\0') {
+			// Habilito a transmitir los datos que hayan en el buffer
+			drv_uart_interruptOn( xCom->uart->uart_id );
+			// Espero que se vacie
+			while (  rBufferGetCount( &xCom->uart->TXringBuffer ) > 0)
+				vTaskDelay( ( TickType_t)( 1 ) );
+			// Termino
+			break;
+		}
 
 		// Si la cola esta llena, empiezo a trasmitir y espero que se vacie.
 		if (  rBufferReachHighWaterMark( &xCom->uart->TXringBuffer ) ) {
@@ -233,6 +246,36 @@ int16_t wBytes = 0;
 			while ( ! rBufferReachLowWaterMark( &xCom->uart->TXringBuffer ) )
 				vTaskDelay( ( TickType_t)( 1 ) );
 		}
+
+		// Termine de cargar el pvBuffer
+		if ( bytes2tx == 0 ) {
+			drv_uart_interruptOn( xCom->uart->uart_id );
+			while (  rBufferGetCount( &xCom->uart->TXringBuffer ) > 0)
+				vTaskDelay( ( TickType_t)( 1 ) );
+			break;
+		}
+
+
+	}
+	/*
+	while (*p && (bytes2tx-- > 0) ) {
+
+		// Voy cargando la cola de a uno.
+		cChar = *p;
+		rBufferPoke( &xCom->uart->TXringBuffer, &cChar  );
+		p++;
+		wBytes++;	// Cuento los bytes que voy trasmitiendo
+
+		// Si la cola esta llena, empiezo a trasmitir y espero que se vacie.
+		if (  rBufferReachHighWaterMark( &xCom->uart->TXringBuffer ) ) {
+			// Habilito a trasmitir para que se vacie
+			drv_uart_interruptOn( xCom->uart->uart_id );
+
+			// Y espero que se haga mas lugar.
+			while ( ! rBufferReachLowWaterMark( &xCom->uart->TXringBuffer ) )
+				vTaskDelay( ( TickType_t)( 5 ) );
+
+		}
 	}
 
 	// Luego inicio la trasmision invocando la interrupcion.
@@ -240,7 +283,12 @@ int16_t wBytes = 0;
 
 	// Espero que trasmita todo
 	while  ( rBufferGetCount( &xCom->uart->TXringBuffer ) > 0 )
-		vTaskDelay( ( TickType_t)( 1 ) );
+		vTaskDelay( ( TickType_t)( 5 ) );
+
+	*/
+
+	// Y doy 1 ms para que se vacie el shift register.
+	vTaskDelay( ( TickType_t)( 1 ) );
 
 	return (wBytes);
 }
@@ -314,8 +362,8 @@ int timeout;
 
 	// Trasmito.
 	// Espero que los buffers esten vacios. ( La uart se va limpiando al trasmitir )
-	while  ( rBufferGetCount( &xCom->uart->TXringBuffer ) > 0 )
-		vTaskDelay( ( TickType_t)( 1 ) );
+	//while  ( rBufferGetCount( &xCom->uart->TXringBuffer ) > 0 )
+	//	vTaskDelay( ( TickType_t)( 1 ) );
 
 	// Cargo el buffer en la cola de trasmision.
 	p = (char *)pvBuffer;
@@ -415,7 +463,8 @@ xTimeOutType xTimeOut;
 
 		if( rBufferPop( &xCom->uart->RXringBuffer, &((char *)pvBuffer)[ xBytesReceived ] ) == true ) {
 			xBytesReceived++;
-			taskYIELD();
+			//taskYIELD();
+			vTaskDelay( ( TickType_t)( 1 ) );
 		} else {
 			// Espero xTicksToWait antes de volver a chequear
 			vTaskDelay( ( TickType_t)( xTicksToWait ) );
@@ -685,8 +734,10 @@ uint32_t *p = NULL;
 	{
 		case ioctl_OBTAIN_BUS_SEMPH:
 			// Espero el semaforo en forma persistente.
-			while ( xSemaphoreTake(xI2c->xBusSemaphore, ( TickType_t ) 5 ) != pdTRUE )
-				taskYIELD();
+			while ( xSemaphoreTake(xI2c->xBusSemaphore, ( TickType_t ) 5 ) != pdTRUE ) {
+				//taskYIELD();
+				vTaskDelay( ( TickType_t)( 1 ) );
+			}
 			break;
 			case ioctl_RELEASE_BUS_SEMPH:
 				xSemaphoreGive( xI2c->xBusSemaphore );

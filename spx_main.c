@@ -44,7 +44,13 @@
  *
  * -------------------------------------------------------------------------------------------
  *
- * R4.0.4a @ 20220329:
+ * R4.0.4c @ 20220502:
+ * issue01: Los contadores cuando no estan en modo caudal, cuentan pero no muestran el valor
+ *          El problema era un error en la funcion counters_read().
+ *
+ * -------------------------------------------------------------------------------------------
+ *
+ * R4.0.4b @ 20220329:
  * Agrego la aplicacion de GENPULSOS para poder generar los pulsos en las dosificadoras de
  * Colonia.
  * - Creo la aplicacion ( tkApp, tkCmd(help, config, status, save, reload) )
@@ -77,6 +83,27 @@
  *          del driver de la uart porque parece como que se come caracteres.
  *          La solucion es 'marcar' los canales que no se configuraron y pedir reconfiguracion
  *          solo de estos.
+ *          Antes modifico la configuracion modbus mandando al server que canales quiero que me
+ *          mande la configuracion
+ *
+ * issue03: En cada respuesta que recibo del server, verifico su integridad con el checksum.
+ *          Modifico la funcion rcvd_response().
+ *          Vemos que hay muchos errores, se pierde en los frames largos algún byte.
+ *          Modifico en los drivers de UARTS la prioridad de interrupccion y la pongo HIGH para
+ *          gprs y aux1.
+ *          Modifico la funcion frtos_uart_write. La pruebo con buffers de 313 bytes en 100 lineas
+ *          consecutivas ( xprintf_test ) y funciona ok.
+ *          Modifico bugs en RX_ISR para que use las correctas funciones de ringBuffer.
+ *          Modifico el gprs_put2 para que use semaforo para todo el proceso.
+ *
+ *			Si el dlgid es DEFAULT y el frame AUTH devuelve error, entonces espero 1h antes de reintentar.
+ *
+ *          Vimos que el problema es que con todas las interrupciones de igual prioridad, a veces
+ *          se pueden perder datos de la UART gprs. Si bien una solucion fue darle prioridad mas
+ *          alta, podemos explorar otras alternativas.
+ *          Una es usar DMA.
+ *
+ *
  * -------------------------------------------------------------------------------------------
  * R4.0.3f @ 20220308:
  * - Cuando recibe un frame modbus del server, chequea si los formatos están bien.
@@ -196,6 +223,7 @@
  */
 
 #include "spx.h"
+#include "dma_driver.h"
 
 //------------------------------------------------------------------------------------
 int main( void )
@@ -218,9 +246,15 @@ int main( void )
 	if ( WDT_IsWindowModeEnabled() )
 		WDT_DisableWindowMode();
 
+	// Las interrupciones de UART GPRS deben ser HighLevelPriority
+	PMIC_EnableHighLevel();
+
 	set_sleep_mode(SLEEP_MODE_PWR_SAVE);
 
 	initMCU();
+
+	// EL manejo de la recepcion de datos de UARTS es por DMA.
+	DMA_Enable();
 
 	frtos_open(fdTERM, 9600 );
 	frtos_open(fdGPRS, 115200);
@@ -265,6 +299,7 @@ void vApplicationIdleHook( void )
 //	if ( sleepFlag == true ) {
 //		sleep_mode();
 //	}
+
 }
 //------------------------------------------------------------------------------------
 void vApplicationTickHook( void )

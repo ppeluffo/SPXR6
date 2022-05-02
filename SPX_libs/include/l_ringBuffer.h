@@ -22,7 +22,7 @@ typedef struct {
 	uint16_t tail;
 	uint16_t count;
 	uint16_t length;
-	bool arriving;
+	//bool arriving;
 } ringBuffer_s;
 
 void rBufferCreateStatic ( ringBuffer_s *rB, uint8_t *storage_area, uint16_t size  );
