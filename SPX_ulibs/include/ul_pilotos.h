@@ -98,7 +98,7 @@ struct {
 uint8_t plt_app_wdg;
 
 
-typedef enum { PRESION=0, STEPPER } t_jobOrderTipo;
+typedef enum { ORDER_PRESION=0, ORDER_STEPPER } t_jobOrderTipo;
 
 typedef struct {
 	int tipo;
@@ -111,9 +111,15 @@ void_ringBuffer_s pFIFO;
 
 void FSM_piloto_app_service( uint8_t app_wdt );
 void piloto_setup_outofrtos(void );
+
+void piloto_productor_handler_cmdOrders(char *s_pRef );
+void piloto_productor_handler_onlineOrders( float presion );
+
+
 void piloto_run_stepper_test(char *s_dir, char *s_npulses, char *s_pwidth );
-void piloto_productor_testing_handler(char *s_pRef );
-void plt_productor_online_handler( float presion );
+
+
+
 bool piloto_config_slot( char *s_slot, char *s_hhmm, char *s_presion );
 void piloto_config_ppr( char *s_pulseXrev );
 void piloto_config_pwidth( char *s_pwidth );

@@ -44,9 +44,15 @@
  *
  * -------------------------------------------------------------------------------------------
  *
+ * R4.0.4e @ 20220511:
+ * * Habilito el test de output modbus desde cmdMode.
+ *
+ * -------------------------------------------------------------------------------------------
+ *
  * R4.0.4c @ 20220502:
  * issue01: Los contadores cuando no estan en modo caudal, cuentan pero no muestran el valor
  *          El problema era un error en la funcion counters_read().
+ * issue02: En el modo pilotos, la pA y pB que usa son la misma.
  *
  * -------------------------------------------------------------------------------------------
  *

@@ -45,7 +45,7 @@ void ainputs_sleep(void);
 bool ainputs_config_channel( uint8_t channel,char *s_aname,char *s_imin,char *s_imax,char *s_mmin,char *s_mmax,char *s_offset );
 void ainputs_config_defaults(void);
 void ainputs_config_timepwrsensor ( char *s_timepwrsensor );
-bool ainputs_read( float ain[], float *battery, bool debug );
+bool ainputs_read( float *ain, float *battery, bool debug );
 void ainputs_print(file_descriptor_t fd, float src[] );
 char *ainputs_sprintf( char *sbuffer, float src[] );
 

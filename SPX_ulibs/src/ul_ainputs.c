@@ -152,7 +152,7 @@ uint8_t channel = 0;
 
 }
 //------------------------------------------------------------------------------------
-bool ainputs_read( float ain[], float *battery, bool debug )
+bool ainputs_read( float *ain, float *battery, bool debug )
 {
 
 bool retS = false;
@@ -167,7 +167,9 @@ bool retS = false;
 	// esta en el canal 1 del ina2
 	// Lectura general.
 	pv_ainputs_read_channel(0, &ain[0], NULL, debug );
+	//xprintf_P(PSTR("DEBUG PILOTO: p0:->%0.3f\r\n"),ain[0] );
 	pv_ainputs_read_channel(1, &ain[1], NULL, debug );
+	//xprintf_P(PSTR("DEBUG PILOTO: p1:->%0.3f\r\n"),ain[1] );
 	pv_ainputs_read_channel(2, &ain[2], NULL, debug );
 	pv_ainputs_read_channel(3, &ain[3], NULL, debug );
 	pv_ainputs_read_channel(4, &ain[4], NULL, debug );

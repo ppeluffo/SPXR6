@@ -73,8 +73,8 @@
 //------------------------------------------------------------------------------------
 // DEFINES
 //------------------------------------------------------------------------------------
-#define SPX_FW_REV "4.0.4c"
-#define SPX_FW_DATE "@ 20220502"
+#define SPX_FW_REV "4.0.4e"
+#define SPX_FW_DATE "@ 20220511"
 
 #define SPX_HW_MODELO "spxR6 HW:xmega256A3B R1.1"
 #if configUSE_TICKLESS_IDLE == 2

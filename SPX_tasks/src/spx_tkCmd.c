@@ -436,7 +436,7 @@ static void cmdWriteFunction(void)
 	// PILOTO
 	// write pilototest pRef(kg/cm2)
 	if ( strcmp_P( strupr(argv[1]), PSTR("PILOTOTEST\0")) == 0 ) {
-		piloto_productor_testing_handler( argv[2] );
+		piloto_productor_handler_cmdOrders( argv[2] );
 		pv_snprintfP_OK();
 		return;
 	}

@@ -634,7 +634,7 @@ bool retS = false;
 	}
 
 	retS = true;
-	//modbus_io( true, &mbus_cb );
+	modbus_io( true, &mbus_cb );
 
 quit:
 
