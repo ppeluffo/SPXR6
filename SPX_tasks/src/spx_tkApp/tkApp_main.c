@@ -33,7 +33,11 @@ void tkApp(void * pvParameters)
 
 	}  else if ( systemVars.aplicacion_conf.aplicacion == APP_GENPULSOS ) {
 		tkApp_genpulsos( WDG_APP );
+
+	}  else if ( systemVars.aplicacion_conf.aplicacion == APP_OCEANUS ) {
+		tkApp_oceanus( WDG_APP );
 	}
+
 
 	// Default
 	xprintf_P( PSTR("\r\nAPP: ERROR. Running APP off.\r\n"));

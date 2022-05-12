@@ -42,8 +42,13 @@
  *  https://stackoverflow.com/questions/3571850/eclipse-change-popup-text-background-color-when-hovering-the-mouse-on-a-keyword
  *  Preferences > C/C++ > Editor > Source hover background
  *
+  * -------------------------------------------------------------------------------------------
+ * R4.0.4f @ 20220511:
+ * -Elimino todo lo referente a modbus CBLOCK
+ * -Agrego la aplicacion OCEANUS.
+ *  Los canales se configuran como si fuesen modbus.Solo importa el nombre. El resto de los
+ *  datos se ignoran.
  * -------------------------------------------------------------------------------------------
- *
  * R4.0.4e @ 20220511:
  * * Habilito el test de output modbus desde cmdMode.
  *

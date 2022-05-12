@@ -2038,6 +2038,10 @@ char str_base[8];
 		systemVars.aplicacion_conf.aplicacion = APP_OFF;
 		save_flag = true;
 
+	} else 	if ( gprs_check_response( 0, "OCEANUS") ) {
+		systemVars.aplicacion_conf.aplicacion = APP_OCEANUS;
+		save_flag = true;
+
 	} else if ( gprs_check_response( 0, "GENPULSOS") ) {
 		systemVars.aplicacion_conf.aplicacion = APP_GENPULSOS;
 		save_flag = true;

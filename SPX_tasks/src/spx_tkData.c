@@ -18,6 +18,7 @@
 
 #include "spx.h"
 #include "tkComms.h"
+#include "ul_oceanus.h"
 
 st_dataRecord_t dataRecd;
 float battery;
@@ -121,7 +122,10 @@ bool status_flag;
 	counters_read( dst->counters );
 	counters_clear();
 
-	modbus_read (dst->modbus );
+	// Los canales de oceanus y modbus son los mismos. Leo uno o la otra.
+	if ( ! oceanus_read (dst->modbus ) ) {
+		modbus_read (dst->modbus );
+	}
 
 	// Agrego el timestamp
 	status_flag = RTC_read_dtime( &dst->rtc );

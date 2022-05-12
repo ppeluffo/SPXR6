@@ -42,6 +42,12 @@ uint32_t ulNotifiedValue;
 				aux_rxbuffer_put2(c);
 			}
 
+			/*
+			if ( aux_rxbuffer_full() ) {
+				xprintf_P( PSTR("AUX_DEBUG: %s\r\n"), aux_rxbuffer.buffer );
+				aux_rxbuffer_reset();
+			}
+			*/
 		} else {
 
 			xTaskNotifyWait( 0x00, ULONG_MAX, &ulNotifiedValue, ((TickType_t) 10000 / portTICK_RATE_MS ) );
@@ -62,7 +68,9 @@ void aux_init(void)
 	aux_prender();
 	return;
 
+
 	// Si hay al menos un canal configurado o el control esta configurado, prendo.
+/*
 	if ( (systemVars.modbus_conf.channel[0].slave_address != 0x00 ) ||
 			( modbus_conf.control_channel.slave_address != 0 ) ) {
 		xprintf_P( PSTR("AUX1: power on..\r\n"));
@@ -70,7 +78,7 @@ void aux_init(void)
 	} else {
 		xprintf_P( PSTR("AUX1: power OFF !!\r\n"));
 	}
-
+*/
 }
 //------------------------------------------------------------------------------------
 void aux_prender(void)

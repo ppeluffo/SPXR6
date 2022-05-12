@@ -297,134 +297,22 @@ uint8_t ch;
 		return;
 	}
 
-	// Vemos si poleamos single-channel o block-channel
-
-	if ( strcmp ( modbus_conf.channel[0].name, "CBLOCK" ) == 0 ) {
-
-		// Poleo BLOCK Channel
-		modbus_read_block_channel( mbus_data);
-
-	} else {
-
-		// Poleo SINGLE Channel ( legacy )
-		for ( ch = 0; ch < MODBUS_CHANNELS; ch++) {
-			// Si un canal no esta definido, salgo
-			if ( strcmp ( modbus_conf.channel[ch].name, "X" ) == 0 ) {
-				break;
-			}
-			//
-			// Si ya el canal tiene slave_address en 0, salgo. Asumo que el resto
-			// no esta definido.
-			if ( modbus_conf.channel[ch].slave_address == 0 ) {
-				return;
-			}
-
-			mbus_data[ch] = modbus_read_channel ( ch );
-		}
-	}
-	return;
-}
-//------------------------------------------------------------------------------------
-void modbus_read_block_channel( float mbus_data[] )
-{
-	/*
-	 * El read block channel implica:
-	 * - 1 lectura modbus de acuerdo al canal 0 (name = CBLOCK)
-	 * - 2 Para cada canal configurado, obtener los datos usando el regaddress como el offset
-	 *     dentro del string leido.
-	 */
-
-uint8_t ch;
-bool rsp_nan = false;
-float pvalue = 0.0;
-uint8_t buffer_offset;
-uint8_t bh,bl;
-
-	// Paso 1: Leo un bloque con los datos del registro 0.
-	memcpy( &mbus_cb.channel,  &modbus_conf.channel[0], sizeof(modbus_channel_t));
-
-	mbus_cb.io_status = false;
-	pv_modbus_make_ADU ( &mbus_cb);
-	pv_modbus_txmit_ADU( DF_MBUS, &mbus_cb );
-	vTaskDelay( (portTickType)( systemVars.modbus_conf.waiting_poll_time / portTICK_RATE_MS ) );
-	pv_modbus_rcvd_ADU( DF_MBUS, &mbus_cb );
-
-	// Si hubo un error, pongo un NaN y salgo
-	if (mbus_cb.io_status == false) {
-		mbus_cb.udata.raw_value[0] = 0xFF;
-		mbus_cb.udata.raw_value[1] = 0xFF;
-		mbus_cb.udata.raw_value[2] = 0xFF;
-		mbus_cb.udata.raw_value[3] = 0xFF;
-		rsp_nan = true;
-	}
-
-	// Leo el valor de c/canal del offset
-	mbus_data[0] = 0.0;		// Canal de control CBLOCK
-
-	for ( ch = 1; ch < MODBUS_CHANNELS; ch++) {
+	// Poleo
+	for ( ch = 0; ch < MODBUS_CHANNELS; ch++) {
 		// Si un canal no esta definido, salgo
 		if ( strcmp ( modbus_conf.channel[ch].name, "X" ) == 0 ) {
 			break;
 		}
 		//
-		if (rsp_nan) {
-			mbus_data[ch] = mbus_cb.udata.float_value;
-
-		} else {
-
-			memcpy( &mbus_cb.channel,  &modbus_conf.channel[ch], sizeof(modbus_channel_t));
-
-			buffer_offset = 3 + mbus_cb.channel.reg_address * 2;
-			bh = mbus_cb.rx_buffer[buffer_offset + 0];
-			bl = mbus_cb.rx_buffer[buffer_offset + 1];
-
-			xprintf_PD(DF_MBUS, PSTR("MODBUS: block channel: ch=%d,name=%s,buff_offset=%d,bh=0x%02x,bl=0x%02x\r\n"), ch, mbus_cb.channel.name, buffer_offset, bh, bl);
-
-			// CODEC y PAYLOAD para extraer el valor
-			switch( mbus_cb.channel.codec ) {
-			case CODEC0123:
-				pv_decoder_f3_c0123(DF_MBUS, &mbus_cb, buffer_offset );
-				break;
-			case CODEC1032:
-				pv_decoder_f3_c1032(DF_MBUS, &mbus_cb, buffer_offset );
-				break;
-			case CODEC3210:
-				pv_decoder_f3_c3210(DF_MBUS, &mbus_cb, buffer_offset );
-				break;
-			case CODEC2301:
-				pv_decoder_f3_c2301(DF_MBUS, &mbus_cb, buffer_offset );
-				break;
-			default:
-				return;
-			}
-
-			xprintf_PD(DF_MBUS, PSTR("MODBUS: DECODE (MSB)b3[0x%02X] b2[0x%02X] b1[0x%02X] b0[0x%02X](LSB)\r\n"),
-					mbus_cb.udata.raw_value[3], mbus_cb.udata.raw_value[2], mbus_cb.udata.raw_value[1], mbus_cb.udata.raw_value[0]);
-
-			// TIPO: Formateo
-			if ( mbus_cb.channel.type == FLOAT) {
-				pvalue = mbus_cb.udata.float_value;
-
-			} else if (mbus_cb.channel.type == i16 ) {
-				// En este caso importa el parametro divisor_p10 ya que convierte al entero en float
-				pvalue = 1.0 * mbus_cb.udata.i16_value / pow(10, mbus_cb.channel.divisor_p10 );
-
-			} else if (mbus_cb.channel.type == u16 ) {
-				pvalue = 1.0 * mbus_cb.udata.u16_value / pow(10, mbus_cb.channel.divisor_p10 );
-
-			} else if (mbus_cb.channel.type == u32 ) {
-				pvalue = 1.0 * mbus_cb.udata.u32_value / pow(10, mbus_cb.channel.divisor_p10 );
-
-			} else if (mbus_cb.channel.type == i32 ) {
-				pvalue = 1.0 * mbus_cb.udata.i32_value / pow(10, mbus_cb.channel.divisor_p10 );
-
-			}
-
-			mbus_data[ch] = pvalue;
+		// Si ya el canal tiene slave_address en 0, salgo. Asumo que el resto
+		// no esta definido.
+		if ( modbus_conf.channel[ch].slave_address == 0 ) {
+			return;
 		}
 
-
+		mbus_data[ch] = modbus_read_channel ( ch );
 	}
+	return;
 }
 //------------------------------------------------------------------------------------
 float modbus_read_channel ( uint8_t ch )

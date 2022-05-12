@@ -79,7 +79,7 @@ typedef struct {
 modbus_conf_t modbus_conf;
 
 #define MBUS_TXMSG_LENGTH	16
-#define MBUS_RXMSG_LENGTH	90
+#define MBUS_RXMSG_LENGTH	32
 
 /*
  * Los registros de modbus pueden ser enteros, long o float.
@@ -132,7 +132,6 @@ void modbus_io( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );
 void modbus_read( float mbus_data[] );
 float modbus_read_channel ( uint8_t ch );
 void modbus_report_status(uint8_t bit_pos, uint8_t bit_value );
-void modbus_read_block_channel( float mbus_data[] );
 
 void pv_modbus_make_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );
 void pv_modbus_txmit_ADU( bool f_debug, mbus_CONTROL_BLOCK_t *mbus_cb );

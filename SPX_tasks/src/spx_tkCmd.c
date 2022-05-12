@@ -1086,7 +1086,7 @@ static void cmdHelpFunction(void)
 
 		xprintf_P( PSTR("  analog {0..%d} aname imin imax mmin mmax offset\r\n\0"),( ANALOG_CHANNELS - 1 ) );
 
-		xprintf_P( PSTR("  aplicacion {off,consigna,piloto,genpulsos}\r\n\0"));
+		xprintf_P( PSTR("  aplicacion {off,consigna,piloto,genpulsos,oceanus}\r\n\0"));
 		xprintf_P( PSTR("  consigna {diurna,nocturna} hhmm\r\n\0"));
 		xprintf_P( PSTR("  piloto slot {idx} {hhmm} {pout}\r\n\0"));
 		xprintf_P( PSTR("         ppr, pwidth \r\n\0"));

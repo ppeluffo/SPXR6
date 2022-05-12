@@ -32,7 +32,6 @@ uint8_t gprs_txStorage[GPRS_TXSTORAGE_SIZE];
 uint8_t aux1_rxStorage[AUX1_RXSTORAGE_SIZE];
 uint8_t aux1_txStorage[AUX1_TXSTORAGE_SIZE];
 
-
 // Enumenerador de los puertos fisicos.
 typedef enum {
 	iUART_TERM = 0,
@@ -50,6 +49,9 @@ typedef struct {
 
 // Creo las uart's en memoria.
 uart_control_t uart_term, uart_gprs, uart_aux1;
+
+// Flag de AUX1 para descartar no imprimibles
+bool aux1_discard_noprintables;
 
 //-----------------------------------------------------------------------
 uart_control_t *drv_uart_init( uart_id_t iUART, uint32_t baudrate );

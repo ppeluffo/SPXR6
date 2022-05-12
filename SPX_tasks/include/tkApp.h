@@ -21,8 +21,9 @@
 #include "ul_consignas.h"
 #include "ul_pilotos.h"
 #include "ul_genpulsos.h"
+#include "ul_oceanus.h"
 
-typedef enum { APP_OFF = 0, APP_CONSIGNA, APP_PILOTO, APP_GENPULSOS } t_applicacion;
+typedef enum { APP_OFF = 0, APP_CONSIGNA, APP_PILOTO, APP_GENPULSOS, APP_OCEANUS } t_applicacion;
 
 #define DF_APP ( (systemVars.debug == DEBUG_APP ) || (systemVars.debug == DEBUG_ALL ))
 

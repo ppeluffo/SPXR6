@@ -31,6 +31,10 @@ bool aplicacion_config( char *modo )
 		return(true);
 	}
 
+	if ( strcmp_P( strupr(modo), PSTR("OCEANUS"))  == 0 )  {
+		systemVars.aplicacion_conf.aplicacion = APP_OCEANUS;
+		return(true);
+	}
 
 	return(false);
 }
@@ -51,6 +55,9 @@ void aplicacion_config_status(void)
 
 	} else 	if ( systemVars.aplicacion_conf.aplicacion == APP_PILOTO ) {
 		piloto_config_status();
+
+	} else 	if ( systemVars.aplicacion_conf.aplicacion == APP_OCEANUS ) {
+		xprintf_P( PSTR("  modo: OCEANUS\r\n"));
 	};
 
 }
@@ -77,6 +84,18 @@ int16_t free_size = sizeof(hash_buffer);
 
 	if ( systemVars.aplicacion_conf.aplicacion == APP_OFF ) {
 		i += snprintf_P( &hash_buffer[i], free_size, PSTR("OFF"));
+		free_size = (  sizeof(hash_buffer) - i );
+		if ( free_size < 0 )
+			goto exit_error;
+		// Apunto al comienzo para recorrer el buffer
+		p = hash_buffer;
+		while (*p != '\0') {
+			hash = u_hash(hash, *p++);
+		}
+		return(hash);
+
+	} else if ( systemVars.aplicacion_conf.aplicacion == APP_OCEANUS ) {
+		i += snprintf_P( &hash_buffer[i], free_size, PSTR("OCEANUS"));
 		free_size = (  sizeof(hash_buffer) - i );
 		if ( free_size < 0 )
 			goto exit_error;

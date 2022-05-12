@@ -448,6 +448,9 @@ uint8_t ctl = 0;
 	//configure_dma_channel_for_AUX();
 	//DMA_EnableChannel( DMA_AUX_Channel );
 
+	// Inicialmente no descartamos nada
+	aux1_discard_noprintables = false;
+
 	return;
 
 }
@@ -476,7 +479,15 @@ ISR(USARTC0_RXC_vect)
 char cChar;
 
 	cChar = USARTC0.DATA;
-	rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar );
+
+	if ( ! aux1_discard_noprintables ) {
+		// No descarto
+		rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar );
+	} else if ( (cChar > 32) && (cChar < 127 )) {
+		// Descarto: solo guardo los imprimibles.
+		rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar );
+	}
+
 }
 //----------------------------------------------------------------------------------------
 // UART TERM:
