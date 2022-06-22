@@ -483,10 +483,12 @@ char cChar;
 	if ( ! aux1_discard_noprintables ) {
 		// No descarto
 		rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar );
+
 	} else if ( (cChar > 32) && (cChar < 127 )) {
 		// Descarto: solo guardo los imprimibles.
 		rBufferPokeFromISR( &uart_aux1.RXringBuffer, &cChar );
 	}
+
 
 }
 //----------------------------------------------------------------------------------------

@@ -16,10 +16,8 @@ void tkApp(void * pvParameters)
 
 ( void ) pvParameters;
 
-	// Espero la notificacion para arrancar
-	while ( ((start_byte >> WDG_APP) & 1 ) != 1 )
+	while (!run_tasks)
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
-
 	xprintf_P( PSTR("starting tkAplicacion..") );
 
 	if ( systemVars.aplicacion_conf.aplicacion == APP_OFF ) {
@@ -50,7 +48,7 @@ void tkApp_off( uint8_t app_wdt )
 	// ( solo monitoreo ), debemos dormir para que pueda entrar en
 	// tickless
 
-	xprintf_P( PSTR("OFF\r\n"));
+	xprintf_P( PSTR("Aplicacion: OFF\r\n"));
 
 	for( ;; )
 	{
@@ -69,7 +67,7 @@ void tkApp_genpulsos( uint8_t app_wdt )
 	 * que pueda recalcular en base al caudal el periodo de los pulsos.
 	 */
 
-	xprintf_P( PSTR("GENPULSOS\r\n"));
+	xprintf_P( PSTR("Aplicacion: GENPULSOS\r\n"));
 
 	genpulsos_init();
 

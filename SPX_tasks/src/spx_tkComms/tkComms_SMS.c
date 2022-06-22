@@ -406,12 +406,14 @@ uint8_t i;
 	strcpy( systemVars.sms_conf.sms_auth_numbers[1],"99000001");
 	strcpy( systemVars.sms_conf.sms_auth_numbers[2],"99000002");
 
+	// Inicializo el diccionario { sms_modbus_reg; sms_text }
 	for (i=0; i<SMS_ORDERS_MAX; i++) {
 		systemVars.sms_conf.sms_orders[i].mb_channel = -1;
 		memset( systemVars.sms_conf.sms_orders[i].smsText, '\0', SMS_ORDERS_LENGTH );
 		strncpy(systemVars.sms_conf.sms_orders[i].smsText, "X", SMS_ORDERS_LENGTH);
 	}
 	// Textos fijos.
+	// El primer registro es FRAME.
 	systemVars.sms_conf.sms_orders[0].mb_channel = -1;
 	strncpy(systemVars.sms_conf.sms_orders[0].smsText, "FRAME", SMS_ORDERS_LENGTH);
 

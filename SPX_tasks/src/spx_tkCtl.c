@@ -28,14 +28,14 @@ static bool f_terminal_connected = false;
 #define TKCTL_DELAY_S	5
 
 const char string_0[] PROGMEM = "tkCTL";
-const char string_1[] PROGMEM = "tkCMD";
-const char string_2[] PROGMEM = "tkDATA";
-const char string_3[] PROGMEM = "tkAPP";
-const char string_4[] PROGMEM = "tkCOMMSRX";
-const char string_5[] PROGMEM = "tkCOMMS";
+const char string_1[] PROGMEM = "tkDATA";
+const char string_2[] PROGMEM = "tkAPP";
+const char string_3[] PROGMEM = "tkCOMMSRX";
+const char string_4[] PROGMEM = "tkCOMMS";
+const char string_5[] PROGMEM = "tkAUXRX";
+const char string_6[] PROGMEM = "tkCMD";
 
-
-const char * const wdg_names[] PROGMEM = { string_0, string_1, string_2, string_3, string_4, string_5 };
+const char * const wdg_names[] PROGMEM = { string_0, string_1, string_2, string_3, string_4, string_5, string_6 };
 
 //------------------------------------------------------------------------------------
 void tkCtl(void * pvParameters)
@@ -46,18 +46,18 @@ void tkCtl(void * pvParameters)
 ( void ) pvParameters;
 uint8_t i;
 
-	vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
+	vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+	xprintf_P( PSTR("\r\nstarting tkControl..\r\n"));
 
 	pv_ctl_init_system();
-
-	xprintf_P( PSTR("\r\nstarting tkControl..\r\n\0"));
 
 	// Arranco a habilitar el resto de las tareas cada 500ms
 	for ( i = 1; i < NRO_WDGS; i++) {
 		WDT_Reset();
-		vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
-		start_byte |= 1 << i;
+		//vTaskDelay( ( TickType_t)( 500 / portTICK_RATE_MS ) );
 	}
+
+	run_tasks = true;
 
 	for( ;; )
 	{

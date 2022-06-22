@@ -38,15 +38,14 @@ void tkData(void * pvParameters)
 TickType_t xLastWakeTime = 0;
 uint32_t waiting_ticks = 0;
 
-	// Espero la notificacion para arrancar
-	while ( ((start_byte >> WDG_DATA) & 1 ) != 1 )
+	while (!run_tasks)
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+
+	xprintf_P( PSTR("starting tkData..\r\n\0"));
 
 	ainputs_init();
 	dinputs_init();
 	counters_init();
-
-	xprintf_P( PSTR("starting tkData..\r\n\0"));
 
 	// Initialise the xLastWakeTime variable with the current time.
  	xLastWakeTime = xTaskGetTickCount();

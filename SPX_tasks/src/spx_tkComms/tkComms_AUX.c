@@ -20,16 +20,19 @@ void tkAuxRX(void * pvParameters)
 
 ( void ) pvParameters;
 char c;
-uint32_t ulNotifiedValue;
+uint8_t ticks = 0;
 
 	// Espero la notificacion para arrancar
-	while ( ((start_byte >> WDG_AUXRX) & 1 ) != 1 )
+	while (!run_tasks)
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
-
 
 	xprintf_P( PSTR("starting tkAuxRX..\r\n"));
 
 	aux_init();
+
+	// Fijo el timeout del READ
+	ticks = 5;
+	frtos_ioctl( fdAUX1,ioctl_SET_TIMEOUT, &ticks );
 
 	for( ;; )	{
 
@@ -42,17 +45,11 @@ uint32_t ulNotifiedValue;
 				aux_rxbuffer_put2(c);
 			}
 
-			/*
-			if ( aux_rxbuffer_full() ) {
-				xprintf_P( PSTR("AUX_DEBUG: %s\r\n"), aux_rxbuffer.buffer );
-				aux_rxbuffer_reset();
-			}
-			*/
 		} else {
 
-			xTaskNotifyWait( 0x00, ULONG_MAX, &ulNotifiedValue, ((TickType_t) 10000 / portTICK_RATE_MS ) );
-
+			vTaskDelay( ( TickType_t)( 10000 / portTICK_RATE_MS ) );
 		}
+
 	}
 }
 //------------------------------------------------------------------------------------

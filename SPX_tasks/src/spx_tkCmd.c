@@ -70,8 +70,12 @@ uint8_t ticks = 0;
 ( void ) pvParameters;
 
 	// Espero la notificacion para arrancar
-	while ( ((start_byte >> WDG_CMD) & 1 ) != 1 )
+	while (!run_tasks)
 		vTaskDelay( ( TickType_t)( 100 / portTICK_RATE_MS ) );
+
+	vTaskDelay( ( TickType_t)( 700 / portTICK_RATE_MS ) );
+	xprintf_P( PSTR("starting tkCmd..\r\n") );
+
 
 	FRTOS_CMD_init( xputChar, xprintf_cmd );
 
@@ -90,7 +94,6 @@ uint8_t ticks = 0;
 	ticks = 5;
 	frtos_ioctl( fdTERM,ioctl_SET_TIMEOUT, &ticks );
 
-	xprintf_P( PSTR("starting tkCmd..\r\n") );
 
 	//ringBuffer_CreateStatic ( &rbFIFO, &rbfifo_storage, RBFIFO_STORAGE_SIZE, sizeof(s_element)  );
 

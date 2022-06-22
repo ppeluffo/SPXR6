@@ -154,6 +154,7 @@ TaskHandle_t xHandle_idle, xHandle_tkCtl, xHandle_tkCmd, xHandle_tkData, xHandle
 
 uint32_t sysTicks;
 uint8_t start_byte;
+bool run_tasks;
 
 xSemaphoreHandle sem_SYSVars;
 StaticSemaphore_t SYSVARS_xMutexBuffer;
@@ -234,7 +235,7 @@ typedef struct {
 #define SMS_ORDERS_MAX			10
 
 typedef struct {
-	int8_t mb_channel;
+	int16_t mb_channel;
 	char smsText[SMS_ORDERS_LENGTH];
 } t_sms_dict_element;
 
@@ -292,12 +293,12 @@ int32_t xcomms_time_to_next_dial(void);
 uint8_t wdg_resetCause;
 
 #define WDG_CTL			0
-#define WDG_CMD			1
-#define WDG_DATA		2
-#define WDG_APP			3
-#define WDG_COMMSRX		4
-#define WDG_COMMS		5
-#define WDG_AUXRX		6
+#define WDG_DATA		1
+#define WDG_APP			2
+#define WDG_COMMSRX		3
+#define WDG_COMMS		4
+#define WDG_AUXRX		5
+#define WDG_CMD			6
 
 #define NRO_WDGS		7
 
